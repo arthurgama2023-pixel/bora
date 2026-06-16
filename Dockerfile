@@ -1,8 +1,4 @@
-FROM node:20-slim
-
-RUN apt-get update && apt-get install -y \
-    python3 make g++ \
-    && rm -rf /var/lib/apt/lists/*
+FROM node:20
 
 WORKDIR /app
 
@@ -14,8 +10,10 @@ COPY . .
 RUN npm run build
 
 # Instala dependências do backend
+# PUPPETEER_SKIP_DOWNLOAD evita que whatsapp-web.js tente baixar Chrome durante npm ci
+# (Chrome não é necessário para o servidor — WhatsApp usa Chrome do sistema, se disponível)
 WORKDIR /app/server
-RUN npm ci
+RUN PUPPETEER_SKIP_DOWNLOAD=true npm ci
 
 WORKDIR /app
 
