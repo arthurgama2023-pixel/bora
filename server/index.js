@@ -1143,24 +1143,15 @@ app.delete('/api/pedidos/:id', async (req, res) => {
 
 app.get('/api/conversations', async (req, res) => {
   try {
-    const agentId = req.query.agent_id;
     const username = req.user.username;
-    console.log(`[API] GET /api/conversations - agent_id=${agentId}, username=${username}`);
+    console.log(`[API] GET /api/conversations - username=${username}`);
 
-    // ISOLAMENTO RIGOROSO: Cada agente vê APENAS suas conversas
-    // Não há compartilhamento de conversas entre agentes, nem conversas "antigas"
-    if (!agentId) {
-      console.log(`[API] ERRO: agent_id não fornecido!`);
-      return res.status(400).json({ error: 'agent_id é obrigatório' });
-    }
-
-    console.log(`[API] Filtrando APENAS para agent_id="${agentId}"`);
-
+    // Carrega TODAS as conversas do usuário (compartilhadas entre agentes)
+    // Cada agente usará sua própria personalidade/prompt ao responder
     const { data, error } = await supabase
       .from('conversations')
       .select('id, title, created_at, updated_at, agent_id')
       .eq('username', username)
-      .eq('agent_id', agentId)
       .order('updated_at', { ascending: false });
 
     if (error) {
@@ -1168,7 +1159,7 @@ app.get('/api/conversations', async (req, res) => {
       throw error;
     }
 
-    console.log(`[API] Retornando ${data?.length || 0} conversas para ${agentId}`);
+    console.log(`[API] Retornando ${data?.length || 0} conversas compartilhadas`);
     res.json(data);
   } catch (e) {
     console.error(`[API] ERRO em GET /api/conversations:`, e.message);

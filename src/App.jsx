@@ -118,14 +118,6 @@ function AppMain({ onLogout, username }) {
   const activeMessages = messagesCache[activeId] || [];
   const activeConversation = conversations.find(c => c.id === activeId);
 
-  // DEBUG: Log estado de conversas
-  useEffect(() => {
-    console.log(`[STATE] activeAgentId=${activeAgentId}, conversations=${conversations.length}, activeId=${activeId}, messages=${activeMessages.length}`);
-    if (conversations.length > 0) {
-      console.log(`[STATE] Conversas atuais:`, conversations.map(c => `${c.id}(agent:${c.agent_id})`).join(', '));
-    }
-  }, [activeAgentId, conversations, activeId, activeMessages]);
-
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [activeMessages, loading]);
@@ -143,42 +135,33 @@ function AppMain({ onLogout, username }) {
     }
   }, [agentNames]);
 
-  async function loadConversationsForAgent(agentId) {
+  async function loadConversations() {
     try {
-      console.log(`[DEBUG] loadConversationsForAgent iniciado para ${agentId}`);
-      const convRes = await apiFetch(`${API}/api/conversations?agent_id=${agentId}`).then(r => r.json()).catch(() => []);
-      console.log(`[DEBUG] Conversas recebidas para ${agentId}:`, convRes);
+      console.log(`[LOAD] Carregando TODAS as conversas (compartilhadas entre agentes)`);
+      // Carrega conversas de TODOS os agentes - sem filtro
+      const convRes = await apiFetch(`${API}/api/conversations`).then(r => r.json()).catch(() => []);
+      console.log(`[LOAD] ${convRes.length} conversas carregadas`);
 
       if (Array.isArray(convRes) && convRes.length > 0) {
-        const first = convRes[0];
-        console.log(`[DEBUG] Carregando mensagens para conversa ${first.id}`);
-        const msgs = await apiFetch(`${API}/api/conversations/${first.id}/messages`).then(r => r.json()).catch(() => []);
-        console.log(`[DEBUG] Mensagens carregadas:`, msgs.length);
-        // Zera cache completamente e carrega apenas a conversa do novo agente
-        setMessagesCache({ [first.id]: (Array.isArray(msgs) ? msgs.map(mapMsg) : []) });
         setConversations(convRes);
-        setActiveId(first.id);
-        console.log(`[DEBUG] Estado atualizado para conversa ${first.id}`);
+        // Se não tem conversa ativa, seleciona a primeira
+        if (!activeId) {
+          const first = convRes[0];
+          setActiveId(first.id);
+          const msgs = await apiFetch(`${API}/api/conversations/${first.id}/messages`).then(r => r.json()).catch(() => []);
+          if (Array.isArray(msgs)) setMessagesCache(c => ({ ...c, [first.id]: msgs.map(mapMsg) }));
+        }
       } else {
-        console.log(`[DEBUG] Nenhuma conversa encontrada, criando nova`);
-        const nc = await createConvOnServer("Nova conversa", agentId).catch(() => null);
+        console.log(`[LOAD] Nenhuma conversa, criando nova`);
+        const nc = await createConvOnServer("Nova conversa", activeAgentId).catch(() => null);
         if (nc?.id) {
-          console.log(`[DEBUG] Nova conversa criada: ${nc.id}`);
-          setMessagesCache({ [nc.id]: [] });
           setConversations([nc]);
           setActiveId(nc.id);
-        } else {
-          console.log(`[DEBUG] Erro ao criar nova conversa`);
-          setMessagesCache({});
-          setConversations([]);
-          setActiveId(null);
+          setMessagesCache({ [nc.id]: [] });
         }
       }
     } catch (e) {
-      console.error('[loadConversationsForAgent] ERRO:', e);
-      setMessagesCache({});
-      setConversations([]);
-      setActiveId(null);
+      console.error('[loadConversations] ERRO:', e);
     }
   }
 
@@ -233,33 +216,23 @@ function AppMain({ onLogout, username }) {
           if (Object.keys(previews).length > 0) setInstagramPreviews(previews);
         }
 
-        // Carrega apenas as conversas do agente inicial
-        await loadConversationsForAgent(bootAgent);
+        // Carrega todas as conversas (compartilhadas entre todos os agentes)
+        await loadConversations();
       } catch (e) { console.error(e); } finally { setAppReady(true); }
     })();
   }, []);
 
   async function handleAgentChange(agent) {
-    console.log(`\n🔄 ===== MUDANÇA DE AGENTE INICIADA =====`);
-    console.log(`[CHANGE] De: ${activeAgentId} → Para: ${agent.id}`);
-    console.log(`[CHANGE] Estado ANTES: conversas=${conversations.length}, activeId=${activeId}`);
+    console.log(`🧠 MUDANÇA DE AGENTE: ${activeAgentId} → ${agent.id}`);
 
-    // Zera TUDO
-    console.log(`[CHANGE] Zerando estado...`);
+    // Apenas muda o agente ativo - as conversas continuam as mesmas!
+    // Cada agente é um "cérebro diferente" respondendo ao mesmo chat
     setActiveAgentId(agent.id);
-    setConversations([]);
-    setActiveId(null);
-    setMessagesCache({});
     setInput("");
     setAttachments([]);
     setNotice("");
-    console.log(`[CHANGE] Estado zerado ✅`);
 
-    // Carrega novo agente
-    console.log(`[CHANGE] Carregando conversas do agente ${agent.id}...`);
-    await loadConversationsForAgent(agent.id);
-    console.log(`[CHANGE] ✅ Conversas carregadas para ${agent.id}`);
-    console.log(`===== MUDANÇA DE AGENTE CONCLUÍDA =====\n`);
+    console.log(`✅ Agente mudado para ${agent.id} - personalidade alterada`);
   }
 
   function mapMsg(m) {
