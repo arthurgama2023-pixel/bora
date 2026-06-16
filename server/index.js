@@ -1144,29 +1144,37 @@ app.delete('/api/pedidos/:id', async (req, res) => {
 app.get('/api/conversations', async (req, res) => {
   try {
     const agentId = req.query.agent_id;
+    const username = req.user.username;
+    console.log(`[API] GET /api/conversations - agent_id=${agentId}, username=${username}`);
+
     let query = supabase
       .from('conversations')
       .select('id, title, created_at, updated_at, agent_id')
-      .eq('username', req.user.username)
+      .eq('username', username)
       .order('updated_at', { ascending: false });
 
     // Se um agent_id específico é solicitado, filtra para retornar APENAS conversas desse agente
-    // Conversas antigas (agent_id = NULL) são retornadas para o agente 'bora' como padrão
     if (agentId) {
-      // Retorna conversas onde agent_id = agentId OU (agent_id IS NULL E agentId == 'bora')
       if (agentId === 'bora') {
-        // Para 'bora': retorna agentes com agent_id = 'bora' OU agent_id = NULL
-        query = query.in('agent_id', ['bora', null]);
+        // Para 'bora': retorna conversas com agent_id = 'bora' OU agent_id = NULL (compatibilidade com conversas antigas)
+        console.log(`[API] Filtrando para bora (incluindo NULL)`);
+        query = query.or('agent_id.eq.bora,agent_id.is.null');
       } else {
-        // Para outros agentes: retorna APENAS conversas daquele agente
+        // Para outros agentes (cs, sdr): retorna APENAS conversas daquele agente
+        console.log(`[API] Filtrando para ${agentId} (excluindo NULL)`);
         query = query.eq('agent_id', agentId);
       }
     }
 
     const { data, error } = await query;
-    if (error) throw error;
+    if (error) {
+      console.error(`[API] Erro na query:`, error.message);
+      throw error;
+    }
+    console.log(`[API] Retornando ${data?.length || 0} conversas para ${agentId || 'todos'}`);
     res.json(data);
   } catch (e) {
+    console.error(`[API] ERRO em GET /api/conversations:`, e.message);
     res.status(500).json({ error: e.message });
   }
 });

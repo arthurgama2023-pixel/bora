@@ -264,9 +264,9 @@ export default function ProfilePage({ onClose, onLogout, onStartSession, onAgent
   async function startSessionWithAgent(e, agentId) {
     e?.stopPropagation?.();
     const agent = AGENTS.find(a => a.id === agentId);
-    setActiveAgentId(agentId);
     setPendingAgentId(null);
     // Aguarda que handleAgentChange carregue as conversas do novo agente antes de fechar
+    // Não faz setActiveAgentId aqui - deixa handleAgentChange fazer
     await onAgentChange?.(agent);
     try {
       await authFetch(`${API}/api/agent-config`, {

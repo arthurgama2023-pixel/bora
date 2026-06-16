@@ -137,28 +137,37 @@ function AppMain({ onLogout, username }) {
 
   async function loadConversationsForAgent(agentId) {
     try {
+      console.log(`[DEBUG] loadConversationsForAgent iniciado para ${agentId}`);
       const convRes = await apiFetch(`${API}/api/conversations?agent_id=${agentId}`).then(r => r.json()).catch(() => []);
+      console.log(`[DEBUG] Conversas recebidas para ${agentId}:`, convRes);
+
       if (Array.isArray(convRes) && convRes.length > 0) {
         const first = convRes[0];
+        console.log(`[DEBUG] Carregando mensagens para conversa ${first.id}`);
         const msgs = await apiFetch(`${API}/api/conversations/${first.id}/messages`).then(r => r.json()).catch(() => []);
+        console.log(`[DEBUG] Mensagens carregadas:`, msgs.length);
         // Zera cache completamente e carrega apenas a conversa do novo agente
         setMessagesCache({ [first.id]: (Array.isArray(msgs) ? msgs.map(mapMsg) : []) });
         setConversations(convRes);
         setActiveId(first.id);
+        console.log(`[DEBUG] Estado atualizado para conversa ${first.id}`);
       } else {
+        console.log(`[DEBUG] Nenhuma conversa encontrada, criando nova`);
         const nc = await createConvOnServer("Nova conversa", agentId).catch(() => null);
         if (nc?.id) {
+          console.log(`[DEBUG] Nova conversa criada: ${nc.id}`);
           setMessagesCache({ [nc.id]: [] });
           setConversations([nc]);
           setActiveId(nc.id);
         } else {
+          console.log(`[DEBUG] Erro ao criar nova conversa`);
           setMessagesCache({});
           setConversations([]);
           setActiveId(null);
         }
       }
     } catch (e) {
-      console.error('[loadConversationsForAgent]', e);
+      console.error('[loadConversationsForAgent] ERRO:', e);
       setMessagesCache({});
       setConversations([]);
       setActiveId(null);
@@ -223,6 +232,9 @@ function AppMain({ onLogout, username }) {
   }, []);
 
   async function handleAgentChange(agent) {
+    console.log(`[DEBUG] handleAgentChange chamado para agent: ${agent.id}`);
+    console.log(`[DEBUG] Estado ANTES: activeAgentId=${activeAgentId}, conversas=${conversations.length}, activeId=${activeId}`);
+
     setActiveAgentId(agent.id);
     setConversations([]);
     setActiveId(null);
@@ -230,7 +242,10 @@ function AppMain({ onLogout, username }) {
     setInput("");
     setAttachments([]);
     setNotice("");
+
+    console.log(`[DEBUG] Estados zerados, carregando conversas do agente ${agent.id}`);
     await loadConversationsForAgent(agent.id);
+    console.log(`[DEBUG] Conversas carregadas para ${agent.id}`);
   }
 
   function mapMsg(m) {
