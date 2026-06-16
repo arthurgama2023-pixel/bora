@@ -1147,31 +1147,28 @@ app.get('/api/conversations', async (req, res) => {
     const username = req.user.username;
     console.log(`[API] GET /api/conversations - agent_id=${agentId}, username=${username}`);
 
-    let query = supabase
+    // ISOLAMENTO RIGOROSO: Cada agente vê APENAS suas conversas
+    // Não há compartilhamento de conversas entre agentes, nem conversas "antigas"
+    if (!agentId) {
+      console.log(`[API] ERRO: agent_id não fornecido!`);
+      return res.status(400).json({ error: 'agent_id é obrigatório' });
+    }
+
+    console.log(`[API] Filtrando APENAS para agent_id="${agentId}"`);
+
+    const { data, error } = await supabase
       .from('conversations')
       .select('id, title, created_at, updated_at, agent_id')
       .eq('username', username)
+      .eq('agent_id', agentId)
       .order('updated_at', { ascending: false });
 
-    // Se um agent_id específico é solicitado, filtra para retornar APENAS conversas desse agente
-    if (agentId) {
-      if (agentId === 'bora') {
-        // Para 'bora': retorna conversas com agent_id = 'bora' OU agent_id = NULL (compatibilidade com conversas antigas)
-        console.log(`[API] Filtrando para bora (incluindo NULL)`);
-        query = query.or('agent_id.eq.bora,agent_id.is.null');
-      } else {
-        // Para outros agentes (cs, sdr): retorna APENAS conversas daquele agente
-        console.log(`[API] Filtrando para ${agentId} (excluindo NULL)`);
-        query = query.eq('agent_id', agentId);
-      }
-    }
-
-    const { data, error } = await query;
     if (error) {
       console.error(`[API] Erro na query:`, error.message);
       throw error;
     }
-    console.log(`[API] Retornando ${data?.length || 0} conversas para ${agentId || 'todos'}`);
+
+    console.log(`[API] Retornando ${data?.length || 0} conversas para ${agentId}`);
     res.json(data);
   } catch (e) {
     console.error(`[API] ERRO em GET /api/conversations:`, e.message);
@@ -1181,13 +1178,21 @@ app.get('/api/conversations', async (req, res) => {
 
 app.post('/api/conversations', async (req, res) => {
   const { title = 'Nova conversa', agent_id = 'bora' } = req.body;
+  const username = req.user.username;
+
+  console.log(`[API] POST /api/conversations - title="${title}", agent_id="${agent_id}", username="${username}"`);
+
   try {
     const { data, error } = await supabase
       .from('conversations')
-      .insert({ title, username: req.user.username, agent_id })
+      .insert({ title, username, agent_id })
       .select()
       .single();
-    if (error) throw error;
+    if (error) {
+      console.error(`[API] Erro ao criar conversa:`, error.message);
+      throw error;
+    }
+    console.log(`[API] Conversa criada: id=${data.id}, agent_id=${data.agent_id}`);
     res.json(data);
   } catch (e) {
     res.status(500).json({ error: e.message });
