@@ -3,8 +3,6 @@ FROM node:20
 WORKDIR /app
 
 # Instala dependências do frontend e builda o React
-# Usa npm install (não npm ci) para evitar conflito de hashes
-# entre package-lock.json gerado no Windows e binários Linux
 COPY package.json ./
 RUN npm install
 
@@ -23,4 +21,5 @@ ENV PORT=3000
 
 EXPOSE 3000
 
-CMD ["node", "server/index.js"]
+# Tenta subir o servidor; se crashar, expõe o erro via HTTP para diagnóstico
+CMD ["sh", "-c", "node server/index.js 2>&1 | tee /tmp/server.log || (node -e \"const h=require('http'),fs=require('fs');h.createServer((_,r)=>{r.writeHead(200,{'Content-Type':'text/plain'});r.end(fs.readFileSync('/tmp/server.log','utf8'))}).listen(3000,()=>console.log('Error server on 3000'))\" )"]
