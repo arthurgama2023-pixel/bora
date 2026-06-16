@@ -118,6 +118,14 @@ function AppMain({ onLogout, username }) {
   const activeMessages = messagesCache[activeId] || [];
   const activeConversation = conversations.find(c => c.id === activeId);
 
+  // DEBUG: Log estado de conversas
+  useEffect(() => {
+    console.log(`[STATE] activeAgentId=${activeAgentId}, conversations=${conversations.length}, activeId=${activeId}, messages=${activeMessages.length}`);
+    if (conversations.length > 0) {
+      console.log(`[STATE] Conversas atuais:`, conversations.map(c => `${c.id}(agent:${c.agent_id})`).join(', '));
+    }
+  }, [activeAgentId, conversations, activeId, activeMessages]);
+
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [activeMessages, loading]);
@@ -232,9 +240,12 @@ function AppMain({ onLogout, username }) {
   }, []);
 
   async function handleAgentChange(agent) {
-    console.log(`[DEBUG] handleAgentChange chamado para agent: ${agent.id}`);
-    console.log(`[DEBUG] Estado ANTES: activeAgentId=${activeAgentId}, conversas=${conversations.length}, activeId=${activeId}`);
+    console.log(`\n🔄 ===== MUDANÇA DE AGENTE INICIADA =====`);
+    console.log(`[CHANGE] De: ${activeAgentId} → Para: ${agent.id}`);
+    console.log(`[CHANGE] Estado ANTES: conversas=${conversations.length}, activeId=${activeId}`);
 
+    // Zera TUDO
+    console.log(`[CHANGE] Zerando estado...`);
     setActiveAgentId(agent.id);
     setConversations([]);
     setActiveId(null);
@@ -242,10 +253,13 @@ function AppMain({ onLogout, username }) {
     setInput("");
     setAttachments([]);
     setNotice("");
+    console.log(`[CHANGE] Estado zerado ✅`);
 
-    console.log(`[DEBUG] Estados zerados, carregando conversas do agente ${agent.id}`);
+    // Carrega novo agente
+    console.log(`[CHANGE] Carregando conversas do agente ${agent.id}...`);
     await loadConversationsForAgent(agent.id);
-    console.log(`[DEBUG] Conversas carregadas para ${agent.id}`);
+    console.log(`[CHANGE] ✅ Conversas carregadas para ${agent.id}`);
+    console.log(`===== MUDANÇA DE AGENTE CONCLUÍDA =====\n`);
   }
 
   function mapMsg(m) {
