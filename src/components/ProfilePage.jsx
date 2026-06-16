@@ -74,8 +74,8 @@ CITAÇÕES (CRÍTICO): Sempre cite a fonte usando links Obsidian [[duplos colche
 export const AGENTS = [
   {
     id: "bora",
-    name: "Agente Bora",
-    sub: "Alfredo Soares",
+    name: "Alfredo Soares",
+    sub: "Agente Bora",
     color: "#c44a1a",
     soft: "rgba(196,74,26,.10)",
     emoji: "⚡",
@@ -86,8 +86,8 @@ export const AGENTS = [
   },
   {
     id: "cs",
-    name: "CS Advisor",
-    sub: "Customer Success",
+    name: "Customer Success",
+    sub: "CS Advisor",
     color: "#2563EB",
     soft: "rgba(37,99,235,.10)",
     emoji: "🎯",
@@ -98,8 +98,8 @@ export const AGENTS = [
   },
   {
     id: "sdr",
-    name: "SDR",
-    sub: "Prospecção & Vendas",
+    name: "Prospecção & Vendas",
+    sub: "SDR",
     color: "#16A34A",
     soft: "rgba(22,163,74,.10)",
     emoji: "📣",
