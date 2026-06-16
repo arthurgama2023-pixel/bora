@@ -1,0 +1,39 @@
+# Segredos — NUNCA commitar
+server/.env
+
+# Uploads e dados persistentes — ficam no servidor
+server/uploads/
+server/data/
+# Mas o agent-config é configuração (não dado runtime), deve subir
+!server/data/agent-config.json
+logs/
+
+# Binários locais e artefatos de deploy
+yt-dlp.exe
+alfredo_voz.m4a
+deploy.tar.gz
+*.err
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CD Grupo · CS Agent · Imersão</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy-900:#060f24;
+  --navy-800:#0d1b3d;
+  --navy-700:#142450;
+  --navy-600:#1d3068;
+  --navy-500:#2a4080;
+  --gold-500:#c9a64a;
+  --gold-400:#d8b966;
+  --gold-300:#e6cf8e;
+  --gold-100:#f5ecd0;
+  --cream:#f8f5ee;
+  --paper:#fefcf7;
+  --surface:#ffffff;
+  --ink:#0d1b3d;
+  --ink-soft:#384467;
+  --muted:#7a829a;
+  --border:#e7e2d4;
+  --border-soft:#efebe0;
+  --green:#2d7a4f;
+  --green-soft:#e0efe5;
+  --amber:#b88a1a;
+  --amber-soft:#fbf0d2;
+  --red:#b53c3c;
+  --red-soft:#f7dede;
+  --pillar-mastered:var(--green);
+  --pillar-active:var(--gold-500);
+  --pillar-pending:#d8d3c5;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.serif{font-family:'Instrument Serif',serif;font-weight:400}
+.serif em,.serif i{font-style:italic}
+.mono{font-family:'JetBrains Mono',monospace;font-size:.85em}
+
+/* ============ LAYOUT ============ */
+.app{display:flex;min-height:100vh}
+.sidebar{width:248px;flex-shrink:0;background:var(--navy-800);color:#fff;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+
+/* ============ SIDEBAR ============ */
+.brand{padding:24px 22px 28px;border-bottom:1px solid rgba(255,255,255,.08)}
+.brand-logo{background:var(--navy-900);border-radius:10px;padding:14px 16px;border:1px solid rgba(201,166,74,.25)}
+.brand-logo .cd{font-family:'Instrument Serif',serif;color:var(--gold-500);font-size:1.5rem;letter-spacing:.18em;font-weight:400;line-height:1}
+.brand-logo .cs{color:var(--gold-300);font-size:.65rem;letter-spacing:.32em;margin-top:6px;font-weight:500}
+.nav{padding:18px 12px;flex:1;overflow-y:auto}
+.nav-section{font-size:.65rem;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.4);padding:14px 12px 8px;font-weight:600}
+.nav-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;color:rgba(255,255,255,.75);cursor:pointer;font-weight:500;font-size:.875rem;transition:background .15s,color .15s;margin-bottom:2px}
+.nav-item:hover{background:rgba(255,255,255,.05);color:#fff}
+.nav-item.active{background:linear-gradient(90deg,rgba(201,166,74,.16),rgba(201,166,74,.04));color:var(--gold-300);box-shadow:inset 2px 0 0 var(--gold-500)}
+.nav-item .ic{width:18px;height:18px;flex-shrink:0;opacity:.9}
+.nav-item .badge{margin-left:auto;background:var(--gold-500);color:var(--navy-900);font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:99px}
+.sidebar-foot{padding:16px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:10px}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--gold-500);color:var(--navy-900);display:grid;place-items:center;font-weight:700;font-size:.85rem}
+.user-info{font-size:.8rem;line-height:1.3}
+.user-info .name{font-weight:600;color:#fff}
+.user-info .role{color:rgba(255,255,255,.5);font-size:.72rem}
+
+/* ============ TOPBAR ============ */
+.topbar{background:var(--paper);border-bottom:1px solid var(--border);padding:18px 36px;display:flex;align-items:center;gap:24px}
+.crumb{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:.82rem;font-weight:500}
+.crumb .now{color:var(--ink);font-weight:600}
+.topbar-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.search{background:var(--cream);border:1px solid var(--border);border-radius:8px;padding:8px 14px 8px 36px;width:280px;font:inherit;color:var(--ink);background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' stroke='%237a829a' stroke-width='2' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:12px center;background-size:15px}
+.search:focus{outline:none;border-color:var(--navy-500)}
+.btn{background:var(--navy-800);color:#fff;border:none;padding:9px 18px;border-radius:8px;font:inherit;font-weight:600;font-size:.82rem;cursor:pointer;transition:background .15s,transform .15s;display:inline-flex;align-items:center;gap:8px}
+.btn:hover{background:var(--navy-700);transform:translateY(-1px)}
+.btn-gold{background:var(--gold-500);color:var(--navy-900)}
+.btn-gold:hover{background:var(--gold-400)}
+.btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--border)}
+.btn-ghost:hover{background:var(--surface);transform:none}
+
+/* ============ PAGES ============ */
+.page{display:none;padding:32px 36px 60px;animation:fade .3s ease}
+.page.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.page-head{margin-bottom:28px}
+.page-head h1{font-family:'Instrument Serif',serif;font-size:2.4rem;font-weight:400;letter-spacing:-.01em;line-height:1.05;color:var(--navy-800);margin-bottom:6px}
+.page-head h1 em{color:var(--gold-500)}
+.page-head .sub{color:var(--ink-soft);font-size:.95rem}
+
+/* ============ COMPONENTES ============ */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;transition:border-color .15s}
+.card-h{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px}
+.card-h h3{font-size:.95rem;font-weight:700;color:var(--navy-800);letter-spacing:-.01em}
+.card-h .lnk{color:var(--muted);font-size:.78rem;font-weight:600;cursor:pointer}
+.card-h .lnk:hover{color:var(--navy-700)}
+.grid{display:grid;gap:18px}
+.g-4{grid-template-columns:repeat(4,1fr)}
+.g-3{grid-template-columns:repeat(3,1fr)}
+.g-2{grid-template-columns:repeat(2,1fr)}
+.g-23{grid-template-columns:2fr 1fr}
+.g-32{grid-template-columns:1fr 2fr}
+
+/* KPI */
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;position:relative;overflow:hidden}
+.kpi::before{content:"";position:absolute;top:0;left:0;width:3px;height:100%;background:var(--gold-500);opacity:.7}
+.kpi .lbl{color:var(--muted);font-size:.74rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.kpi .val{font-family:'Instrument Serif',serif;font-size:2.4rem;font-weight:400;color:var(--navy-800);line-height:1;margin-top:8px}
+.kpi .delta{display:inline-flex;align-items:center;gap:4px;font-size:.78rem;font-weight:600;margin-top:8px;color:var(--green)}
+.kpi .delta.down{color:var(--red)}
+
+/* Health & pills */
+.health{display:inline-flex;align-items:center;gap:6px;font-size:.74rem;font-weight:700;padding:4px 10px;border-radius:99px;letter-spacing:.02em}
+.health::before{content:"";width:7px;height:7px;border-radius:50%}
+.health.green{background:var(--green-soft);color:var(--green)}.health.green::before{background:var(--green)}
+.health.amber{background:var(--amber-soft);color:var(--amber)}.health.amber::before{background:var(--amber)}
+.health.red{background:var(--red-soft);color:var(--red)}.health.red::before{background:var(--red)}
+.pill{display:inline-block;font-size:.7rem;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--cream);color:var(--ink-soft);border:1px solid var(--border)}
+.pill.gold{background:rgba(201,166,74,.12);color:#8a6f1f;border-color:rgba(201,166,74,.3)}
+.pill.green{background:var(--green-soft);color:var(--green);border-color:rgba(45,122,79,.2)}
+.pill.amber{background:var(--amber-soft);color:var(--amber);border-color:rgba(184,138,26,.25)}
+.pill.red{background:var(--red-soft);color:var(--red);border-color:rgba(181,60,60,.25)}
+.pill.navy{background:var(--navy-800);color:#fff;border-color:var(--navy-800)}
+
+/* ============ TRILHA DOS 7 PILARES ============ */
+.trilha{background:var(--paper);border:1px solid var(--border);border-radius:14px;padding:26px 22px;position:relative;overflow:hidden}
+.trilha-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+.trilha-h h3{font-size:.95rem;font-weight:700;color:var(--navy-800)}
+.trilha-legend{display:flex;gap:14px;font-size:.72rem;color:var(--muted);align-items:center}
+.trilha-legend span{display:inline-flex;align-items:center;gap:5px}
+.trilha-legend .dot{width:9px;height:9px;border-radius:50%}
+.pillars{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;position:relative;padding:18px 4px 0}
+.pillars::before{content:"";position:absolute;top:36px;left:30px;right:30px;height:2px;background:var(--pillar-pending);z-index:0}
+.pillar{flex:1;text-align:center;position:relative;z-index:1;cursor:pointer}
+.pillar .node{width:36px;height:36px;border-radius:50%;background:var(--surface);border:2.5px solid var(--pillar-pending);margin:0 auto;display:grid;place-items:center;font-weight:700;color:var(--muted);font-size:.85rem;transition:all .2s}
+.pillar.mastered .node{background:var(--pillar-mastered);border-color:var(--pillar-mastered);color:#fff}
+.pillar.active .node{background:var(--pillar-active);border-color:var(--pillar-active);color:var(--navy-900);box-shadow:0 0 0 6px rgba(201,166,74,.18)}
+.pillar.partial .node{background:var(--surface);border-color:var(--pillar-active);color:var(--pillar-active)}
+.pillar .lbl{margin-top:10px;font-size:.72rem;font-weight:600;color:var(--ink-soft);line-height:1.2;min-height:30px}
+.pillar.active .lbl{color:var(--navy-800);font-weight:700}
+.pillar .pct{font-size:.68rem;color:var(--muted);margin-top:4px;font-weight:600}
+
+/* Tabela */
+.tbl{width:100%;border-collapse:collapse;font-size:.88rem}
+.tbl th{text-align:left;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:10px 14px;border-bottom:1px solid var(--border)}
+.tbl td{padding:14px;border-bottom:1px solid var(--border-soft);color:var(--ink-soft)}
+.tbl tr{cursor:pointer;transition:background .12s}
+.tbl tr:hover td{background:#fdfbf3}
+.tbl td .nome{font-weight:700;color:var(--navy-800);font-size:.92rem}
+.tbl td .sub{font-size:.78rem;color:var(--muted);margin-top:2px}
+
+/* Listas */
+.list-item{display:flex;align-items:flex-start;gap:14px;padding:14px 0;border-bottom:1px solid var(--border-soft)}
+.list-item:last-child{border-bottom:none}
+.list-item .ico{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:var(--cream);color:var(--navy-700);flex-shrink:0;font-weight:700}
+.list-item .ico.red{background:var(--red-soft);color:var(--red)}
+.list-item .ico.amber{background:var(--amber-soft);color:var(--amber)}
+.list-item .ico.green{background:var(--green-soft);color:var(--green)}
+.list-item .ico.gold{background:var(--gold-100);color:#8a6f1f}
+.list-item .body{flex:1;min-width:0}
+.list-item .ti{font-weight:600;color:var(--navy-800);font-size:.9rem}
+.list-item .de{font-size:.82rem;color:var(--ink-soft);margin-top:2px}
+.list-item .meta{font-size:.74rem;color:var(--muted);margin-top:4px;display:flex;gap:10px;flex-wrap:wrap}
+
+/* KANBAN */
+.kanban{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.kcol{background:#fdfbf3;border:1px solid var(--border-soft);border-radius:12px;padding:14px;min-height:400px}
+.kcol-h{display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:0 4px}
+.kcol-h .nm{font-weight:700;font-size:.82rem;color:var(--navy-800);text-transform:uppercase;letter-spacing:.05em}
+.kcol-h .ct{margin-left:auto;background:var(--surface);border:1px solid var(--border);font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:99px;color:var(--ink-soft)}
+.kdot{width:8px;height:8px;border-radius:50%}
+.kdot.b{background:var(--navy-500)}.kdot.y{background:var(--gold-500)}.kdot.r{background:var(--red)}.kdot.g{background:var(--green)}
+.kcard{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;cursor:grab;transition:transform .15s,box-shadow .15s}
+.kcard:hover{transform:translateY(-2px);box-shadow:0 6px 18px -8px rgba(13,27,61,.15)}
+.kcard .men{font-size:.7rem;font-weight:700;color:var(--gold-500);letter-spacing:.04em;text-transform:uppercase;margin-bottom:6px}
+.kcard .txt{font-size:.86rem;color:var(--navy-800);font-weight:500;line-height:1.4}
+.kcard .pilar{display:inline-block;font-size:.66rem;font-weight:600;padding:2px 7px;border-radius:99px;background:var(--gold-100);color:#8a6f1f;margin-top:8px;border:1px solid rgba(201,166,74,.3)}
+.kcard .ft{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:.72rem;color:var(--muted)}
+.kcard .ft .pz{font-weight:600}
+
+/* EDITOR / ANÁLISE */
+.editor{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.editor-h{padding:14px 20px;border-bottom:1px solid var(--border-soft);background:#fdfbf3;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.editor-h label{font-size:.78rem;font-weight:600;color:var(--muted)}
+.select{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:6px 12px;font:inherit;font-weight:600;font-size:.82rem;color:var(--navy-800);cursor:pointer}
+.editor textarea{width:100%;min-height:240px;padding:18px 22px;border:none;resize:vertical;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.65;color:var(--ink);background:var(--paper)}
+.editor textarea:focus{outline:none}
+.editor-f{padding:14px 20px;background:#fdfbf3;border-top:1px solid var(--border-soft);display:flex;justify-content:space-between;align-items:center}
+.uploadbox{padding:18px 22px;background:var(--paper);border-bottom:1px solid var(--border-soft);display:flex;align-items:center;gap:14px}
+.uploadbox .ico{width:38px;height:38px;border-radius:8px;background:var(--gold-100);color:#8a6f1f;display:grid;place-items:center}
+.uploadbox .info{flex:1}
+.uploadbox .info .ti{font-weight:600;color:var(--navy-800);font-size:.88rem}
+.uploadbox .info .de{font-size:.78rem;color:var(--muted)}
+
+.report{margin-top:24px;background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:none}
+.report.show{display:block;animation:fade .4s ease}
+.report-h{padding:18px 22px;background:linear-gradient(135deg,var(--navy-800),var(--navy-700));color:#fff;display:flex;justify-content:space-between;align-items:center}
+.report-h .ti .em{font-family:'Instrument Serif',serif;font-size:1.4rem}
+.report-h .ti .em em{color:var(--gold-400)}
+.report-h .ti .by{font-size:.74rem;color:rgba(255,255,255,.6);margin-top:2px}
+.report-h .ts{font-size:.78rem;color:var(--gold-300);font-weight:500}
+.report-body{padding:24px}
+.rsec{margin-bottom:24px}
+.rsec:last-child{margin-bottom:0}
+.rsec-h{display:flex;align-items:center;gap:8px;font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--navy-700);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border-soft)}
+.rsec p{color:var(--ink-soft);font-size:.92rem;line-height:1.6}
+.rsec .quote{font-style:italic;color:var(--ink-soft);border-left:2px solid var(--gold-500);padding-left:12px;margin:6px 0;font-size:.88rem}
+.rsec ul{list-style:none;padding:0}
+.rsec li{padding:8px 0;border-bottom:1px solid var(--border-soft);font-size:.9rem;color:var(--ink-soft)}
+.rsec li:last-child{border-bottom:none}
+.rsec li strong{color:var(--navy-800)}
+
+.loader{display:none;padding:40px;text-align:center;color:var(--muted)}
+.loader.show{display:block;animation:fade .3s ease}
+.spinner{width:32px;height:32px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--gold-500);animation:spin 1s linear infinite;margin:0 auto 14px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* PERFIL */
+.profile-head{background:linear-gradient(135deg,var(--navy-800),var(--navy-700));color:#fff;border-radius:14px;padding:28px;display:flex;gap:24px;align-items:center;margin-bottom:22px;position:relative;overflow:hidden}
+.profile-head::after{content:"";position:absolute;top:-50%;right:-10%;width:300px;height:300px;background:radial-gradient(circle,var(--gold-500),transparent 70%);opacity:.2}
+.profile-avatar{width:72px;height:72px;border-radius:14px;background:var(--gold-500);color:var(--navy-900);display:grid;place-items:center;font-family:'Instrument Serif',serif;font-size:2.2rem;flex-shrink:0}
+.profile-info{flex:1;position:relative;z-index:1}
+.profile-info h2{font-family:'Instrument Serif',serif;font-size:2.2rem;font-weight:400;line-height:1;margin-bottom:6px}
+.profile-meta{display:flex;gap:18px;flex-wrap:wrap;color:rgba(255,255,255,.7);font-size:.86rem;margin-top:8px}
+.profile-meta span strong{color:var(--gold-300);font-weight:600}
+.profile-actions{display:flex;flex-direction:column;gap:8px;position:relative;z-index:1}
+
+.exec-row{display:flex;gap:12px;align-items:center;font-size:.85rem}
+.exec-bar{flex:1;height:8px;background:var(--cream);border-radius:99px;overflow:hidden}
+.exec-bar .fill{height:100%;background:linear-gradient(90deg,var(--gold-500),var(--gold-400));border-radius:99px}
+.exec-row .lbl{min-width:140px;color:var(--ink-soft);font-weight:500}
+.exec-row .pct{min-width:60px;text-align:right;font-weight:700;color:var(--navy-800)}
+
+.timeline-item{display:flex;gap:16px;padding-bottom:18px;position:relative}
+.timeline-item:not(:last-child)::before{content:"";position:absolute;left:11px;top:24px;bottom:0;width:1px;background:var(--border)}
+.timeline-dot{width:22px;height:22px;border-radius:50%;background:var(--surface);border:2px solid var(--gold-500);flex-shrink:0;display:grid;place-items:center;z-index:1}
+.timeline-dot::after{content:"";width:8px;height:8px;background:var(--gold-500);border-radius:50%}
+.timeline-body{flex:1;padding-top:2px}
+.timeline-body .dt{font-size:.74rem;color:var(--muted);font-weight:600;margin-bottom:2px}
+.timeline-body .ti{font-weight:600;color:var(--navy-800);font-size:.92rem;margin-bottom:3px}
+.timeline-body .de{font-size:.84rem;color:var(--ink-soft)}
+
+/* Alertas */
+.alert-row{display:flex;gap:16px;padding:18px 0;border-bottom:1px solid var(--border-soft);align-items:flex-start}
+.alert-row:last-child{border-bottom:none}
+.alert-sev{width:6px;height:50px;border-radius:99px;flex-shrink:0;margin-top:4px}
+.alert-sev.h{background:var(--red)}.alert-sev.m{background:var(--amber)}.alert-sev.l{background:var(--navy-500)}
+.alert-body{flex:1}
+.alert-body .ti{font-weight:700;color:var(--navy-800);font-size:.95rem;margin-bottom:4px}
+.alert-body .de{font-size:.86rem;color:var(--ink-soft);margin-bottom:8px}
+.alert-body .meta{font-size:.74rem;color:var(--muted);display:flex;gap:14px}
+.alert-actions{display:flex;flex-direction:column;gap:6px}
+
+/* Revenue chart simples */
+.spark{display:flex;align-items:flex-end;gap:4px;height:60px;padding:6px 0}
+.spark .b{flex:1;background:var(--gold-500);border-radius:3px 3px 0 0;opacity:.85}
+.spark .b.r{background:var(--red)}
+.spark .b.a{background:var(--amber)}
+.spark .b.g{background:var(--green)}
+
+@media(max-width:1080px){
+  .sidebar{width:64px}
+  .brand-logo{padding:8px}
+  .brand-logo .cd{font-size:.9rem;text-align:center}
+  .brand-logo .cs{display:none}
+  .nav-item span:not(.ic):not(.badge){display:none}
+  .nav-section{text-align:center;font-size:.55rem}
+  .user-info{display:none}
+  .g-4{grid-template-columns:repeat(2,1fr)}
+  .g-3,.g-23,.g-32{grid-template-columns:1fr}
+  .kanban{grid-template-columns:1fr 1fr}
+  .pillar .lbl{font-size:.6rem}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">
+        <div class="cd">CD GRUPO</div>
+        <div class="cs">CUSTOMER SUCCESS</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <div class="nav-section">Operação</div>
+      <div class="nav-item active" data-page="dashboard">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        <span>Dashboard</span>
+      </div>
+      <div class="nav-item" data-page="mentorados">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>Mentorados</span>
+      </div>
+      <div class="nav-item" data-page="trilha">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>
+        <span>Trilha dos 7 Pilares</span>
+      </div>
+      <div class="nav-item" data-page="analise">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+        <span>Análise de Call</span>
+      </div>
+      <div class="nav-item" data-page="commitments">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        <span>Commitments</span>
+        <span class="badge">11</span>
+      </div>
+      <div class="nav-item" data-page="alertas">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>Alertas</span>
+        <span class="badge">4</span>
+      </div>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="avatar">RC</div>
+      <div class="user-info"><div class="name">Rafael Costa</div><div class="role">Head de Mentoria</div></div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb"><span>CD Grupo · Imersão</span><span>›</span><span class="now" id="crumbNow">Dashboard</span></div>
+      <div class="topbar-actions">
+        <input class="search" placeholder="Buscar mentorado, pilar, commitment…">
+        <button class="btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Novo mentorado</button>
+      </div>
+    </header>
+
+    <!-- ============ DASHBOARD ============ -->
+    <section class="page active" id="page-dashboard">
+      <div class="page-head">
+        <h1 class="serif">Bom dia, Rafael. <em>Três coisas</em> pra olhar antes das calls de hoje.</h1>
+        <div class="sub">Quinta, 7 de junho · 4 mentorados ativos da Imersão · próxima call em 1h12</div>
+      </div>
+
+      <div class="grid g-4" style="margin-bottom:24px">
+        <div class="kpi"><div class="lbl">Mentorados ativos</div><div class="val">4</div><div class="delta">+1 este mês</div></div>
+        <div class="kpi"><div class="lbl">Faturamento sob mentoria</div><div class="val">R$ 315k</div><div class="delta">+18% MoM</div></div>
+        <div class="kpi"><div class="lbl">Pilares dominados</div><div class="val">17<span style="font-size:1rem;color:var(--muted)">/28</span></div><div class="delta">+3 no mês</div></div>
+        <div class="kpi"><div class="lbl">Commitments abertos</div><div class="val">11</div><div class="delta down">3 atrasados</div></div>
+      </div>
+
+      <!-- TRILHA AGREGADA -->
+      <div class="trilha" style="margin-bottom:24px">
+        <div class="trilha-h">
+          <h3>Avanço agregado na metodologia dos 7 Pilares</h3>
+          <div class="trilha-legend">
+            <span><span class="dot" style="background:var(--green)"></span> Dominado pela carteira</span>
+            <span><span class="dot" style="background:var(--gold-500)"></span> Em progresso</span>
+            <span><span class="dot" style="background:#d8d3c5"></span> Pouco trabalhado</span>
+          </div>
+        </div>
+        <div class="pillars">
+          <div class="pillar mastered"><div class="node">1</div><div class="lbl">Estratagemas que decidem o jogo</div><div class="pct">4/4 dominam</div></div>
+          <div class="pillar mastered"><div class="node">2</div><div class="lbl">Comunicação e Negociação</div><div class="pct">3/4 dominam</div></div>
+          <div class="pillar active"><div class="node">3</div><div class="lbl">Pensar como roteirista</div><div class="pct">2 trabalhando</div></div>
+          <div class="pillar partial"><div class="node">4</div><div class="lbl">Edição magnética</div><div class="pct">1 trabalhando</div></div>
+          <div class="pillar partial"><div class="node">5</div><div class="lbl">Mosaico da utilidade</div><div class="pct">1 trabalhando</div></div>
+          <div class="pillar active"><div class="node">6</div><div class="lbl">Calendário estratégico</div><div class="pct">2 trabalhando</div></div>
+          <div class="pillar partial"><div class="node">7</div><div class="lbl">Funil validado pro negócio</div><div class="pct">1/4 dominam</div></div>
+        </div>
+      </div>
+
+      <div class="grid g-23" style="margin-bottom:24px">
+        <div class="card">
+          <div class="card-h"><h3>⚠️ Alertas que pedem ação</h3><span class="lnk" data-jump="alertas">Ver todos →</span></div>
+          <div class="list-item">
+            <div class="ico red">!</div>
+            <div class="body">
+              <div class="ti">Doce Casa Digital: faturamento em queda 3º mês seguido</div>
+              <div class="de">R$ 240k → R$ 195k → R$ 180k. Renata travada no pilar "Pensar como roteirista" há 4 calls.</div>
+              <div class="meta"><span>Alta severidade</span><span>·</span><span>hoje</span></div>
+            </div>
+          </div>
+          <div class="list-item">
+            <div class="ico amber">!</div>
+            <div class="body">
+              <div class="ti">Marina Cordeiro não posta há 10 dias</div>
+              <div class="de">Possível bloqueio criativo. Última call mencionou "não tô achando o que falar".</div>
+              <div class="meta"><span>Média severidade</span><span>·</span><span>ontem</span></div>
+            </div>
+          </div>
+          <div class="list-item">
+            <div class="ico amber">3</div>
+            <div class="body">
+              <div class="ti">3 commitments atrasados na carteira</div>
+              <div class="de">Doce Casa (gravação de 3 vídeos), Marina (reescrever oferta), Studio Galo (teste de funil).</div>
+              <div class="meta"><span>Média</span><span>·</span><span>vencendo</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h3>📅 Calls de hoje</h3></div>
+          <div class="list-item">
+            <div class="ico gold">10</div>
+            <div class="body">
+              <div class="ti">Studio Galo Roxo · Mentoria semanal</div>
+              <div class="de">10h · Henrique e Letícia (sócios)</div>
+              <div class="meta"><span class="health green">verde</span><span>Pilar atual: Comunicação</span></div>
+            </div>
+          </div>
+          <div class="list-item">
+            <div class="ico gold">14</div>
+            <div class="body">
+              <div class="ti">Henrique Faria · Pré-lançamento</div>
+              <div class="de">14h · revisão do funil</div>
+              <div class="meta"><span class="health green">verde</span><span>Pilar: Edição magnética</span></div>
+            </div>
+          </div>
+          <div class="list-item">
+            <div class="ico gold">16</div>
+            <div class="body">
+              <div class="ti">Doce Casa Digital · Call de resgate</div>
+              <div class="de">16h30 · Renata Salles (fundadora)</div>
+              <div class="meta"><span class="health red">vermelho</span><span>Pilar travada: Roteirista</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid g-2">
+        <div class="card">
+          <div class="card-h"><h3>Mentorados por saúde</h3><span class="lnk" data-jump="mentorados">Ver carteira →</span></div>
+          <table class="tbl">
+            <thead><tr><th>Mentorado</th><th>Pilar atual</th><th>Faturamento</th></tr></thead>
+            <tbody>
+              <tr data-jump="perfil"><td><div class="nome">Doce Casa Digital</div><div class="sub">E-commerce decoração · 11 meses</div></td><td><span class="pill amber">Pensar como roteirista</span></td><td><strong>R$ 180k</strong> ↓</td></tr>
+              <tr><td><div class="nome">Marina Cordeiro</div><div class="sub">Coach de carreira · 5 meses</div></td><td><span class="pill gold">Calendário estratégico</span></td><td><strong>R$ 80k</strong> ↑</td></tr>
+              <tr><td><div class="nome">Studio Galo Roxo</div><div class="sub">Agência social media · 7 meses</div></td><td><span class="pill gold">Comunicação</span></td><td><strong>R$ 35k</strong> ↑</td></tr>
+              <tr><td><div class="nome">Henrique Faria</div><div class="sub">Criador financeiro · 3 meses</div></td><td><span class="pill gold">Edição magnética</span></td><td><strong>R$ 20k</strong> ↑↑</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Insight do <em class="serif">Mentor de CS</em></h3><span class="pill gold">IA</span></div>
+          <p style="font-family:'Instrument Serif',serif;font-size:1.35rem;line-height:1.35;color:var(--navy-800);margin:6px 0 14px">
+            "Três dos quatro mentorados estão travando no <em>mesmo pilar</em> — "Pensar como roteirista". Vale considerar uma sessão coletiva ao invés de tratar caso a caso."
+          </p>
+          <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border-soft);padding-top:14px">
+            <div style="font-size:.78rem;color:var(--muted)">Padrão identificado em 9 calls dos últimos 30 dias</div>
+            <button class="btn btn-ghost" data-jump="trilha">Ver trilha completa</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ MENTORADOS ============ -->
+    <section class="page" id="page-mentorados">
+      <div class="page-head">
+        <h1 class="serif">Carteira de <em>mentorados</em> da Imersão</h1>
+        <div class="sub">4 ativos · clique em qualquer linha pra abrir o perfil</div>
+      </div>
+      <div class="card">
+        <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-ghost" style="padding:6px 12px;font-size:.78rem">Todos (4)</button>
+          <button class="btn btn-ghost" style="padding:6px 12px;font-size:.78rem"><span class="health green" style="padding:2px 8px">Verde 3</span></button>
+          <button class="btn btn-ghost" style="padding:6px 12px;font-size:.78rem"><span class="health amber" style="padding:2px 8px">Amarelo 0</span></button>
+          <button class="btn btn-ghost" style="padding:6px 12px;font-size:.78rem"><span class="health red" style="padding:2px 8px">Vermelho 1</span></button>
+          <div style="margin-left:auto;color:var(--muted);font-size:.8rem">Ordenar por: <strong style="color:var(--navy-800)">Risco ↓</strong></div>
+        </div>
+        <table class="tbl">
+          <thead><tr><th>Mentorado</th><th>Nicho</th><th>Health</th><th>Faturamento</th><th>Pilar atual</th><th>Pilares dominados</th><th>Próxima call</th></tr></thead>
+          <tbody>
+            <tr data-jump="perfil">
+              <td><div class="nome">Doce Casa Digital</div><div class="sub">Renata Salles · 11 meses</div></td>
+              <td>E-commerce decoração</td>
+              <td><span class="health red">Vermelho</span></td>
+              <td><strong>R$ 180k</strong> <span style="color:var(--red);font-size:.75rem">↓25%</span></td>
+              <td><span class="pill amber">3 · Roteirista</span></td>
+              <td><strong>2/7</strong></td>
+              <td><strong>Hoje 16h30</strong></td>
+            </tr>
+            <tr>
+              <td><div class="nome">Marina Cordeiro</div><div class="sub">Coach · 5 meses</div></td>
+              <td>Coach de carreira</td>
+              <td><span class="health green">Verde</span></td>
+              <td><strong>R$ 80k</strong> <span style="color:var(--green);font-size:.75rem">↑12%</span></td>
+              <td><span class="pill gold">6 · Calendário</span></td>
+              <td><strong>5/7</strong></td>
+              <td>Sex, 9 jun · 11h</td>
+            </tr>
+            <tr>
+              <td><div class="nome">Studio Galo Roxo</div><div class="sub">Henrique & Letícia · 7 meses</div></td>
+              <td>Agência social media</td>
+              <td><span class="health green">Verde</span></td>
+              <td><strong>R$ 35k</strong> <span style="color:var(--green);font-size:.75rem">↑8%</span></td>
+              <td><span class="pill gold">2 · Comunicação</span></td>
+              <td><strong>4/7</strong></td>
+              <td>Hoje 10h</td>
+            </tr>
+            <tr>
+              <td><div class="nome">Henrique Faria</div><div class="sub">Criador · 3 meses</div></td>
+              <td>Finanças pessoais</td>
+              <td><span class="health green">Verde</span></td>
+              <td><strong>R$ 20k</strong> <span style="color:var(--green);font-size:.75rem">↑45%</span></td>
+              <td><span class="pill gold">4 · Edição</span></td>
+              <td><strong>3/7</strong></td>
+              <td>Hoje 14h</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ TRILHA DOS 7 PILARES ============ -->
+    <section class="page" id="page-trilha">
+      <div class="page-head">
+        <h1 class="serif">Trilha dos <em>7 Pilares</em></h1>
+        <div class="sub">Onde cada mentorado está na metodologia da Imersão</div>
+      </div>
+
+      <div class="trilha" style="margin-bottom:24px">
+        <div class="trilha-h">
+          <h3>Visão da carteira inteira</h3>
+        </div>
+        <div class="pillars">
+          <div class="pillar mastered"><div class="node">1</div><div class="lbl">Estratagemas que decidem o jogo</div><div class="pct">4/4 · 100%</div></div>
+          <div class="pillar mastered"><div class="node">2</div><div class="lbl">Comunicação e Negociação</div><div class="pct">3/4 · 75%</div></div>
+          <div class="pillar active"><div class="node">3</div><div class="lbl">Pensar como roteirista</div><div class="pct">1/4 · 25%</div></div>
+          <div class="pillar partial"><div class="node">4</div><div class="lbl">Edição magnética</div><div class="pct">0/4 · 0%</div></div>
+          <div class="pillar partial"><div class="node">5</div><div class="lbl">Mosaico da utilidade</div><div class="pct">1/4 · 25%</div></div>
+          <div class="pillar active"><div class="node">6</div><div class="lbl">Calendário estratégico</div><div class="pct">2/4 · 50%</div></div>
+          <div class="pillar partial"><div class="node">7</div><div class="lbl">Funil validado pro negócio</div><div class="pct">1/4 · 25%</div></div>
+        </div>
+        <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border-soft);font-size:.85rem;color:var(--ink-soft);font-style:italic">
+          💡 <strong style="color:var(--navy-800);font-style:normal">Leitura do agente:</strong> a carteira tem força nos pilares iniciais (1 e 2) mas se trava em "Pensar como roteirista" — sintoma clássico de quem aprende estratégia mas não consegue traduzir em conteúdo. Pode ser oportunidade pra um módulo intensivo extra.
+        </div>
+      </div>
+
+      <div class="grid g-2">
+        <div class="card">
+          <div class="card-h"><h3>Doce Casa Digital · Renata Salles</h3><span class="health red">Vermelho</span></div>
+          <div class="pillars" style="margin-top:8px">
+            <div class="pillar mastered"><div class="node">✓</div><div class="lbl">Estratagemas</div></div>
+            <div class="pillar mastered"><div class="node">✓</div><div class="lbl">Comunicação</div></div>
+            <div class="pillar active"><div class="node">!</div><div class="lbl">Roteirista</div></div>
+            <div class="pillar partial"><div class="node">4</div><div class="lbl">Edição</div></div>
+            <div class="pillar partial"><div class="node">5</div><div class="lbl">Mosaico</div></div>
+            <div class="pillar partial"><div class="node">6</div><div class="lbl">Calendário</div></div>
+            <div class="pillar partial"><div class="node">7</div><div class="lbl">Funil</div></div>
+          </div>
+          <div style="margin-top:14px;font-size:.84rem;color:var(--ink-soft)"><strong style="color:var(--red)">Travada há 4 calls</strong> no pilar 3. Não consegue traduzir estratégia em conteúdo orgânico.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h3>Marina Cordeiro</h3><span class="health green">Verde</span></div>
+          <div class="pillars" style="margin-top:8px">
+            <div class="pillar mastered"><div class="node">✓</div><div class="lbl">Estratagemas</div></div>
+            <div class="pillar mastered"><div class="node">✓</div><div class="lbl">Comunicação</div></div>
+            <div class="pillar mastered"><div class="node">✓</div><div class="lbl">Roteirista</div></div>
+            <div class="pillar mastered"><div class="node">✓</div><div class="lbl">Edição</div></div>
+            <div class="pillar mastered"><div class="node">✓</div><div class="lbl">Mosaico</div></div>
+            <div class="pillar active"><div class="node">!</div><div class="lbl">Calendário</div></div>
+            <div class="pillar partial"><div class="node">7</div><div class="lbl">Funil</div></div>
+          </div>
+          <div style="margin-top:14px;font-size:.84rem;color:var(--ink-soft)">Aluna modelo. Está montando o calendário estratégico do segundo semestre.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h3>Studio Galo Roxo</h3><span class="health green">Verde</span></div>
+          <div class="pillars" style="margin-top:8px">
+            <div class="pillar mastered"><div class="node">✓</div><div class="lbl">Estratagemas</div></div>
+            <div class="pillar active"><div class="node">!</div><div class="lbl">Comunicação</div></div>
+            <div class="pillar mastered"><div class="node">✓</div><div class="lbl">Roteirista</div></div>
+            <div class="pillar mastered"><div class="node">✓</div><div class="lbl">Edição</div></div>
+            <div class="pillar mastered"><div class="node">✓</div><div class="lbl">Mosaico</div></div>
+            <div class="pillar partial"><div class="node">6</div><div class="lbl">Calendário</div></div>
+            <div class="pillar partial"><div class="node">7</div><div class="lbl">Funil</div></div>
+          </div>
+          <div style="margin-top:14px;font-size:.84rem;color:var(--ink-soft)">Pulou pilar 2 — voltou agora pra fechar antes de ir pro 6. Bom autoconhecimento.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h3>Henrique Faria</h3><span class="health green">Verde</span></div>
+          <div class="pillars" style="margin-top:8px">
+            <div class="pillar mastered"><div class="node">✓</div><div class="lbl">Estratagemas</div></div>
+            <div class="pillar mastered"><div class="node">✓</div><div class="lbl">Comunicação</div></div>
+            <div class="pillar mastered"><div class="node">✓</div><div class="lbl">Roteirista</div></div>
+            <div class="pillar active"><div class="node">!</div><div class="lbl">Edição</div></div>
+            <div class="pillar partial"><div class="node">5</div><div class="lbl">Mosaico</div></div>
+            <div class="pillar partial"><div class="node">6</div><div class="lbl">Calendário</div></div>
+            <div class="pillar partial"><div class="node">7</div><div class="lbl">Funil</div></div>
+          </div>
+          <div style="margin-top:14px;font-size:.84rem;color:var(--ink-soft)">Mais rápido da carteira. Já tá testando edição em vídeo curto antes do lançamento.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PERFIL ============ -->
+    <section class="page" id="page-perfil">
+      <div class="page-head" style="margin-bottom:18px">
+        <div style="font-size:.78rem;color:var(--muted);margin-bottom:6px"><span style="cursor:pointer" data-jump="mentorados">← voltar pra carteira</span></div>
+      </div>
+
+      <div class="profile-head">
+        <div class="profile-avatar">D</div>
+        <div class="profile-info">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <span class="health red" style="background:rgba(181,60,60,.2);color:#ff9d9d">Vermelho</span>
+            <span class="pill" style="background:rgba(255,255,255,.1);color:rgba(255,255,255,.8);border-color:rgba(255,255,255,.15)">E-commerce de decoração</span>
+          </div>
+          <h2>Doce Casa Digital</h2>
+          <div class="profile-meta">
+            <span>Fundadora <strong>Renata Salles</strong></span>
+            <span>Faturamento <strong>R$ 180k/mês</strong> <span style="color:#ff9d9d">↓ 25% em 90d</span></span>
+            <span>Imersão <strong>11 meses</strong></span>
+            <span>Pilar atual <strong>3 · Pensar como roteirista</strong></span>
+          </div>
+        </div>
+        <div class="profile-actions">
+          <button class="btn btn-gold">Abrir call de hoje</button>
+          <button class="btn" style="background:rgba(255,255,255,.1)">Plano de resgate</button>
+        </div>
+      </div>
+
+      <!-- TRILHA INDIVIDUAL -->
+      <div class="trilha" style="margin-bottom:22px">
+        <div class="trilha-h">
+          <h3>Trilha da Renata</h3>
+          <span class="pill amber">Travada no pilar 3</span>
+        </div>
+        <div class="pillars">
+          <div class="pillar mastered"><div class="node">✓</div><div class="lbl">Estratagemas que decidem o jogo</div><div class="pct">dominado · mês 2</div></div>
+          <div class="pillar mastered"><div class="node">✓</div><div class="lbl">Comunicação e Negociação</div><div class="pct">dominado · mês 4</div></div>
+          <div class="pillar active"><div class="node">!</div><div class="lbl">Pensar como roteirista</div><div class="pct">4 calls travada</div></div>
+          <div class="pillar partial"><div class="node">4</div><div class="lbl">Edição magnética</div><div class="pct">não iniciado</div></div>
+          <div class="pillar partial"><div class="node">5</div><div class="lbl">Mosaico da utilidade</div><div class="pct">não iniciado</div></div>
+          <div class="pillar partial"><div class="node">6</div><div class="lbl">Calendário estratégico</div><div class="pct">não iniciado</div></div>
+          <div class="pillar partial"><div class="node">7</div><div class="lbl">Funil validado pro negócio</div><div class="pct">não iniciado</div></div>
+        </div>
+      </div>
+
+      <div class="grid g-23" style="margin-bottom:22px">
+        <div>
+          <div class="card" style="margin-bottom:18px">
+            <div class="card-h"><h3>Faturamento mensal (últimos 6 meses)</h3><span class="pill red">↓ caindo</span></div>
+            <div class="spark">
+              <div class="b g" style="height:90%"></div>
+              <div class="b g" style="height:95%"></div>
+              <div class="b g" style="height:88%"></div>
+              <div class="b a" style="height:80%"></div>
+              <div class="b a" style="height:65%"></div>
+              <div class="b r" style="height:60%"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:.72rem;color:var(--muted);margin-top:4px"><span>Jan · 270k</span><span>Fev · 290k</span><span>Mar · 260k</span><span>Abr · 240k</span><span>Mai · 195k</span><span>Jun · 180k</span></div>
+          </div>
+
+          <div class="card" style="margin-bottom:18px">
+            <div class="card-h"><h3>Métricas do negócio</h3></div>
+            <div style="display:flex;flex-direction:column;gap:14px;margin-top:6px">
+              <div class="exec-row"><div class="lbl">Frequência de conteúdo</div><div class="exec-bar"><div class="fill" style="width:18%;background:var(--red)"></div></div><div class="pct">2/sem</div></div>
+              <div class="exec-row"><div class="lbl">Taxa de conversão site</div><div class="exec-bar"><div class="fill" style="width:35%;background:var(--amber)"></div></div><div class="pct">1.2%</div></div>
+              <div class="exec-row"><div class="lbl">Ticket médio</div><div class="exec-bar"><div class="fill" style="width:70%"></div></div><div class="pct">R$ 280</div></div>
+              <div class="exec-row"><div class="lbl">Cumprimento de tarefas</div><div class="exec-bar"><div class="fill" style="width:42%;background:var(--amber)"></div></div><div class="pct">42%</div></div>
+            </div>
+            <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);font-size:.84rem;color:var(--ink-soft);font-style:italic">
+              Padrão: frequência de conteúdo despencou de 5x/semana pra 2. Não é problema de produto — é gargalo no pilar 3.
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>Último relatório do <em class="serif">Mentor de CS</em></h3><span class="pill gold">IA · há 2d</span></div>
+            <p class="serif" style="font-size:1.15rem;line-height:1.45;color:var(--navy-800);margin:6px 0 12px">
+              "Renata <em>sabe</em> o que falar (domina os pilares 1 e 2), mas <em>não sabe como contar</em>. A queda de faturamento é sintoma — o problema-raiz é criativo, não estratégico. Não vale empurrar pilar 4 antes de destravar isso."
+            </p>
+            <button class="btn btn-ghost" data-jump="analise">Ver análise completa</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="card" style="margin-bottom:18px">
+            <div class="card-h"><h3>Timeline de calls</h3></div>
+            <div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-body"><div class="dt">05 JUN</div><div class="ti">Call estratégica</div><div class="de">Renata frustrada. "Não tô achando o que falar."</div></div></div>
+            <div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-body"><div class="dt">22 MAI</div><div class="ti">Mentoria pilar 3</div><div class="de">3ª tentativa. Travamento criativo confirmado.</div></div></div>
+            <div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-body"><div class="dt">08 MAI</div><div class="ti">Revisão Q1</div><div class="de">Primeiro mês de queda no faturamento.</div></div></div>
+            <div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-body"><div class="dt">15 ABR</div><div class="ti">Início pilar 3</div><div class="de">Começou animada. Caiu a ficha que era diferente dos anteriores.</div></div></div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>Commitments da Renata</h3><span class="pill red">1 atrasado</span></div>
+            <div class="list-item"><div class="ico red">!</div><div class="body"><div class="ti">Gravar 3 vídeos curtos com a técnica do roteirista</div><div class="de">Prometido 22/05 · prazo 30/05 · <strong style="color:var(--red)">8 dias atrasado</strong></div></div></div>
+            <div class="list-item"><div class="ico amber">~</div><div class="body"><div class="ti">Mandar 5 ideias de pauta validadas</div><div class="de">Prometido 05/06 · prazo 12/06 · <strong>em andamento</strong></div></div></div>
+            <div class="list-item"><div class="ico green">✓</div><div class="body"><div class="ti">Auditar últimos 30 posts (pilar 1)</div><div class="de">Cumprido em 18/05 · com atraso de 4 dias</div></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ANÁLISE DE CALL ============ -->
+    <section class="page" id="page-analise">
+      <div class="page-head">
+        <h1 class="serif">Análise de <em>call</em></h1>
+        <div class="sub">Suba o vídeo ou cole a transcrição. O Mentor de CS cruza com a trilha do mentorado e devolve as ações.</div>
+      </div>
+
+      <div class="editor">
+        <div class="uploadbox">
+          <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+          <div class="info">
+            <div class="ti">IMG_4213.MP4 · 20m30s · 176 MB</div>
+            <div class="de">Carregado · transcrição automática concluída em 1m48s</div>
+          </div>
+          <span class="pill green">✓ Pronto pra analisar</span>
+        </div>
+        <div class="editor-h">
+          <label>Mentorado:</label>
+          <select class="select"><option>Doce Casa Digital · Renata</option><option>Marina Cordeiro</option><option>Studio Galo Roxo</option><option>Henrique Faria</option></select>
+          <label>Tipo:</label>
+          <select class="select"><option>Mentoria semanal</option><option>Call de resgate</option><option>Revisão de pilar</option><option>QBR</option></select>
+          <span class="pill gold" style="margin-left:auto">Transcrição auto · editar abaixo</span>
+        </div>
+        <textarea id="transcricao">[exemplo de transcrição — substituir pelo texto real da call]
+
+[00:00] Mentor: Renata, boa tarde. Como você tá chegando?
+[00:18] Renata: Oi... olha, vou ser sincera. Tô meio mal. As vendas caíram de novo esse mês.
+[00:42] Mentor: Quanto?
+[00:48] Renata: Fechei 180 em maio. Tava em 240 no começo do ano.
+[01:15] Mentor: E o conteúdo, como tá saindo?
+[01:22] Renata: Caiu também. Eu tô travada, sabe? Sento pra gravar e não sai. Eu sei o que eu quero vender, sei a estratégia, mas na hora de falar... fica tudo igual aos outros vídeos. Engessado.
+[02:10] Mentor: Você lembra do exercício do roteirista que a gente viu?
+[02:18] Renata: Lembro, mas na hora de aplicar eu travo. Parece que eu tô performando, sabe? Não sai natural.
+[03:45] Mentor: OK. Vamos fazer diferente. Quero que você grave 3 vídeos essa semana, mas usando só o gancho da curiosidade da aula 4. Sem se preocupar com produção.
+[04:02] Renata: Tá. Mas é que semana passada eu já prometi gravar e não consegui...
+[04:15] Mentor: Esse é o ponto. A gente precisa quebrar o ciclo. Posso te mandar um áudio com 3 ideias de gancho específicas pro teu nicho?
+[04:30] Renata: Por favor.
+[05:50] Mentor: E sobre o time? Você tá tentando fazer tudo sozinha de novo?
+[06:02] Renata: Tô. A Bruna saiu mês passado e eu não consegui repor.
+[07:30] Mentor: Renata, vamos combinar uma coisa. Até sexta você me manda 5 ideias de pauta usando o framework. Não precisa estar pronto. Cinco ideias.
+[07:45] Renata: Combinado. Cinco ideias.</textarea>
+        <div class="editor-f">
+          <div style="color:var(--muted);font-size:.78rem">Cruzando com 6 calls anteriores da Doce Casa · pilares 1-3 da Imersão</div>
+          <button class="btn btn-gold" id="btnAnalisar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 3l14 9-14 9V3z"/></svg>Analisar com Mentor de CS</button>
+        </div>
+      </div>
+
+      <div class="loader" id="loader">
+        <div class="spinner"></div>
+        <div>O Mentor de CS está lendo a call e cruzando com a trilha da Renata na Imersão…</div>
+      </div>
+
+      <div class="report" id="report">
+        <div class="report-h">
+          <div>
+            <div class="ti"><span class="em">Relatório do <em>Mentor</em></span></div>
+            <div class="by">Doce Casa Digital · Renata Salles · cruzado com 6 calls anteriores e pilares 1-3</div>
+          </div>
+          <div class="ts">Gerado em 2.4s</div>
+        </div>
+        <div class="report-body">
+
+          <div class="rsec">
+            <div class="rsec-h">🎯 Resumo executivo</div>
+            <p>Renata chegou frustrada e admitiu travamento criativo (3ª vez consecutiva). Não é problema de estratégia — ela domina pilares 1 e 2. <strong>O gargalo está no pilar 3 (Pensar como roteirista) e está custando faturamento real (R$ 60k a menos vs. início do ano).</strong> Há também sinal operacional: time desfalcado desde maio.</p>
+          </div>
+
+          <div class="rsec">
+            <div class="rsec-h">🌡️ Health score</div>
+            <p><strong style="color:var(--red)">Vermelho →</strong> mantido. Sem deterioração nova, mas sem recuperação. Pilares 1-2 sólidos, pilar 3 travado há 4 calls.</p>
+          </div>
+
+          <div class="rsec">
+            <div class="rsec-h">🧱 Diagnóstico por pilar</div>
+            <ul>
+              <li>✅ <strong>Pilar 1 · Estratagemas</strong> — sem sinais de fragilidade. Renata sabe o que quer vender e por quê.</li>
+              <li>✅ <strong>Pilar 2 · Comunicação</strong> — dominado. Negociação interna com time funcionava bem (antes da saída da Bruna).</li>
+              <li>🔴 <strong>Pilar 3 · Pensar como roteirista</strong> — bloqueio criativo confirmado.<div class="quote">"Eu sei o que eu quero vender, sei a estratégia, mas na hora de falar... fica tudo igual aos outros vídeos. Engessado."</div>Sintoma clássico de quem aprende framework mas não internalizou. Tentar avançar antes de destravar é jogar fora os próximos pilares.</li>
+            </ul>
+          </div>
+
+          <div class="rsec">
+            <div class="rsec-h">🚩 Outros riscos</div>
+            <ul>
+              <li><strong>[MÉDIO] Time desfalcado.</strong><div class="quote">"A Bruna saiu mês passado e eu não consegui repor."</div>Sobrecarga operacional pode estar amplificando o bloqueio criativo.</li>
+              <li><strong>[MÉDIO] Padrão de descumprimento de commitments.</strong> Renata mesma admitiu: "semana passada eu já prometi gravar e não consegui". Isso é o 3º commitment de gravação não cumprido nos últimos 30 dias.</li>
+            </ul>
+          </div>
+
+          <div class="rsec">
+            <div class="rsec-h">🔄 Status dos commitments anteriores</div>
+            <ul>
+              <li>🔴 <strong>Gravar 3 vídeos com técnica do roteirista</strong> · prazo 30/05 · não cumprido · <em>renegociado nesta call</em></li>
+              <li>🟡 <strong>Auditar 30 posts do feed</strong> · cumprido com atraso · sem problema</li>
+              <li>🔴 <strong>Repor vaga da Bruna</strong> · prazo 25/05 · não cumprido · <em>não mencionado nesta call</em></li>
+            </ul>
+          </div>
+
+          <div class="rsec">
+            <div class="rsec-h">📌 Novos commitments desta call</div>
+            <ul>
+              <li><strong>Renata</strong> · enviar 5 ideias de pauta usando o framework · prazo sexta (09/jun) · <span class="pill amber">Confiança MÉDIA</span> (pediu pra ser menor, sinal positivo)</li>
+              <li><strong>Renata</strong> · gravar 3 vídeos com gancho de curiosidade da aula 4 · prazo "essa semana" · <span class="pill red">Confiança BAIXA</span> (4º compromisso seguido de gravação)</li>
+              <li><strong>Nosso lado</strong> · enviar áudio com 3 ideias de gancho · prazo 24h · <span class="pill green">Confiança ALTA</span></li>
+            </ul>
+          </div>
+
+          <div class="rsec">
+            <div class="rsec-h">💡 Insight não-óbvio</div>
+            <p class="serif" style="font-size:1.2rem;color:var(--navy-800);line-height:1.45">
+              "Renata <em>não está com problema de produto</em> — ela tem audiência e marca. Está com problema <em>identitário</em>: o roteirista exige expor uma voz pessoal, e ela construiu o e-commerce em cima de uma persona impessoal de loja. Pode ser que o pilar 3 precise ser trabalhado em paralelo a uma conversa sobre <em>quem fala</em> nos vídeos, antes de <em>o que falar</em>."
+            </p>
+          </div>
+
+          <div class="rsec">
+            <div class="rsec-h">✅ Próximas ações (priorizadas)</div>
+            <ul>
+              <li><strong>1.</strong> Enviar áudio com 3 ganchos específicos · até amanhã 12h</li>
+              <li><strong>2.</strong> Marcar call extra de 30min focada SÓ no pilar 3, com exercício prático ao vivo · até 13/jun</li>
+              <li><strong>3.</strong> Não puxar conversa sobre time/Bruna na próxima call — Renata precisa de uma vitória criativa primeiro</li>
+              <li><strong>4.</strong> Se até 14/jun não houver gravação entregue, escalar pra call de resgate com a sócia (se houver)</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ COMMITMENTS ============ -->
+    <section class="page" id="page-commitments">
+      <div class="page-head">
+        <h1 class="serif">Commitments <em>em movimento</em></h1>
+        <div class="sub">11 commitments ativos · 3 atrasados · cada um vinculado a um pilar da Imersão</div>
+      </div>
+
+      <div class="kanban">
+        <div class="kcol">
+          <div class="kcol-h"><span class="kdot b"></span><span class="nm">Aberto</span><span class="ct">4</span></div>
+          <div class="kcard"><div class="men">Henrique Faria</div><div class="txt">Testar 2 capas diferentes pra mesma aula gratuita</div><span class="pilar">Pilar 4 · Edição magnética</span><div class="ft"><span>Henrique</span><span class="pz">10/jun</span></div></div>
+          <div class="kcard"><div class="men">Marina Cordeiro</div><div class="txt">Mapear 12 temas pra calendário do 2º semestre</div><span class="pilar">Pilar 6 · Calendário</span><div class="ft"><span>Marina</span><span class="pz">14/jun</span></div></div>
+          <div class="kcard"><div class="men">Studio Galo Roxo</div><div class="txt">Reescrever pitch da reunião com cliente novo</div><span class="pilar">Pilar 2 · Comunicação</span><div class="ft"><span>Henrique S.</span><span class="pz">11/jun</span></div></div>
+          <div class="kcard"><div class="men">Doce Casa</div><div class="txt">Enviar áudio com 3 ganchos de curiosidade</div><span class="pilar">Pilar 3 · Roteirista</span><div class="ft"><span>Nosso lado</span><span class="pz">amanhã</span></div></div>
+        </div>
+
+        <div class="kcol">
+          <div class="kcol-h"><span class="kdot y"></span><span class="nm">Em andamento</span><span class="ct">4</span></div>
+          <div class="kcard"><div class="men">Doce Casa</div><div class="txt">5 ideias de pauta usando framework</div><span class="pilar">Pilar 3 · Roteirista</span><div class="ft"><span>Renata</span><span class="pz">09/jun</span></div></div>
+          <div class="kcard"><div class="men">Marina Cordeiro</div><div class="txt">Reescrever oferta do mentoria premium</div><span class="pilar">Pilar 2 · Comunicação</span><div class="ft"><span>Marina</span><span class="pz">12/jun</span></div></div>
+          <div class="kcard"><div class="men">Henrique Faria</div><div class="txt">Roteirizar série de 5 reels da semana de lançamento</div><span class="pilar">Pilar 3 · Roteirista</span><div class="ft"><span>Henrique</span><span class="pz">15/jun</span></div></div>
+          <div class="kcard"><div class="men">Studio Galo</div><div class="txt">Testar funil de baixo ticket pra agência</div><span class="pilar">Pilar 7 · Funil</span><div class="ft"><span>Letícia</span><span class="pz">20/jun</span></div></div>
+        </div>
+
+        <div class="kcol">
+          <div class="kcol-h"><span class="kdot r"></span><span class="nm">Atrasado</span><span class="ct">3</span></div>
+          <div class="kcard" style="border-left:3px solid var(--red)"><div class="men">Doce Casa</div><div class="txt">Gravar 3 vídeos com técnica do roteirista</div><span class="pilar">Pilar 3 · Roteirista</span><div class="ft"><span>Renata</span><span class="pz" style="color:var(--red)">8 dias atrasado</span></div></div>
+          <div class="kcard" style="border-left:3px solid var(--red)"><div class="men">Marina Cordeiro</div><div class="txt">Postar pelo menos 3x por semana</div><span class="pilar">Pilar 6 · Calendário</span><div class="ft"><span>Marina</span><span class="pz" style="color:var(--red)">10 dias sem post</span></div></div>
+          <div class="kcard" style="border-left:3px solid var(--red)"><div class="men">Doce Casa</div><div class="txt">Repor vaga da Bruna no time</div><span class="pilar">Operacional</span><div class="ft"><span>Renata</span><span class="pz" style="color:var(--red)">14 dias · esquecido</span></div></div>
+        </div>
+
+        <div class="kcol">
+          <div class="kcol-h"><span class="kdot g"></span><span class="nm">Cumprido</span><span class="ct">+32</span></div>
+          <div class="kcard" style="opacity:.7"><div class="men">Henrique Faria</div><div class="txt">Estruturar oferta de pré-lançamento</div><span class="pilar">Pilar 1 · Estratagemas</span><div class="ft"><span>Henrique</span><span class="pz" style="color:var(--green)">✓ adiantado</span></div></div>
+          <div class="kcard" style="opacity:.7"><div class="men">Studio Galo</div><div class="txt">Aplicar técnica do mosaico em 1 cliente</div><span class="pilar">Pilar 5 · Mosaico</span><div class="ft"><span>Letícia</span><span class="pz" style="color:var(--green)">✓ no prazo</span></div></div>
+          <div class="kcard" style="opacity:.7"><div class="men">Marina</div><div class="txt">Lançar mini-curso de teste</div><span class="pilar">Pilar 7 · Funil</span><div class="ft"><span>Marina</span><span class="pz" style="color:var(--green)">✓ +R$ 18k</span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ALERTAS ============ -->
+    <section class="page" id="page-alertas">
+      <div class="page-head">
+        <h1 class="serif">Alertas <em>ativos</em></h1>
+        <div class="sub">4 alertas que pedem ação humana · ordenados por severidade</div>
+      </div>
+
+      <div class="card">
+        <div class="alert-row">
+          <div class="alert-sev h"></div>
+          <div class="alert-body">
+            <div class="ti">Doce Casa Digital: faturamento em queda 3º mês seguido</div>
+            <div class="de">R$ 240k → R$ 195k → R$ 180k. Renata travada no pilar 3 (Pensar como roteirista) há 4 calls. Padrão de descumprimento crescente — 3 commitments de gravação não cumpridos em 30 dias.</div>
+            <div class="meta"><span>🚨 Alta severidade</span><span>·</span><span>Detectado pelo Mentor de CS</span><span>·</span><span>hoje</span></div>
+          </div>
+          <div class="alert-actions"><button class="btn">Acionar resgate</button><button class="btn btn-ghost">Atribuir</button></div>
+        </div>
+
+        <div class="alert-row">
+          <div class="alert-sev m"></div>
+          <div class="alert-body">
+            <div class="ti">3 mentorados travam no MESMO pilar (Pensar como roteirista)</div>
+            <div class="de">Renata, Letícia e — começando — Marina. Padrão consistente: aprendem o framework, mas não conseguem aplicar em produção criativa. Considerar sessão coletiva ou conteúdo extra.</div>
+            <div class="meta"><span>⚠️ Padrão sistêmico</span><span>·</span><span>Detectado pelo Mentor de CS</span><span>·</span><span>ontem</span></div>
+          </div>
+          <div class="alert-actions"><button class="btn btn-gold">Planejar sessão coletiva</button><button class="btn btn-ghost">Snooze 7d</button></div>
+        </div>
+
+        <div class="alert-row">
+          <div class="alert-sev m"></div>
+          <div class="alert-body">
+            <div class="ti">Marina Cordeiro: 10 dias sem postar</div>
+            <div class="de">Última call mencionou "não tô achando o que falar". Possível início do mesmo bloqueio criativo da Renata, mas em estágio inicial — janela boa pra intervenção preventiva.</div>
+            <div class="meta"><span>⚠️ Média severidade</span><span>·</span><span>Detectado automaticamente</span><span>·</span><span>ontem</span></div>
+          </div>
+          <div class="alert-actions"><button class="btn">Agendar check-in</button><button class="btn btn-ghost">Snooze 3d</button></div>
+        </div>
+
+        <div class="alert-row">
+          <div class="alert-sev l"></div>
+          <div class="alert-body">
+            <div class="ti">Henrique Faria: oportunidade de upsell pra programa avançado</div>
+            <div class="de">Avançou 3 pilares em 90 dias (recorde da carteira). Mencionou na última call que quer "ir mais fundo". Candidato natural pra mentoria 1:1 premium da CD Grupo.</div>
+            <div class="meta"><span>💡 Oportunidade</span><span>·</span><span>Detectado pelo Mentor de CS</span><span>·</span><span>2d atrás</span></div>
+          </div>
+          <div class="alert-actions"><button class="btn btn-gold">Preparar upsell</button><button class="btn btn-ghost">Snooze</button></div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+const navItems=document.querySelectorAll('.nav-item');
+const pages=document.querySelectorAll('.page');
+const crumbNow=document.getElementById('crumbNow');
+const labels={dashboard:'Dashboard',mentorados:'Mentorados',trilha:'Trilha dos 7 Pilares',perfil:'Doce Casa Digital',analise:'Análise de Call',commitments:'Commitments',alertas:'Alertas'};
+
+function go(page){
+  navItems.forEach(n=>n.classList.toggle('active',n.dataset.page===page));
+  pages.forEach(p=>p.classList.toggle('active',p.id==='page-'+page));
+  crumbNow.textContent=labels[page]||'';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+navItems.forEach(n=>n.addEventListener('click',()=>go(n.dataset.page)));
+document.querySelectorAll('[data-jump]').forEach(el=>{
+  el.addEventListener('click',e=>{e.stopPropagation();go(el.dataset.jump)});
+});
+
+const btn=document.getElementById('btnAnalisar');
+const loader=document.getElementById('loader');
+const report=document.getElementById('report');
+btn.addEventListener('click',()=>{
+  report.classList.remove('show');
+  loader.classList.add('show');
+  btn.disabled=true;btn.style.opacity=.6;
+  setTimeout(()=>{
+    loader.classList.remove('show');
+    report.classList.add('show');
+    btn.disabled=false;btn.style.opacity=1;
+    report.scrollIntoView({behavior:'smooth',block:'start'});
+  },2400);
+});
+</script>
+</body>
+</html>
