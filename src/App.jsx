@@ -1079,7 +1079,12 @@ function AppMain({ onLogout, username }) {
       ) : currentView !== "crm" && <main className="main">
         <header className="topbar">
           <button className="hamburger" onClick={() => setSidebarOpen(true)}>≡</button>
-          <span className="topbar-title">{activeConversation?.title || "Nova conversa"}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <span className="topbar-title">{activeConversation?.title || "Nova conversa"}</span>
+            <span style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: '600' }}>
+              🧠 {agentNames[activeAgentId] || AGENTS.find(a => a.id === activeAgentId)?.name || "Agente Bora"}
+            </span>
+          </div>
         </header>
         <div className="scroll" ref={scrollRef}>
           {empty ? (
