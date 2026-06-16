@@ -1150,10 +1150,17 @@ app.get('/api/conversations', async (req, res) => {
       .eq('username', req.user.username)
       .order('updated_at', { ascending: false });
 
-    // Se um agent_id específico é solicitado, retorna APENAS conversas desse agente
-    // Conversas antigas (agent_id = NULL) são assumidas como 'bora' para compatibilidade
+    // Se um agent_id específico é solicitado, filtra para retornar APENAS conversas desse agente
+    // Conversas antigas (agent_id = NULL) são retornadas para o agente 'bora' como padrão
     if (agentId) {
-      query = query.or(`agent_id.eq.${agentId},agent_id.is.null`);
+      // Retorna conversas onde agent_id = agentId OU (agent_id IS NULL E agentId == 'bora')
+      if (agentId === 'bora') {
+        // Para 'bora': retorna agentes com agent_id = 'bora' OU agent_id = NULL
+        query = query.in('agent_id', ['bora', null]);
+      } else {
+        // Para outros agentes: retorna APENAS conversas daquele agente
+        query = query.eq('agent_id', agentId);
+      }
     }
 
     const { data, error } = await query;
