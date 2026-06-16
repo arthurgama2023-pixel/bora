@@ -1143,11 +1143,14 @@ app.delete('/api/pedidos/:id', async (req, res) => {
 
 app.get('/api/conversations', async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const agentId = req.query.agent_id || null;
+    let query = supabase
       .from('conversations')
-      .select('id, title, created_at, updated_at')
+      .select('id, title, created_at, updated_at, agent_id')
       .eq('username', req.user.username)
       .order('updated_at', { ascending: false });
+    if (agentId) query = query.eq('agent_id', agentId);
+    const { data, error } = await query;
     if (error) throw error;
     res.json(data);
   } catch (e) {
@@ -1156,11 +1159,11 @@ app.get('/api/conversations', async (req, res) => {
 });
 
 app.post('/api/conversations', async (req, res) => {
-  const { title = 'Nova conversa' } = req.body;
+  const { title = 'Nova conversa', agent_id = 'bora' } = req.body;
   try {
     const { data, error } = await supabase
       .from('conversations')
-      .insert({ title, username: req.user.username })
+      .insert({ title, username: req.user.username, agent_id })
       .select()
       .single();
     if (error) throw error;

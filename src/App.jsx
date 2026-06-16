@@ -135,17 +135,50 @@ function AppMain({ onLogout, username }) {
     }
   }, [agentNames]);
 
+  async function loadConversationsForAgent(agentId) {
+    try {
+      const convRes = await apiFetch(`${API}/api/conversations?agent_id=${agentId}`).then(r => r.json()).catch(() => []);
+      if (Array.isArray(convRes) && convRes.length > 0) {
+        const first = convRes[0];
+        const msgs = await apiFetch(`${API}/api/conversations/${first.id}/messages`).then(r => r.json()).catch(() => []);
+        // Zera cache completamente e carrega apenas a conversa do novo agente
+        setMessagesCache({ [first.id]: (Array.isArray(msgs) ? msgs.map(mapMsg) : []) });
+        setConversations(convRes);
+        setActiveId(first.id);
+      } else {
+        const nc = await createConvOnServer("Nova conversa", agentId).catch(() => null);
+        if (nc?.id) {
+          setMessagesCache({ [nc.id]: [] });
+          setConversations([nc]);
+          setActiveId(nc.id);
+        } else {
+          setMessagesCache({});
+          setConversations([]);
+          setActiveId(null);
+        }
+      }
+    } catch (e) {
+      console.error('[loadConversationsForAgent]', e);
+      setMessagesCache({});
+      setConversations([]);
+      setActiveId(null);
+    }
+  }
+
   useEffect(() => {
     (async () => {
       try {
-        const [convRes, knowRes, imRes, agentRes] = await Promise.all([
-          apiFetch(`${API}/api/conversations`).then(r => r.json()).catch(() => []),
+        const agentRes = await apiFetch(`${API}/api/agent-config`).then(r => r.json()).catch(() => ({}));
+        const bootAgent = agentRes?.activeAgentType || 'bora';
+        if (agentRes?.activeAgentType) setActiveAgentId(bootAgent);
+
+        const [knowRes, imRes] = await Promise.all([
           apiFetch(`${API}/api/knowledge`).then(r => r.json()).catch(() => []),
           apiFetch(`${API}/api/imersao`).then(r => r.json()).catch(() => []),
-          apiFetch(`${API}/api/agent-config`).then(r => r.json()).catch(() => ({})),
         ]);
-        if (agentRes?.activeAgentType) setActiveAgentId(agentRes.activeAgentType);
+
         if (Array.isArray(knowRes)) setKnowledge(knowRes.map(e => ({ ...e, active: e.active !== false })));
+
         if (Array.isArray(imRes)) {
           const profilesMap = {};
           const restored = imRes.map(e => {
@@ -182,31 +215,35 @@ function AppMain({ onLogout, username }) {
           });
           if (Object.keys(previews).length > 0) setInstagramPreviews(previews);
         }
-        if (Array.isArray(convRes) && convRes.length > 0) {
-          setConversations(convRes);
-          const first = convRes[0];
-          setActiveId(first.id);
-          const msgs = await apiFetch(`${API}/api/conversations/${first.id}/messages`).then(r => r.json()).catch(() => []);
-          if (Array.isArray(msgs)) setMessagesCache({ [first.id]: msgs.map(mapMsg) });
-        } else {
-          const nc = await createConvOnServer("Nova conversa");
-          if (nc?.id) { setConversations([nc]); setActiveId(nc.id); setMessagesCache({ [nc.id]: [] }); }
-        }
+
+        // Carrega apenas as conversas do agente inicial
+        await loadConversationsForAgent(bootAgent);
       } catch (e) { console.error(e); } finally { setAppReady(true); }
     })();
   }, []);
+
+  async function handleAgentChange(agent) {
+    setActiveAgentId(agent.id);
+    setConversations([]);
+    setActiveId(null);
+    setMessagesCache({});
+    setInput("");
+    setAttachments([]);
+    setNotice("");
+    await loadConversationsForAgent(agent.id);
+  }
 
   function mapMsg(m) {
     return { id: m.id || uid(), role: m.role, displayText: m.display_text || "", apiContent: m.api_content || m.display_text || "", files: Array.isArray(m.files) ? m.files : [] };
   }
 
-  async function createConvOnServer(title) {
-    const r = await apiFetch(`${API}/api/conversations`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title }) });
+  async function createConvOnServer(title, agentId) {
+    const r = await apiFetch(`${API}/api/conversations`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, agent_id: agentId || activeAgentId }) });
     return r.json();
   }
 
   async function startNewChat() {
-    const nc = await createConvOnServer("Nova conversa").catch(() => null);
+    const nc = await createConvOnServer("Nova conversa", activeAgentId).catch(() => null);
     if (!nc?.id) return;
     setConversations(cs => [nc, ...cs]);
     setActiveId(nc.id);
@@ -1033,7 +1070,7 @@ function AppMain({ onLogout, username }) {
             setCurrentView("chat");
             setTimeout(() => taRef.current?.focus(), 100);
           }}
-          onAgentChange={(agent) => setActiveAgentId(agent.id)}
+          onAgentChange={handleAgentChange}
           agentNames={agentNames}
           onAgentNamesChange={setAgentNames}
         />
