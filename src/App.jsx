@@ -71,6 +71,10 @@ function AppMain({ onLogout, username }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [convMenuOpen, setConvMenuOpen] = useState(null);
 
+  // Autocomplete de agentes com @
+  const [agentSuggestions, setAgentSuggestions] = useState([]);
+  const [agentSuggestionsOpen, setAgentSuggestionsOpen] = useState(false);
+
   const [appReady, setAppReady] = useState(false);
 
   // Panel (NotebookLM-style middle column)
@@ -552,7 +556,55 @@ function AppMain({ onLogout, username }) {
     } finally { setLoading(false); }
   }
 
-  function onKeyDown(e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }
+  function handleInputChange(text) {
+    setInput(text);
+
+    // Detecta @mention de agentes
+    const atIndex = text.lastIndexOf('@');
+    if (atIndex !== -1) {
+      const afterAt = text.substring(atIndex + 1).split(/\s/)[0]; // pega até o próximo espaço
+
+      if (afterAt.length >= 1) {
+        // Filtra agentes por nome ou id
+        const filtered = AGENTS.filter(a =>
+          a.name.toLowerCase().includes(afterAt.toLowerCase()) ||
+          a.id.toLowerCase().includes(afterAt.toLowerCase())
+        );
+
+        setAgentSuggestions(filtered);
+        setAgentSuggestionsOpen(filtered.length > 0);
+      } else if (afterAt.length === 0 && atIndex === text.length - 1) {
+        // Mostra todos os agentes se acabou de digitar @
+        setAgentSuggestions(AGENTS);
+        setAgentSuggestionsOpen(true);
+      } else {
+        setAgentSuggestionsOpen(false);
+      }
+    } else {
+      setAgentSuggestionsOpen(false);
+    }
+  }
+
+  function selectAgent(agentId) {
+    const atIndex = input.lastIndexOf('@');
+    const beforeAt = input.substring(0, atIndex);
+    const agent = AGENTS.find(a => a.id === agentId);
+
+    // Remove a mensagem e muda de agente
+    setInput("");
+    setAgentSuggestionsOpen(false);
+
+    // Muda para o agente selecionado
+    const selectedAgent = { id: agentId, name: agent.name };
+    handleAgentChange(selectedAgent);
+  }
+
+  function onKeyDown(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  }
 
   if (!appReady) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", fontFamily: "Inter,sans-serif", color: "#7C7264" }}>Conectando ao servidor…</div>;
 
@@ -1119,9 +1171,23 @@ function AppMain({ onLogout, username }) {
             {attachments.length > 0 && <div className="att-row">{attachments.map(a => <span key={a.id} className="att"><FileIcon /> <span className="att-name">{a.name}</span><button className="att-x" onClick={() => setAttachments(p => p.filter(x => x.id !== a.id))}>×</button></span>)}</div>}
             <div className="input-line">
               <button className="attach" onClick={() => fileInputRef.current?.click()}><Clip /></button>
-              <textarea ref={taRef} className="ta" rows={1} placeholder="Manda a real…" value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKeyDown} />
+              <textarea ref={taRef} className="ta" rows={1} placeholder="Manda a real…" value={input} onChange={e => handleInputChange(e.target.value)} onKeyDown={onKeyDown} />
               <button className="send" disabled={loading || (!input.trim() && attachments.length === 0)} onClick={send}><Arrow /></button>
             </div>
+            {agentSuggestionsOpen && (
+              <div className="agent-suggestions">
+                {agentSuggestions.map(agent => (
+                  <button
+                    key={agent.id}
+                    className="agent-suggestion-item"
+                    onClick={() => selectAgent(agent.id)}
+                  >
+                    <span className="emoji">{agent.emoji}</span>
+                    <span className="name">@{agent.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             <input ref={fileInputRef} type="file" multiple accept=".txt,.md,.vtt,.srt,.csv,.json,.log,.docx,.pdf,image/*" style={{ display: "none" }} onChange={e => { handleChatFiles(e.target.files); e.target.value = ""; }} />
           </div>
           <p className="foot-note">Aceita .txt, .vtt, .docx, .pdf e imagens.</p>
@@ -1536,6 +1602,11 @@ const CSS = `
 .send:hover{background:#d8430f;}
 .send:disabled{background:#e7ddd0;color:#b6ab9b;cursor:not-allowed;}
 .foot-note{text-align:center;font-size:11px;color:var(--muted);margin:9px 0 0;}
+.agent-suggestions{background:#fff;border:1px solid var(--line);border-radius:12px;margin:8px 8px 0;max-height:200px;overflow-y:auto;box-shadow:0 2px 12px rgba(28,24,19,.1);}
+.agent-suggestion-item{display:flex;align-items:center;gap:8px;padding:8px 12px;width:100%;border:none;background:transparent;cursor:pointer;font-size:14px;color:var(--ink);transition:.1s;}
+.agent-suggestion-item:hover{background:var(--cream);}
+.agent-suggestion-item .emoji{font-size:18px;}
+.agent-suggestion-item .name{flex:1;text-align:left;color:var(--accent);font-weight:500;}
 .dropzone{position:absolute;inset:0;background:rgba(251,248,243,.92);display:grid;place-items:center;z-index:30;border:3px dashed var(--accent);border-radius:18px;margin:10px;}
 .dropcard{display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--accent);font-weight:600;}
 
