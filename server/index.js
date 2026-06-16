@@ -1143,13 +1143,19 @@ app.delete('/api/pedidos/:id', async (req, res) => {
 
 app.get('/api/conversations', async (req, res) => {
   try {
-    const agentId = req.query.agent_id || null;
+    const agentId = req.query.agent_id;
     let query = supabase
       .from('conversations')
       .select('id, title, created_at, updated_at, agent_id')
       .eq('username', req.user.username)
       .order('updated_at', { ascending: false });
-    if (agentId) query = query.eq('agent_id', agentId);
+
+    // Se um agent_id específico é solicitado, retorna APENAS conversas desse agente
+    // Conversas antigas (agent_id = NULL) são assumidas como 'bora' para compatibilidade
+    if (agentId) {
+      query = query.or(`agent_id.eq.${agentId},agent_id.is.null`);
+    }
+
     const { data, error } = await query;
     if (error) throw error;
     res.json(data);

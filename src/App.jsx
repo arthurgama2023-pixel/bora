@@ -268,7 +268,7 @@ function AppMain({ onLogout, username }) {
       if (remaining.length > 0) {
         switchConversation(remaining[0].id);
       } else {
-        const nc = await createConvOnServer("Nova conversa").catch(() => null);
+        const nc = await createConvOnServer("Nova conversa", activeAgentId).catch(() => null);
         if (nc?.id) { setConversations([nc]); setActiveId(nc.id); setMessagesCache({ [nc.id]: [] }); }
       }
     }
