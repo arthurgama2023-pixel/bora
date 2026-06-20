@@ -665,7 +665,7 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
                     <div>
                       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Características</p>
                       <div className="flex flex-wrap gap-2">
-                        {archetypeAnalysis.caracteristicas.split('|').map((caract, i) => (
+                        {archetypeAnalysis.caracteristicas.split('|').map((caract: string, i: number) => (
                           <span key={i} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-medium">
                             {caract.trim()}
                           </span>
