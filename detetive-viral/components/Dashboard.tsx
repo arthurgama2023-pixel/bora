@@ -442,7 +442,7 @@ export default function Dashboard({ profile, onRestart }: DashboardProps) {
                             <div>
                               <p className="text-sm font-bold text-slate-600 uppercase tracking-wide mb-4">Suas Características Principais</p>
                               <div className="flex flex-wrap gap-3">
-                                {archetypeAnalysis.caracteristicas.split('|').map((caract, i) => (
+                                {archetypeAnalysis.caracteristicas.split('|').map((caract: string, i: number) => (
                                   <span key={i} className="bg-blue-100 text-blue-700 px-5 py-2 rounded-full font-semibold text-sm">
                                     {caract.trim()}
                                   </span>
