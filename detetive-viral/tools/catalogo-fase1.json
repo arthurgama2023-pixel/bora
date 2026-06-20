@@ -1,0 +1,386 @@
+{
+  "IA": [
+    {
+      "username": "edielcosta",
+      "fullName": "Ediel Costa ✅",
+      "appearances": 9,
+      "medianViews": 36331,
+      "maxViews": 189805,
+      "totalViews": 583421,
+      "avgEng": 0.026312719071810917
+    },
+    {
+      "username": "canalsegredosdodigital",
+      "fullName": "Luiz Henrique - Especialista em IA",
+      "appearances": 7,
+      "medianViews": 13524,
+      "maxViews": 160929,
+      "totalViews": 246054,
+      "avgEng": 0.09012153480525587
+    },
+    {
+      "username": "vaguinhocasainteligente",
+      "fullName": "VAGUINHO CASA INTELIGENTE",
+      "appearances": 6,
+      "medianViews": 62287,
+      "maxViews": 2554108,
+      "totalViews": 2994768,
+      "avgEng": 0.016642708725305197
+    },
+    {
+      "username": "herbert.fenelon",
+      "fullName": "HERBERT DIAS FENELON",
+      "appearances": 5,
+      "medianViews": 41032,
+      "maxViews": 253368,
+      "totalViews": 393241,
+      "avgEng": 0.03653543594847884
+    },
+    {
+      "username": "advogadotuliosilveira",
+      "fullName": "Túlio Silveira | IA para Advogados",
+      "appearances": 4,
+      "medianViews": 14852,
+      "maxViews": 42681,
+      "totalViews": 85220,
+      "avgEng": 0.04370181736629973
+    },
+    {
+      "username": "lucasrochaator",
+      "fullName": "Lucas Rocha | IA e Criação de Conteúdo",
+      "appearances": 2,
+      "medianViews": 1207845,
+      "maxViews": 2405591,
+      "totalViews": 2415689,
+      "avgEng": 0.08232299128163607
+    },
+    {
+      "username": "mavimotiva_",
+      "fullName": "Motivação/ inteligência emocional/ Dicas",
+      "appearances": 2,
+      "medianViews": 137741,
+      "maxViews": 179077,
+      "totalViews": 275481,
+      "avgEng": 0.10498493035961835
+    },
+    {
+      "username": "patriciabramos",
+      "fullName": "Dra. Patrícia Ramos| IA na Educação",
+      "appearances": 2,
+      "medianViews": 130074,
+      "maxViews": 186381,
+      "totalViews": 260148,
+      "avgEng": 0.019188045673063894
+    },
+    {
+      "username": "lufajj",
+      "fullName": "Luana Fajtlowicz | Girl Tech🇧🇷",
+      "appearances": 2,
+      "medianViews": 99342,
+      "maxViews": 164838,
+      "totalViews": 198684,
+      "avgEng": 0.0343463184674552
+    },
+    {
+      "username": "sevenprevias",
+      "fullName": "SEVEN PRÉVIAS",
+      "appearances": 2,
+      "medianViews": 63614,
+      "maxViews": 92797,
+      "totalViews": 127227,
+      "avgEng": 0.04889668663015728
+    },
+    {
+      "username": "joaopaulodealmeidapradocosta",
+      "fullName": "João Paulo de Almeida Prado Costa",
+      "appearances": 2,
+      "medianViews": 36186,
+      "maxViews": 56095,
+      "totalViews": 72372,
+      "avgEng": 0.04640132213242043
+    },
+    {
+      "username": "izabela.anholett",
+      "fullName": "Izabela Anholett | Inteligência Artificial sem blábláblá",
+      "appearances": 2,
+      "medianViews": 34342,
+      "maxViews": 34744,
+      "totalViews": 68683,
+      "avgEng": 0.10800415287407633
+    },
+    {
+      "username": "ugaotv_",
+      "fullName": "UGÃOtv",
+      "appearances": 2,
+      "medianViews": 30244,
+      "maxViews": 45366,
+      "totalViews": 60488,
+      "avgEng": 0.08636423753471763
+    },
+    {
+      "username": "joaovitor",
+      "fullName": "Joao Vitor",
+      "appearances": 2,
+      "medianViews": 29213,
+      "maxViews": 30449,
+      "totalViews": 58425,
+      "avgEng": 0.0352702706249868
+    },
+    {
+      "username": "thaysfreire.ia",
+      "fullName": "Thays Freire | IA na prática",
+      "appearances": 2,
+      "medianViews": 29199,
+      "maxViews": 47336,
+      "totalViews": 58398,
+      "avgEng": 0.08199347971167595
+    },
+    {
+      "username": "romanlohace",
+      "fullName": "Roman Alejandro Restrepo Perez",
+      "appearances": 2,
+      "medianViews": 28389,
+      "maxViews": 45537,
+      "totalViews": 56778,
+      "avgEng": 0.04987082389044805
+    },
+    {
+      "username": "martimsilvai",
+      "fullName": "Martim Silva | Especialista Inteligência Artificial",
+      "appearances": 2,
+      "medianViews": 26437,
+      "maxViews": 32910,
+      "totalViews": 52874,
+      "avgEng": 0.0651789036126468
+    },
+    {
+      "username": "outofthebox.science",
+      "fullName": "Pat Preilowski | Health x Tech",
+      "appearances": 2,
+      "medianViews": 26231,
+      "maxViews": 36599,
+      "totalViews": 52461,
+      "avgEng": 0.0436929670350818
+    }
+  ],
+  "Gastronomia": [
+    {
+      "username": "amandadonderi",
+      "fullName": "Amanda Donderi",
+      "appearances": 9,
+      "medianViews": 22877,
+      "maxViews": 116383,
+      "totalViews": 332330,
+      "avgEng": 0.0576159922733435
+    },
+    {
+      "username": "mucioabreu",
+      "fullName": "Múcio Paranhos de Abreu 🇧🇷",
+      "appearances": 4,
+      "medianViews": 22129,
+      "maxViews": 41025,
+      "totalViews": 100231,
+      "avgEng": 0.05008704526839936
+    },
+    {
+      "username": "emilio_skent",
+      "fullName": "emilio_skent",
+      "appearances": 3,
+      "medianViews": 21082,
+      "maxViews": 21438,
+      "totalViews": 62959,
+      "avgEng": 0.035723153175133825
+    },
+    {
+      "username": "rosimazegohan",
+      "fullName": "Rosi Mazegohan",
+      "appearances": 2,
+      "medianViews": 220440,
+      "maxViews": 224122,
+      "totalViews": 440879,
+      "avgEng": 0.029883365403888508
+    },
+    {
+      "username": "smithpope1",
+      "fullName": "Smith pope  |  cozinha",
+      "appearances": 2,
+      "medianViews": 88495,
+      "maxViews": 162732,
+      "totalViews": 176990,
+      "avgEng": 0.04819530191154228
+    },
+    {
+      "username": "celiamorais.s",
+      "fullName": "Celia Morais",
+      "appearances": 2,
+      "medianViews": 81606,
+      "maxViews": 131696,
+      "totalViews": 163212,
+      "avgEng": 0.04193794921576033
+    },
+    {
+      "username": "clararesorts",
+      "fullName": "Clara Resorts",
+      "appearances": 2,
+      "medianViews": 69005,
+      "maxViews": 92316,
+      "totalViews": 138010,
+      "avgEng": 0.009741472791821009
+    },
+    {
+      "username": "loverfdez",
+      "fullName": "⭐🕺 LOVER FDEZ🕺⭐",
+      "appearances": 2,
+      "medianViews": 64078,
+      "maxViews": 76337,
+      "totalViews": 128156,
+      "avgEng": 0.023115589938954836
+    },
+    {
+      "username": "garcom_modelo",
+      "fullName": "Ezequiel Schaefer",
+      "appearances": 2,
+      "medianViews": 58216,
+      "maxViews": 61090,
+      "totalViews": 116432,
+      "avgEng": 0.02008819439985908
+    },
+    {
+      "username": "gulunrenklimutfagi",
+      "fullName": "Songül yıldırım",
+      "appearances": 2,
+      "medianViews": 44807,
+      "maxViews": 77425,
+      "totalViews": 89614,
+      "avgEng": 0.04665119142634917
+    },
+    {
+      "username": "olivieranquier",
+      "fullName": "Olivier Anquier",
+      "appearances": 2,
+      "medianViews": 36070,
+      "maxViews": 42314,
+      "totalViews": 72139,
+      "avgEng": 0.0757607902536503
+    },
+    {
+      "username": "mirellacorrea.arquiteta",
+      "fullName": "Mi▪️Arquiteta de Bar • Restaurante • Cerimonial",
+      "appearances": 2,
+      "medianViews": 32470,
+      "maxViews": 36086,
+      "totalViews": 64939,
+      "avgEng": 0.027401603541937086
+    },
+    {
+      "username": "luisrestaurant01",
+      "fullName": "Luis Alberto Martinez",
+      "appearances": 2,
+      "medianViews": 24131,
+      "maxViews": 25484,
+      "totalViews": 48262,
+      "avgEng": 0.03217118465513713
+    }
+  ],
+  "Marketing": [
+    {
+      "username": "pablo.ecom",
+      "fullName": "Pablo Ecom",
+      "appearances": 3,
+      "medianViews": 119322,
+      "maxViews": 169535,
+      "totalViews": 321871,
+      "avgEng": 0.03147626103032903
+    },
+    {
+      "username": "ricamorim",
+      "fullName": "Ricardo Amorim",
+      "appearances": 2,
+      "medianViews": 87699,
+      "maxViews": 155694,
+      "totalViews": 175397,
+      "avgEng": 0.0480078140436088
+    },
+    {
+      "username": "peronore",
+      "fullName": "Per Onore: Poder & Honra 🥃",
+      "appearances": 2,
+      "medianViews": 84825,
+      "maxViews": 122215,
+      "totalViews": 169650,
+      "avgEng": 0.06625010698465102
+    },
+    {
+      "username": "thiagoreis",
+      "fullName": "Thiago Reis",
+      "appearances": 2,
+      "medianViews": 34056,
+      "maxViews": 45836,
+      "totalViews": 68111,
+      "avgEng": 0.039392022150116224
+    },
+    {
+      "username": "leandrorosadas",
+      "fullName": "Leandro Rosadas | Supermercado",
+      "appearances": 2,
+      "medianViews": 25737,
+      "maxViews": 41061,
+      "totalViews": 51473,
+      "avgEng": 0.023587229312969075
+    },
+    {
+      "username": "albertolimax",
+      "fullName": "Alberto Lima",
+      "appearances": 2,
+      "medianViews": 23461,
+      "maxViews": 33805,
+      "totalViews": 46921,
+      "avgEng": 0.04452405709891224
+    },
+    {
+      "username": "mauriciowaldeck",
+      "fullName": "Mauricio Waldeck | Tráfego + Comercial",
+      "appearances": 2,
+      "medianViews": 18923,
+      "maxViews": 20289,
+      "totalViews": 37846,
+      "avgEng": 0.05051358274482961
+    },
+    {
+      "username": "deborah_morato",
+      "fullName": "Déborah Morato",
+      "appearances": 2,
+      "medianViews": 13662,
+      "maxViews": 14920,
+      "totalViews": 27324,
+      "avgEng": 0.055141772998937466
+    },
+    {
+      "username": "dayronaryeh",
+      "fullName": "Dayron Aryeh",
+      "appearances": 2,
+      "medianViews": 11927,
+      "maxViews": 15107,
+      "totalViews": 23854,
+      "avgEng": 0.05180057800259601
+    },
+    {
+      "username": "pedrofalci.com.br",
+      "fullName": "Pedro Falci",
+      "appearances": 2,
+      "medianViews": 8004,
+      "maxViews": 8175,
+      "totalViews": 16007,
+      "avgEng": 0.07870975500807477
+    },
+    {
+      "username": "biafloress",
+      "fullName": "Bianca Flores",
+      "appearances": 2,
+      "medianViews": 5242,
+      "maxViews": 5283,
+      "totalViews": 10484,
+      "avgEng": 0.06444883140493046
+    }
+  ]
+}
