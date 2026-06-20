@@ -2,21 +2,17 @@ FROM node:20
 
 WORKDIR /app
 
-COPY package.json ./
-RUN npm install
+# Copiar apenas o servidor
+COPY detetive-viral/server/package*.json ./
 
-COPY . .
-RUN npm run build
+# Instalar dependências
+RUN npm install --production
 
-WORKDIR /app/server
-RUN PUPPETEER_SKIP_DOWNLOAD=true PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true npm install
+# Copiar código
+COPY detetive-viral/server/ .
 
-WORKDIR /app
+# Expor porta
+EXPOSE 3003
 
-ENV NODE_ENV=production
-ENV PORT=3000
-
-EXPOSE 3000
-
-# Redireciona output para arquivo; se crashar, exibe o erro via HTTP
-CMD ["sh", "-c", "node server/index.js > /tmp/server.log 2>&1 || node -e \"require('http').createServer((_,r)=>{r.writeHead(200,{'Content-Type':'text/plain'});r.end(require('fs').readFileSync('/tmp/server.log','utf8'))}).listen(3000)\""]
+# Iniciar
+CMD ["node", "index.js"]
