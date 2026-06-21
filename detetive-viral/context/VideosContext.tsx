@@ -29,11 +29,15 @@ interface AiAnalysis {
 }
 
 interface Roteiro {
-  transcricao: string;
+  por_que_funciona: string;
+  padrao_que_funciona: string | string[];
   gancho: string;
   desenvolvimento: string;
   cta: string;
+  exemplo_adaptado: string;
   hashtags_sugeridas: string[];
+  tempo_estimado?: string;
+  dificuldade?: number | string;
 }
 
 interface VideosContextType {

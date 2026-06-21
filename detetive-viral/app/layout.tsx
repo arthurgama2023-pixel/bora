@@ -34,7 +34,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="min-h-full flex flex-col bg-[#f7f9fb]">
+      <body className="min-h-full flex flex-col bg-[#f7f9fb]" suppressHydrationWarning>
         <script>
           {`window.API_URL = '${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}'`}
         </script>

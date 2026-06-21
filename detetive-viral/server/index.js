@@ -1258,6 +1258,7 @@ ${contexto}
 REGRAS IMPORTANTES:
 1. Identifique o NICHO PROFISSIONAL PRINCIPAL (o tema central de trabalho/conteúdo). IGNORE hobbies pessoais e temas secundários (ex: se a pessoa trabalha com IA mas posta skate, o nicho é IA — skate é ruído).
 2. Gere hashtags do nicho central, EM PORTUGUÊS-BR.
+3. Use "Escala de Negócios" (não "Escalação"), "Negócios" (não "negocio"), com acentos corretos.
 3. EQUILÍBRIO É TUDO: as hashtags devem ser ESPECÍFICAS do nicho MAS POPULARES (muito usadas, com MUITO conteúdo). Prefira termos CURTOS e conhecidos do nicho.
    - BOM (popular + no tema): inteligenciaartificial, automacao, chatgpt, ia, programacao, tecnologia, marketingdigital
    - RUIM long-tail (quase ninguém usa): iaparaaumentarfaturamento, sistemasdeiaempresariais
@@ -1536,26 +1537,33 @@ app.post('/api/roteiro', async (req, res) => {
       return res.status(400).json({ error: 'Faltam dados do vídeo para gerar o roteiro.' });
     }
 
-    const prompt = `Você é roteirista especialista em Reels virais do Instagram.
+    const prompt = `Você é um analista de conteúdo viral e coach de roteiro. Sua missão é DESCONSTRUIR um reel que funcionou para ensinar o usuário a REPLICAR O PADRÃO.
 
-Abaixo está a LEGENDA de um reel que viralizou no nicho "${niche || theme}":
+VÍDEO ORIGINAL (que viralizou):
 ---
 Criador: @${creator || 'desconhecido'}
 Legenda: ${caption || '(sem legenda)'}
+Nicho: ${niche || theme}
 ---
 
-Com base nessa legenda, RECONSTRUA o roteiro provável do vídeo (a transcrição/estrutura que o criador provavelmente seguiu) e ADAPTE para o perfil abaixo, mantendo o que fez o vídeo viralizar:
-- Nicho do usuário: ${niche || theme}
+PERFIL DO USUÁRIO (quem vai gravar):
+- Nicho: ${niche || theme}
 ${painPoints ? `- Dores do público: ${painPoints}` : ''}
 ${desires ? `- Desejos do público: ${desires}` : ''}
 
-Responda APENAS um JSON válido neste formato (texto em português-BR, pronto pra gravar):
+TAREFA: Analise estruturalmente POR QUÊ esse vídeo funcionou, depois ensine ao usuário como fazer ALGO SIMILAR (não cópia, mas seguindo o PADRÃO que funciona).
+
+Responda APENAS um JSON válido neste formato:
 {
-  "transcricao": "transcrição/roteiro reconstruído do vídeo original, em 2-4 frases naturais",
-  "gancho": "frase de 0-3s que prende a atenção (adaptada ao nicho do usuário)",
-  "desenvolvimento": "o miolo do vídeo em 2-3 frases (o conteúdo de valor)",
-  "cta": "chamada para ação final",
-  "hashtags_sugeridas": ["5 a 8 hashtags sem #, do nicho, pra esse reel"]
+  "por_que_funciona": "2-3 frases explicando a ESTRUTURA e PSICOLOGIA por trás do vídeo original (por que aquele gancho/abordagem funciona naquele nicho)",
+  "padrao_que_funciona": ["3-5 técnicas/elementos do padrão viral, uma por item (ex: 'Corte seco inicial para gerar dinamismo', 'Legendas dinâmicas no centro da tela', 'Revelação contrária no fim')"],
+  "gancho": "frase de 0-3s que PRENDE ATENÇÃO — específica para seu nicho e público (use as dores/desejos dele, não cópia genérica)",
+  "desenvolvimento": "3-4 passos/frases que entregam VALOR (por que a dor existe, o que faz mal, qual é a solução, prova/exemplo)",
+  "cta": "ação específica que você quer que o público faça (não genérico 'me siga', mas algo que IMPORTA pro seu nicho)",
+  "exemplo_adaptado": "exemplo concreto do que VOCÊ poderia falar usando esse padrão (em 2-3 frases, mostrando como adaptar mantendo a estrutura)",
+  "hashtags_sugeridas": ["5-8 hashtags específicas do nicho"],
+  "tempo_estimado": "duração ideal do vídeo (ex: '30 segundos', '45 segundos', '1 minuto')",
+  "dificuldade": "número de 1 a 5 indicando a dificuldade de produzir esse reel (1=muito fácil, 5=difícil)"
 }`;
 
     let t = await callClaude(prompt, 1200);

@@ -30,14 +30,14 @@ interface RoteiroPanelProps {
 
 interface Roteiro {
   por_que_funciona: string;
-  padrao_que_funciona: string;
+  padrao_que_funciona: string | string[];
   gancho: string;
   desenvolvimento: string;
   cta: string;
   exemplo_adaptado: string;
   hashtags_sugeridas: string[];
   tempo_estimado?: string;
-  dificuldade?: number;
+  dificuldade?: number | string;
 }
 
 export default function RoteiroPanel({ reel, profile, onClose }: RoteiroPanelProps) {
@@ -103,7 +103,7 @@ Inspirado em ${reel.creatorHandle}
 ${roteiro.por_que_funciona}
 
 🎬 PADRÃO VIRAL:
-${roteiro.padrao_que_funciona}
+${padraoItems.map((p, i) => `${String(i + 1).padStart(2, '0')}. ${p}`).join('\n')}
 
 📌 GANCHO (0-3s):
 ${roteiro.gancho}
@@ -123,6 +123,26 @@ ${(roteiro.hashtags_sugeridas || []).map((h) => '#' + h).join(' ')}`;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  // Normaliza o "padrão viral" em lista, lidando com string, array ou ausência
+  // do campo (roteiros em cache antigos podem não tê-lo).
+  const padraoRaw = roteiro?.padrao_que_funciona;
+  const padraoItems = (
+    Array.isArray(padraoRaw)
+      ? padraoRaw
+      : typeof padraoRaw === 'string'
+        ? padraoRaw.split('\n')
+        : []
+  )
+    .map((item) => String(item).replace(/^[\d.)\-\s]+/, '').trim())
+    .filter(Boolean);
+
+  // Dificuldade: aceita número ou string, limita entre 1 e 5 (default 3)
+  const dificuldadeNum = Math.min(
+    5,
+    Math.max(1, Math.round(Number(roteiro?.dificuldade)) || 3)
+  );
+  const dificuldadeLabel = ['Fácil', 'Fácil-Médio', 'Médio', 'Médio-Difícil', 'Difícil'][dificuldadeNum - 1];
 
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ fontFamily: 'Inter, sans-serif' }}>
@@ -186,28 +206,26 @@ ${(roteiro.hashtags_sugeridas || []).map((h) => '#' + h).join(' ')}`;
               </section>
 
               {/* Padrão viral */}
-              <section className="rounded-r-lg p-6" style={{ borderLeft: '4px solid #712ae2', backgroundColor: 'rgba(112, 42, 226, 0.05)' }}>
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="material-symbols-outlined" style={{ color: '#712ae2', fontVariationSettings: "'FILL' 1" }}>videocam</span>
-                  <h2 className="text-xs font-bold uppercase" style={{ color: '#712ae2', letterSpacing: '0.05em' }}>Padrão viral</h2>
-                </div>
-                <ul className="space-y-2">
-                  {roteiro.padrao_que_funciona.split('\n').map((item, idx) => {
-                    const cleanItem = item.trim();
-                    if (!cleanItem) return null;
-                    return (
+              {padraoItems.length > 0 && (
+                <section className="rounded-r-lg p-6" style={{ borderLeft: '4px solid #712ae2', backgroundColor: 'rgba(112, 42, 226, 0.05)' }}>
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="material-symbols-outlined" style={{ color: '#712ae2', fontVariationSettings: "'FILL' 1" }}>videocam</span>
+                    <h2 className="text-xs font-bold uppercase" style={{ color: '#712ae2', letterSpacing: '0.05em' }}>Padrão viral</h2>
+                  </div>
+                  <ul className="space-y-2">
+                    {padraoItems.map((item, idx) => (
                       <li key={idx} className="flex items-center gap-3">
                         <span className="text-sm font-bold" style={{ color: '#712ae2', minWidth: '24px' }}>
                           {String(idx + 1).padStart(2, '0')}
                         </span>
                         <span className="text-base" style={{ color: '#191c1e' }}>
-                          {cleanItem.replace(/^[\d.)\-\s]+/, '').trim()}
+                          {item}
                         </span>
                       </li>
-                    );
-                  })}
-                </ul>
-              </section>
+                    ))}
+                  </ul>
+                </section>
+              )}
 
               {/* Gancho */}
               <section className="rounded-r-lg p-6" style={{ borderLeft: '4px solid #005a6a', backgroundColor: 'rgba(0, 90, 106, 0.05)' }}>
@@ -237,13 +255,13 @@ ${(roteiro.hashtags_sugeridas || []).map((h) => '#' + h).join(' ')}`;
                           key={i}
                           className="w-2.5 h-2.5 rounded-full"
                           style={{
-                            backgroundColor: i <= (roteiro.dificuldade || 3) ? '#003391' : '#c3c6d6',
+                            backgroundColor: i <= dificuldadeNum ? '#003391' : '#c3c6d6',
                           }}
                         />
                       ))}
                     </div>
                     <span className="text-sm" style={{ color: '#191c1e' }}>
-                      {roteiro.dificuldade === 1 ? 'Fácil' : roteiro.dificuldade === 2 ? 'Fácil-Médio' : roteiro.dificuldade === 3 ? 'Médio' : roteiro.dificuldade === 4 ? 'Médio-Difícil' : 'Difícil'}
+                      {dificuldadeLabel}
                     </span>
                   </div>
                 </div>
