@@ -41,28 +41,64 @@ interface Roteiro {
   dificuldade?: number | string;
 }
 
+interface GeminiAnalysis {
+  gancho_visual?: string;
+  transcricao?: string;
+  legendas_tela?: string;
+  ritmo_edicao?: string;
+  estrategia_narrativa?: string;
+  por_que_para_o_scroll?: string;
+  tom_energia?: string;
+  duracao_estimada?: string;
+}
+
+const LOADING_STEPS = [
+  { id: 'video',    icon: 'movie',       label: 'Baixando vídeo...' },
+  { id: 'gemini',   icon: 'smart_toy',   label: 'Gemini analisando frames e áudio...' },
+  { id: 'claude',   icon: 'auto_awesome', label: 'Claude gerando roteiro...' },
+];
+
+const LOADING_STEPS_CAPTION = [
+  { id: 'claude',   icon: 'auto_awesome', label: 'Gerando roteiro com IA...' },
+];
+
 export default function RoteiroPanel({ reel, profile, onClose }: RoteiroPanelProps) {
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingStep, setLoadingStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [roteiro, setRoteiro] = useState<Roteiro | null>(null);
+  const [fonte, setFonte] = useState<'gemini' | 'caption' | null>(null);
+  const [geminiData, setGeminiData] = useState<GeminiAnalysis | null>(null);
   const { getRoteiro, setRoteiro: saveRoteiro, aiAnalysis } = useVideos();
+
+  const hasVideo = !!reel.videoUrl;
+  const steps = hasVideo ? LOADING_STEPS : LOADING_STEPS_CAPTION;
 
   useEffect(() => {
     let cancelled = false;
+    let stepTimer: ReturnType<typeof setInterval> | null = null;
+
     const gerar = async () => {
       setLoading(true);
+      setLoadingStep(0);
       setError(null);
 
       const cached = getRoteiro(reel.id);
       if (cached) {
-        console.log('📦 Roteiro encontrado em cache — economizando tokens!');
+        console.log('📦 Roteiro encontrado em cache!');
         if (!cancelled) {
           setRoteiro(cached);
+          setFonte('gemini');
           setLoading(false);
         }
         return;
       }
+
+      // Anima os steps enquanto espera (1 step a cada ~8s)
+      stepTimer = setInterval(() => {
+        if (!cancelled) setLoadingStep(s => Math.min(s + 1, steps.length - 1));
+      }, 8000);
 
       try {
         const res = await fetch(`${API_URL}/api/roteiro`, {
@@ -83,17 +119,23 @@ export default function RoteiroPanel({ reel, profile, onClose }: RoteiroPanelPro
         const data = await res.json();
         if (!cancelled) {
           setRoteiro(data.roteiro);
+          setFonte(data.fonte || 'caption');
+          setGeminiData(data.geminiAnalysis || null);
           saveRoteiro(reel.id, data.roteiro);
-          console.log('✅ Roteiro gerado e cacheado!');
+          console.log(`✅ Roteiro via ${data.fonte} cacheado!`);
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Erro');
       } finally {
+        if (stepTimer) clearInterval(stepTimer);
         if (!cancelled) setLoading(false);
       }
     };
     gerar();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (stepTimer) clearInterval(stepTimer);
+    };
   }, [reel.id]);
 
   const handleCopy = () => {
@@ -181,9 +223,35 @@ ${(roteiro.hashtags_sugeridas || []).map((h) => '#' + h).join(' ')}`;
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-8 py-6 max-h-[70vh]" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           {loading && (
-            <div className="flex flex-col items-center justify-center py-12 gap-4">
-              <Loader className="animate-spin" size={40} style={{ color: '#003391' }} />
-              <p className="text-base font-semibold" style={{ color: '#191c1e' }}>Gerando roteiro com IA...</p>
+            <div className="flex flex-col items-center justify-center py-10 gap-6">
+              <div className="relative w-14 h-14 flex items-center justify-center">
+                <div className="absolute inset-0 rounded-full animate-spin" style={{ border: '3px solid #dbe1ff', borderTopColor: '#003391' }} />
+                <span className="material-symbols-outlined text-2xl" style={{ color: '#003391', fontVariationSettings: "'FILL' 1" }}>
+                  {steps[loadingStep]?.icon}
+                </span>
+              </div>
+              <div className="text-center">
+                <p className="text-base font-semibold mb-1" style={{ color: '#191c1e' }}>
+                  {steps[loadingStep]?.label}
+                </p>
+                <p className="text-xs" style={{ color: '#717683' }}>
+                  {hasVideo ? 'Analisando vídeo real com Gemini + Claude' : 'Usando legenda do reel'}
+                </p>
+              </div>
+              {/* Steps progress */}
+              <div className="flex items-center gap-2">
+                {steps.map((step, idx) => (
+                  <div key={step.id} className="flex items-center gap-2">
+                    <div
+                      className="w-2 h-2 rounded-full transition-all"
+                      style={{ backgroundColor: idx <= loadingStep ? '#003391' : '#c3c6d6' }}
+                    />
+                    {idx < steps.length - 1 && (
+                      <div className="w-8 h-px" style={{ backgroundColor: idx < loadingStep ? '#003391' : '#c3c6d6' }} />
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -196,6 +264,50 @@ ${(roteiro.hashtags_sugeridas || []).map((h) => '#' + h).join(' ')}`;
 
           {roteiro && !loading && (
             <>
+              {/* Badge de fonte */}
+              <div className="flex items-center gap-2">
+                {fonte === 'gemini' ? (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold" style={{ backgroundColor: '#005a6a', color: '#ffffff' }}>
+                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1", fontSize: '14px' }}>smart_toy</span>
+                    Análise real do vídeo (Gemini + Claude)
+                  </div>
+                ) : (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold" style={{ backgroundColor: '#e6e8ea', color: '#434655' }}>
+                    <span className="material-symbols-outlined text-sm" style={{ fontSize: '14px' }}>text_snippet</span>
+                    Baseado na legenda
+                  </div>
+                )}
+              </div>
+
+              {/* Transcrição real (só se Gemini rodou) */}
+              {geminiData?.transcricao && (
+                <section className="rounded-r-lg p-5" style={{ borderLeft: '4px solid #005a6a', backgroundColor: 'rgba(0, 90, 106, 0.04)' }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="material-symbols-outlined" style={{ color: '#005a6a', fontVariationSettings: "'FILL' 1" }}>mic</span>
+                    <h2 className="text-xs font-bold uppercase" style={{ color: '#005a6a', letterSpacing: '0.05em' }}>Transcrição real do vídeo</h2>
+                  </div>
+                  <p className="text-sm leading-relaxed italic" style={{ color: '#434655', lineHeight: '1.6' }}>
+                    "{geminiData.transcricao}"
+                  </p>
+                  {geminiData.gancho_visual && (
+                    <div className="mt-3 pt-3 flex items-start gap-2" style={{ borderTop: '1px solid rgba(0,90,106,0.15)' }}>
+                      <span className="material-symbols-outlined text-sm flex-shrink-0 mt-0.5" style={{ color: '#005a6a', fontVariationSettings: "'FILL' 1" }}>visibility</span>
+                      <p className="text-xs" style={{ color: '#005a6a' }}>
+                        <span className="font-bold">Gancho visual (0-3s):</span> {geminiData.gancho_visual}
+                      </p>
+                    </div>
+                  )}
+                  {geminiData.legendas_tela && (
+                    <div className="mt-2 flex items-start gap-2">
+                      <span className="material-symbols-outlined text-sm flex-shrink-0 mt-0.5" style={{ color: '#005a6a', fontVariationSettings: "'FILL' 1" }}>closed_caption</span>
+                      <p className="text-xs" style={{ color: '#005a6a' }}>
+                        <span className="font-bold">Texto na tela:</span> {geminiData.legendas_tela}
+                      </p>
+                    </div>
+                  )}
+                </section>
+              )}
+
               {/* 1. Por que funciona */}
               <section className="rounded-r-lg p-6" style={{ borderLeft: '4px solid #0047c3', backgroundColor: 'rgba(219, 225, 255, 0.08)' }}>
                 <div className="flex items-center gap-2 mb-3">

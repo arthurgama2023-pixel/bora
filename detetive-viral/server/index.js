@@ -1690,8 +1690,9 @@ Responda APENAS um JSON válido neste formato:
     const m = t.match(/\{[\s\S]*\}/);
     if (m) t = m[0];
     const roteiro = JSON.parse(t);
-    console.log(`[Roteiro] ✅ Roteiro gerado para reel de @${creator || '?'}`);
-    res.json({ roteiro });
+    const fonte = geminiAnalysis ? 'gemini' : 'caption';
+    console.log(`[Roteiro] ✅ Roteiro gerado via ${fonte} para @${creator || '?'}`);
+    res.json({ roteiro, fonte, geminiAnalysis });
   } catch (error) {
     console.error('[Roteiro] Erro:', error.message);
     res.status(500).json({ error: 'Não foi possível gerar o roteiro.', details: error.message });
