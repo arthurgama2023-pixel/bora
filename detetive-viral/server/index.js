@@ -1528,23 +1528,143 @@ app.post('/api/videos/from-user-profile', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// GERAR ROTEIRO: transcreve/reconstrói o roteiro de um reel via IA (Claude)
+// GEMINI: análise visual + áudio completa do vídeo
+// ══════════════════════════════════════════════════════════════════════════════
+async function analyzeVideoWithGemini(videoUrl) {
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_API_KEY || !videoUrl) return null;
+
+  try {
+    console.log(`[Gemini] 🎬 Analisando vídeo: ${videoUrl.slice(0, 60)}...`);
+
+    // 1. Baixar o vídeo como buffer
+    const videoRes = await axios.get(videoUrl, {
+      responseType: 'arraybuffer',
+      timeout: 30000,
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
+    const videoBuffer = Buffer.from(videoRes.data);
+    const mimeType = videoRes.headers['content-type'] || 'video/mp4';
+    console.log(`[Gemini] 📦 Vídeo baixado: ${(videoBuffer.length / 1024).toFixed(0)}KB`);
+
+    // 2. Upload para Files API do Gemini
+    const uploadRes = await axios.post(
+      `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${GEMINI_API_KEY}`,
+      videoBuffer,
+      {
+        headers: {
+          'Content-Type': mimeType,
+          'X-Goog-Upload-Command': 'upload, finalize',
+          'X-Goog-Upload-Header-Content-Length': videoBuffer.length,
+          'X-Goog-Upload-Header-Content-Type': mimeType,
+        },
+        timeout: 60000,
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+      }
+    );
+
+    const fileUri = uploadRes.data?.file?.uri;
+    if (!fileUri) throw new Error('Upload falhou — sem fileUri');
+    console.log(`[Gemini] ✅ Upload concluído: ${fileUri}`);
+
+    // 3. Aguarda o arquivo estar pronto (ACTIVE)
+    let fileState = uploadRes.data?.file?.state || 'PROCESSING';
+    const fileName = uploadRes.data?.file?.name;
+    let attempts = 0;
+    while (fileState === 'PROCESSING' && attempts < 10) {
+      await new Promise(r => setTimeout(r, 2000));
+      const stateRes = await axios.get(
+        `https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${GEMINI_API_KEY}`
+      );
+      fileState = stateRes.data?.state;
+      attempts++;
+    }
+    if (fileState !== 'ACTIVE') throw new Error(`Arquivo não ficou ACTIVE: ${fileState}`);
+
+    // 4. Analisar com Gemini 2.5 Flash
+    const analyzeRes = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        contents: [{
+          parts: [
+            { file_data: { mime_type: mimeType, file_uri: fileUri } },
+            { text: `Você é um roteirista profissional e analista de conteúdo viral. Analise esse reel com profundidade.
+
+Responda APENAS um JSON válido neste formato:
+{
+  "gancho_visual": "descreva exatamente o que acontece nos primeiros 3 segundos — o que aparece na tela, expressão, movimento, corte",
+  "transcricao": "transcrição literal de tudo que é falado ou aparece escrito na tela ao longo do vídeo",
+  "legendas_tela": "textos, emojis e legendas dinâmicas que aparecem sobrepostos na tela e quando aparecem",
+  "ritmo_edicao": "descreva o ritmo de cortes, transições, velocidade — ex: corte a cada 1s, zoom no ponto X, B-roll em Y",
+  "estrategia_narrativa": "qual é a estrutura narrativa usada — ex: Problema→Solução, Contrário→Revelação, Antes→Depois",
+  "por_que_para_o_scroll": "por que alguém pararia de scrollar nesse vídeo? qual elemento prende nos primeiros 2s?",
+  "tom_energia": "como o criador se comunica — urgência, humor, autoridade, intimidade? qual a energia do vídeo?",
+  "duracao_estimada": "duração estimada do vídeo em segundos"
+}` }
+          ]
+        }],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 1500 }
+      },
+      { timeout: 60000 }
+    );
+
+    const rawText = analyzeRes.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('Gemini não retornou JSON válido');
+
+    const analysis = JSON.parse(jsonMatch[0]);
+    console.log(`[Gemini] ✅ Análise concluída — gancho: "${analysis.gancho_visual?.slice(0, 60)}..."`);
+
+    // 5. Deletar arquivo do Gemini Files (limpeza)
+    axios.delete(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${GEMINI_API_KEY}`)
+      .catch(() => {}); // fire-and-forget
+
+    return analysis;
+  } catch (err) {
+    console.warn(`[Gemini] ⚠️ Falha na análise de vídeo: ${err.message} — usando só caption`);
+    return null;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// GERAR ROTEIRO: analisa vídeo com Gemini + gera roteiro com Claude
 // ══════════════════════════════════════════════════════════════════════════════
 app.post('/api/roteiro', async (req, res) => {
   try {
-    const { caption, creator, theme, niche, painPoints, desires, postUrl } = req.body;
+    const { caption, creator, theme, niche, painPoints, desires, postUrl, videoUrl } = req.body;
     if (!caption && !theme) {
       return res.status(400).json({ error: 'Faltam dados do vídeo para gerar o roteiro.' });
     }
+
+    // Análise Gemini (se tiver videoUrl) — enriquece muito o contexto
+    let geminiAnalysis = null;
+    if (videoUrl) {
+      geminiAnalysis = await analyzeVideoWithGemini(videoUrl);
+    }
+
+    const videoContext = geminiAnalysis ? `
+ANÁLISE VISUAL DO VÍDEO (via Gemini — dados reais):
+---
+Gancho visual (0-3s): ${geminiAnalysis.gancho_visual || '—'}
+Transcrição real: ${geminiAnalysis.transcricao || '—'}
+Texto na tela: ${geminiAnalysis.legendas_tela || '—'}
+Ritmo de edição: ${geminiAnalysis.ritmo_edicao || '—'}
+Estratégia narrativa: ${geminiAnalysis.estrategia_narrativa || '—'}
+Por que prende o scroll: ${geminiAnalysis.por_que_para_o_scroll || '—'}
+Tom/energia: ${geminiAnalysis.tom_energia || '—'}
+Duração: ${geminiAnalysis.duracao_estimada || '—'}
+---` : `
+Legenda (único dado disponível): ${caption || '(sem legenda)'}
+---`;
 
     const prompt = `Você é um analista de conteúdo viral e coach de roteiro. Sua missão é DESCONSTRUIR um reel que funcionou para ensinar o usuário a REPLICAR O PADRÃO.
 
 VÍDEO ORIGINAL (que viralizou):
 ---
 Criador: @${creator || 'desconhecido'}
-Legenda: ${caption || '(sem legenda)'}
 Nicho: ${niche || theme}
----
+${videoContext}
 
 PERFIL DO USUÁRIO (quem vai gravar):
 - Nicho: ${niche || theme}

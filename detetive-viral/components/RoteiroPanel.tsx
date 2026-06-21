@@ -17,6 +17,7 @@ interface RoteiroPanelProps {
     engagementRate: number;
     views?: number;
     postUrl?: string;
+    videoUrl?: string;
   };
   profile: {
     name: string;
@@ -75,6 +76,7 @@ export default function RoteiroPanel({ reel, profile, onClose }: RoteiroPanelPro
             painPoints: profile.painPoints,
             desires: profile.desires,
             postUrl: reel.postUrl,
+            videoUrl: reel.videoUrl,
           }),
         });
         if (!res.ok) throw new Error('Falha ao gerar roteiro');
@@ -194,31 +196,31 @@ ${(roteiro.hashtags_sugeridas || []).map((h) => '#' + h).join(' ')}`;
 
           {roteiro && !loading && (
             <>
-              {/* Por que funciona */}
-              <section className="rounded-r-lg p-6" style={{ borderLeft: '4px solid #0047c3', backgroundColor: 'rgba(219, 225, 255, 0.05)' }}>
+              {/* 1. Por que funciona */}
+              <section className="rounded-r-lg p-6" style={{ borderLeft: '4px solid #0047c3', backgroundColor: 'rgba(219, 225, 255, 0.08)' }}>
                 <div className="flex items-center gap-2 mb-3">
                   <span className="material-symbols-outlined" style={{ color: '#0047c3', fontVariationSettings: "'FILL' 1" }}>lightbulb</span>
                   <h2 className="text-xs font-bold uppercase" style={{ color: '#0047c3', letterSpacing: '0.05em' }}>Por que funciona</h2>
                 </div>
-                <p className="text-base leading-relaxed" style={{ fontWeight: '400', lineHeight: '1.6', color: '#191c1e' }}>
+                <p className="text-sm leading-relaxed" style={{ lineHeight: '1.6', color: '#191c1e' }}>
                   {roteiro.por_que_funciona}
                 </p>
               </section>
 
-              {/* Padrão viral */}
+              {/* 2. Padrão viral */}
               {padraoItems.length > 0 && (
-                <section className="rounded-r-lg p-6" style={{ borderLeft: '4px solid #712ae2', backgroundColor: 'rgba(112, 42, 226, 0.05)' }}>
+                <section className="rounded-r-lg p-6" style={{ borderLeft: '4px solid #712ae2', backgroundColor: 'rgba(112, 42, 226, 0.06)' }}>
                   <div className="flex items-center gap-2 mb-4">
                     <span className="material-symbols-outlined" style={{ color: '#712ae2', fontVariationSettings: "'FILL' 1" }}>videocam</span>
                     <h2 className="text-xs font-bold uppercase" style={{ color: '#712ae2', letterSpacing: '0.05em' }}>Padrão viral</h2>
                   </div>
-                  <ul className="space-y-2">
+                  <ul className="space-y-3">
                     {padraoItems.map((item, idx) => (
-                      <li key={idx} className="flex items-center gap-3">
-                        <span className="text-sm font-bold" style={{ color: '#712ae2', minWidth: '24px' }}>
+                      <li key={idx} className="flex items-start gap-3">
+                        <span className="text-sm font-bold flex-shrink-0" style={{ color: '#712ae2', minWidth: '24px' }}>
                           {String(idx + 1).padStart(2, '0')}
                         </span>
-                        <span className="text-base" style={{ color: '#191c1e' }}>
+                        <span className="text-sm" style={{ color: '#191c1e', lineHeight: '1.5' }}>
                           {item}
                         </span>
                       </li>
@@ -227,82 +229,53 @@ ${(roteiro.hashtags_sugeridas || []).map((h) => '#' + h).join(' ')}`;
                 </section>
               )}
 
-              {/* Gancho */}
-              <section className="rounded-r-lg p-6" style={{ borderLeft: '4px solid #005a6a', backgroundColor: 'rgba(0, 90, 106, 0.05)' }}>
+              {/* 3. Gancho */}
+              <section className="rounded-r-lg p-6" style={{ borderLeft: '4px solid #005a6a', backgroundColor: 'rgba(0, 90, 106, 0.06)' }}>
                 <div className="flex items-center gap-2 mb-3">
                   <span className="material-symbols-outlined" style={{ color: '#005a6a', fontVariationSettings: "'FILL' 1" }}>keep</span>
-                  <h2 className="text-xs font-bold uppercase" style={{ color: '#005a6a', letterSpacing: '0.05em' }}>Gancho (0-3s) — Legendas dinâmicas</h2>
+                  <h2 className="text-xs font-bold uppercase" style={{ color: '#005a6a', letterSpacing: '0.05em' }}>Gancho (0-3s)</h2>
                 </div>
-                <div className="p-4 rounded italic text-base" style={{ backgroundColor: '#f2f4f6', border: '1px solid #c3c6d6', color: '#717683' }}>
+                <div className="p-4 rounded text-sm italic" style={{ backgroundColor: '#f2f4f6', border: '1px solid #c3c6d6', color: '#434655', lineHeight: '1.6' }}>
                   "{roteiro.gancho}"
                 </div>
               </section>
 
-              {/* Métricas */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex flex-col gap-2 p-4 rounded-lg" style={{ backgroundColor: '#f2f4f6', border: '1px solid #c3c6d6' }}>
-                  <span className="text-xs font-bold uppercase" style={{ color: '#717683', letterSpacing: '0.05em' }}>Tempo estimado</span>
-                  <span className="text-lg font-bold" style={{ color: '#003391' }}>
-                    {roteiro.tempo_estimado || '45 segundos'}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-2 p-4 rounded-lg" style={{ backgroundColor: '#f2f4f6', border: '1px solid #c3c6d6' }}>
-                  <span className="text-xs font-bold uppercase" style={{ color: '#717683', letterSpacing: '0.05em' }}>Dificuldade</span>
-                  <div className="flex items-center gap-2">
-                    <div className="flex gap-1.5">
-                      {[1, 2, 3, 4, 5].map((i) => (
-                        <div
-                          key={i}
-                          className="w-2.5 h-2.5 rounded-full"
-                          style={{
-                            backgroundColor: i <= dificuldadeNum ? '#003391' : '#c3c6d6',
-                          }}
-                        />
-                      ))}
-                    </div>
-                    <span className="text-sm" style={{ color: '#191c1e' }}>
-                      {dificuldadeLabel}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Desenvolvimento */}
-              <section className="rounded-r-lg p-6" style={{ borderLeft: '4px solid #0047c3', backgroundColor: 'rgba(219, 225, 255, 0.05)' }}>
+              {/* 4. Desenvolvimento */}
+              <section className="rounded-r-lg p-6" style={{ borderLeft: '4px solid #0047c3', backgroundColor: 'rgba(219, 225, 255, 0.08)' }}>
                 <div className="flex items-center gap-2 mb-3">
                   <span className="material-symbols-outlined" style={{ color: '#0047c3', fontVariationSettings: "'FILL' 1" }}>notes</span>
                   <h2 className="text-xs font-bold uppercase" style={{ color: '#0047c3', letterSpacing: '0.05em' }}>Desenvolvimento</h2>
                 </div>
-                <p className="text-base leading-relaxed whitespace-pre-wrap" style={{ fontWeight: '400', lineHeight: '1.6', color: '#191c1e' }}>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ lineHeight: '1.6', color: '#191c1e' }}>
                   {roteiro.desenvolvimento}
                 </p>
               </section>
 
-              {/* CTA */}
-              <section className="rounded-r-lg p-6" style={{ borderLeft: '4px solid #712ae2', backgroundColor: 'rgba(112, 42, 226, 0.05)' }}>
+              {/* 5. CTA */}
+              <section className="rounded-r-lg p-6" style={{ borderLeft: '4px solid #712ae2', backgroundColor: 'rgba(112, 42, 226, 0.06)' }}>
                 <div className="flex items-center gap-2 mb-3">
                   <span className="material-symbols-outlined" style={{ color: '#712ae2', fontVariationSettings: "'FILL' 1" }}>send</span>
                   <h2 className="text-xs font-bold uppercase" style={{ color: '#712ae2', letterSpacing: '0.05em' }}>CTA (Chamada para ação)</h2>
                 </div>
-                <p className="text-base font-semibold" style={{ lineHeight: '1.6', color: '#191c1e' }}>
+                <p className="text-sm font-semibold" style={{ lineHeight: '1.6', color: '#191c1e' }}>
                   {roteiro.cta}
                 </p>
               </section>
 
-              {/* Exemplo adaptado */}
-              <section className="rounded-r-lg p-6" style={{ borderLeft: '4px solid #005a6a', backgroundColor: 'rgba(0, 90, 106, 0.05)' }}>
+              {/* 6. Como você faria */}
+              <section className="rounded-r-lg p-6" style={{ borderLeft: '4px solid #005a6a', backgroundColor: 'rgba(0, 90, 106, 0.06)' }}>
                 <div className="flex items-center gap-2 mb-3">
-                  <span className="material-symbols-outlined" style={{ color: '#005a6a', fontVariationSettings: "'FILL' 1" }}>lightbulb</span>
+                  <span className="material-symbols-outlined" style={{ color: '#005a6a', fontVariationSettings: "'FILL' 1" }}>edit_note</span>
                   <h2 className="text-xs font-bold uppercase" style={{ color: '#005a6a', letterSpacing: '0.05em' }}>Como você faria</h2>
                 </div>
-                <div className="p-4 rounded italic text-base" style={{ backgroundColor: '#f2f4f6', border: '1px solid #c3c6d6', color: '#717683' }}>
+                <div className="p-4 rounded text-sm italic" style={{ backgroundColor: '#f2f4f6', border: '1px solid #c3c6d6', color: '#434655', lineHeight: '1.6' }}>
                   "{roteiro.exemplo_adaptado}"
                 </div>
               </section>
 
-              {/* Hashtags */}
+              {/* 7. Hashtags */}
               {roteiro.hashtags_sugeridas?.length > 0 && (
-                <section className="rounded-r-lg p-6" style={{ borderLeft: '4px solid #0047c3', backgroundColor: 'rgba(219, 225, 255, 0.05)' }}>
+                <section className="rounded-r-lg p-6" style={{ borderLeft: '4px solid #0047c3', backgroundColor: 'rgba(219, 225, 255, 0.08)' }}>
                   <div className="flex items-center gap-2 mb-4">
                     <span className="material-symbols-outlined" style={{ color: '#0047c3', fontVariationSettings: "'FILL' 1" }}>label</span>
                     <h2 className="text-xs font-bold uppercase" style={{ color: '#0047c3', letterSpacing: '0.05em' }}>Hashtags sugeridas</h2>
@@ -316,6 +289,33 @@ ${(roteiro.hashtags_sugeridas || []).map((h) => '#' + h).join(' ')}`;
                   </div>
                 </section>
               )}
+
+              {/* 8. Métricas — sempre por último */}
+              <div className="grid grid-cols-2 gap-4 pt-2">
+                <div className="flex flex-col gap-2 p-4 rounded-lg" style={{ backgroundColor: '#f2f4f6', border: '1px solid #c3c6d6' }}>
+                  <span className="text-xs font-bold uppercase" style={{ color: '#717683', letterSpacing: '0.05em' }}>Tempo estimado</span>
+                  <span className="text-lg font-bold" style={{ color: '#003391' }}>
+                    {roteiro.tempo_estimado || '45 segundos'}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-2 p-4 rounded-lg" style={{ backgroundColor: '#f2f4f6', border: '1px solid #c3c6d6' }}>
+                  <span className="text-xs font-bold uppercase" style={{ color: '#717683', letterSpacing: '0.05em' }}>Dificuldade</span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="flex gap-1.5">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <div
+                          key={i}
+                          className="w-2.5 h-2.5 rounded-full"
+                          style={{ backgroundColor: i <= dificuldadeNum ? '#003391' : '#c3c6d6' }}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-sm" style={{ color: '#191c1e' }}>
+                      {dificuldadeLabel}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </>
           )}
         </div>
