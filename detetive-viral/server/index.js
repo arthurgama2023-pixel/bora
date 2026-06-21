@@ -1600,7 +1600,10 @@ Responda APENAS um JSON válido neste formato:
   "estrategia_narrativa": "qual é a estrutura narrativa usada — ex: Problema→Solução, Contrário→Revelação, Antes→Depois",
   "por_que_para_o_scroll": "por que alguém pararia de scrollar nesse vídeo? qual elemento prende nos primeiros 2s?",
   "tom_energia": "como o criador se comunica — urgência, humor, autoridade, intimidade? qual a energia do vídeo?",
-  "duracao_estimada": "duração estimada do vídeo em segundos"
+  "duracao_estimada": "duração estimada do vídeo em segundos",
+  "estrategia_detectada": "identifique QUAL estratégia viral foi usada: 'marca_em_alta' (usa marca/empresa/produto/pessoa famosa como isca de atenção), 'revelacao' (revela algo que poucos sabem), 'educativo' (ensina algo prático), 'transformacao' (antes/depois), 'opiniao_polarizante' (toma posição que divide opiniões), 'outro'",
+  "marca_ou_tema_usado": "se estrategia_detectada for marca_em_alta: nome exato da marca, empresa, produto, pessoa famosa ou tema viral citado — caso contrário null",
+  "pergunta_engajamento": "a pergunta ou frase de encerramento exata usada pra provocar comentários (ex: 'Você faria isso?', 'Concorda ou discorda?') — ou null se não houver"
 }` }
           ]
         }],
@@ -1713,12 +1716,65 @@ Responda APENAS um JSON válido:
 }`;
 }
 
+// ── Prompt MARCA EM ALTA: estratégia viral de piggybacking ───────────────────
+// 4 tempos: isca de relevância → revelação → posicionamento → abertura para tribos
+function buildPromptMarcaEmAlta({ creator, niche, theme, painPoints, desires, marcaTema, geminiAnalysis }) {
+  const g = geminiAnalysis || {};
+  const baseVideo = g.transcricao
+    ? `VÍDEO DE REFERÊNCIA ANALISADO (para calibrar ritmo e energia):
+Marca/tema usado no original: ${g.marca_ou_tema_usado || marcaTema}
+O que o criador disse: "${g.transcricao}"
+Como encerrou: ${g.pergunta_engajamento || '(não identificado)'}
+Ritmo de edição: ${g.ritmo_edicao || '(não identificado)'}
+Tom/energia: ${g.tom_energia || '(não identificado)'}
+`
+    : '';
+
+  return `Você é um roteirista criando um guia de gravação para alguém que NÃO entende de marketing.
+
+A ESTRATÉGIA VIRAL que vamos usar: MARCA EM ALTA — pegar uma marca, empresa ou tema muito comentado no momento e usá-la como gancho pra gerar engajamento.
+
+Como funciona essa estratégia (4 tempos obrigatórios):
+1. ISCA — mencionar "${marcaTema}" nos primeiros 3 segundos (quem conhece para o scroll automaticamente)
+2. REVELAÇÃO — trazer algo sobre "${marcaTema}" que o público ainda não parou pra pensar
+3. POSICIONAMENTO — o criador dá a opinião dele (concordar OU discordar — tanto faz, o que importa é ter posição)
+4. ABERTURA PARA TRIBOS — terminar com pergunta que DIVIDE opiniões (o algoritmo não distingue comentário positivo de negativo — todo comentário é alcance)
+
+${baseVideo}
+QUEM VAI GRAVAR:
+- Nicho: ${niche || theme}
+- Marca/tema em alta escolhida: "${marcaTema}"
+${painPoints ? `- Contexto do público: ${painPoints}` : ''}
+${desires ? `- O que o público quer: ${desires}` : ''}
+
+REGRAS OBRIGATÓRIAS:
+- abertura_fala: DEVE citar "${marcaTema}" nos primeiros 3 segundos
+- meio: DEVE incluir uma revelação/ângulo surpreendente sobre "${marcaTema}" + o posicionamento do criador
+- final: OBRIGATÓRIO ser uma pergunta que divida opiniões sobre "${marcaTema}" — sem posição segura, sem resposta óbvia
+- Adapte a revelação para ser relevante pro nicho ${niche || theme}
+- Fale como amigo, sem jargão de marketing
+
+Responda APENAS um JSON válido:
+{
+  "por_que_viral": "2 frases simples explicando por que citar '${marcaTema}' vai parar o scroll e gerar comentários — sem jargão",
+  "abertura_fala": "frase de abertura que cita '${marcaTema}' nos primeiros 3 segundos de forma que prenda atenção",
+  "abertura_visual": "o que a pessoa deveria estar fazendo/mostrando enquanto fala a abertura",
+  "meio": ["revelação/ângulo surpreendente sobre ${marcaTema} relevante pro nicho ${niche || theme}", "desenvolvimento do posicionamento do criador", "conexão com o público e o que isso significa pra eles"],
+  "final": "a pergunta que obrigatoriamente vai dividir opiniões sobre ${marcaTema} — algo que faz metade concordar e metade discordar",
+  "dicas_edicao": ["dica de edição para dar força ao gancho com ${marcaTema}", "dica 2", "dica 3"],
+  "sua_versao": "escreva o roteiro COMPLETO pronto pra gravar — abertura citando '${marcaTema}', desenvolvimento com revelação e posicionamento, e a pergunta final que divide",
+  "hashtags_sugeridas": ["5 hashtags que misturam o nicho ${niche || theme} com o tema ${marcaTema}"],
+  "tempo_estimado": "20 a 40 segundos",
+  "dificuldade": número de 1 a 5
+}`;
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // GERAR ROTEIRO: analisa vídeo com Gemini + gera roteiro com Claude
 // ══════════════════════════════════════════════════════════════════════════════
 app.post('/api/roteiro', async (req, res) => {
   try {
-    const { caption, creator, theme, niche, painPoints, desires, postUrl, videoUrl } = req.body;
+    const { caption, creator, theme, niche, painPoints, desires, postUrl, videoUrl, marcaTema } = req.body;
     if (!caption && !theme) {
       return res.status(400).json({ error: 'Faltam dados do vídeo para gerar o roteiro.' });
     }
@@ -1729,18 +1785,25 @@ app.post('/api/roteiro', async (req, res) => {
       geminiAnalysis = await analyzeVideoWithGemini(videoUrl);
     }
 
-    // Dois prompts completamente diferentes dependendo da fonte dos dados
-    const prompt = geminiAnalysis
-      ? buildPromptComGemini({ creator, niche, theme, painPoints, desires, geminiAnalysis })
-      : buildPromptSemGemini({ creator, niche, theme, caption, painPoints, desires });
+    // Três prompts: marca em alta > gemini > caption
+    let prompt;
+    let estrategia = null;
+    if (marcaTema) {
+      prompt = buildPromptMarcaEmAlta({ creator, niche, theme, painPoints, desires, marcaTema, geminiAnalysis });
+      estrategia = 'marca_em_alta';
+    } else if (geminiAnalysis) {
+      prompt = buildPromptComGemini({ creator, niche, theme, painPoints, desires, geminiAnalysis });
+    } else {
+      prompt = buildPromptSemGemini({ creator, niche, theme, caption, painPoints, desires });
+    }
 
     let t = await callClaude(prompt, 1200);
     const m = t.match(/\{[\s\S]*\}/);
     if (m) t = m[0];
     const roteiro = JSON.parse(t);
     const fonte = geminiAnalysis ? 'gemini' : 'caption';
-    console.log(`[Roteiro] ✅ Roteiro gerado via ${fonte} para @${creator || '?'}`);
-    res.json({ roteiro, fonte, geminiAnalysis });
+    console.log(`[Roteiro] ✅ Roteiro gerado via ${estrategia || fonte} para @${creator || '?'}`);
+    res.json({ roteiro, fonte, geminiAnalysis, estrategia });
   } catch (error) {
     console.error('[Roteiro] Erro:', error.message);
     res.status(500).json({ error: 'Não foi possível gerar o roteiro.', details: error.message });

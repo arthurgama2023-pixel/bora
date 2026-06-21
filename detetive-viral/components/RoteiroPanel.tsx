@@ -51,6 +51,9 @@ interface GeminiAnalysis {
   por_que_para_o_scroll?: string;
   tom_energia?: string;
   duracao_estimada?: string;
+  estrategia_detectada?: string;
+  marca_ou_tema_usado?: string;
+  pergunta_engajamento?: string;
 }
 
 const LOADING_STEPS_VIDEO = [
@@ -70,6 +73,9 @@ export default function RoteiroPanel({ reel, profile, onClose }: RoteiroPanelPro
   const [roteiro, setRoteiro] = useState<Roteiro | null>(null);
   const [fonte, setFonte] = useState<'gemini' | 'caption' | null>(null);
   const [geminiData, setGeminiData] = useState<GeminiAnalysis | null>(null);
+  const [marcaTema, setMarcaTema] = useState('');
+  const [gerandoMarca, setGerandoMarca] = useState(false);
+  const [estrategia, setEstrategia] = useState<string | null>(null);
   const { getRoteiro, setRoteiro: saveRoteiro, aiAnalysis } = useVideos();
 
   const hasVideo = !!reel.videoUrl;
@@ -119,6 +125,7 @@ export default function RoteiroPanel({ reel, profile, onClose }: RoteiroPanelPro
           setRoteiro(data.roteiro);
           setFonte(data.fonte || 'caption');
           setGeminiData(data.geminiAnalysis || null);
+          setEstrategia(data.estrategia || null);
           saveRoteiro(reel.id, data.roteiro);
         }
       } catch (e) {
@@ -180,6 +187,37 @@ ${(roteiro.hashtags_sugeridas || []).map(h => '#' + String(h).replace(/^#+/, '')
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
+  };
+
+  const gerarComMarca = async () => {
+    if (!marcaTema.trim() || gerandoMarca) return;
+    setGerandoMarca(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_URL}/api/roteiro`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caption: reel.caption || reel.description,
+          creator: reel.creator,
+          theme: reel.theme,
+          niche: aiAnalysis?.nicho || profile.niche || reel.theme,
+          painPoints: profile.painPoints,
+          desires: profile.desires,
+          videoUrl: reel.videoUrl,
+          marcaTema: marcaTema.trim(),
+        }),
+      });
+      if (!res.ok) throw new Error('Falha ao gerar roteiro');
+      const data = await res.json();
+      setRoteiro(data.roteiro);
+      setFonte(data.fonte || 'caption');
+      setEstrategia('marca_em_alta');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro');
+    } finally {
+      setGerandoMarca(false);
+    }
   };
 
   return (
@@ -246,7 +284,7 @@ ${(roteiro.hashtags_sugeridas || []).map(h => '#' + String(h).replace(/^#+/, '')
           {roteiro && !loading && (
             <>
               {/* Badge de fonte */}
-              <div>
+              <div className="flex flex-wrap gap-2">
                 {fonte === 'gemini' ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold" style={{ backgroundColor: '#005a6a', color: '#fff' }}>
                     <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1", fontSize: '14px' }}>smart_toy</span>
@@ -256,6 +294,12 @@ ${(roteiro.hashtags_sugeridas || []).map(h => '#' + String(h).replace(/^#+/, '')
                   <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold" style={{ backgroundColor: '#e6e8ea', color: '#434655' }}>
                     <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>text_snippet</span>
                     Baseado na legenda
+                  </span>
+                )}
+                {estrategia === 'marca_em_alta' && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold" style={{ backgroundColor: '#b45309', color: '#fff' }}>
+                    <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1", fontSize: '14px' }}>trending_up</span>
+                    Roteiro com Marca em Alta
                   </span>
                 )}
               </div>
@@ -268,6 +312,32 @@ ${(roteiro.hashtags_sugeridas || []).map(h => '#' + String(h).replace(/^#+/, '')
                     <h2 className="text-xs font-bold uppercase" style={{ color: '#005a6a', letterSpacing: '0.05em' }}>O que foi dito no vídeo (transcrição real)</h2>
                   </div>
                   <p className="text-sm italic leading-relaxed" style={{ color: '#434655' }}>"{geminiData.transcricao}"</p>
+                </section>
+              )}
+
+              {/* Estratégia detectada pelo Gemini */}
+              {geminiData?.estrategia_detectada === 'marca_em_alta' && (
+                <section className="rounded-r-lg p-4" style={{ borderLeft: '4px solid #b45309', backgroundColor: 'rgba(180,83,9,0.05)' }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="material-symbols-outlined text-sm" style={{ color: '#b45309', fontVariationSettings: "'FILL' 1" }}>trending_up</span>
+                    <h2 className="text-xs font-bold uppercase" style={{ color: '#b45309', letterSpacing: '0.05em' }}>Estratégia detectada: Marca em Alta</h2>
+                  </div>
+                  <div className="space-y-1.5">
+                    {geminiData.marca_ou_tema_usado && (
+                      <p className="text-sm" style={{ color: '#434655' }}>
+                        <span className="font-bold">Isca usada:</span> {geminiData.marca_ou_tema_usado}
+                      </p>
+                    )}
+                    {geminiData.pergunta_engajamento && (
+                      <p className="text-sm" style={{ color: '#434655' }}>
+                        <span className="font-bold">Pergunta que abriu tribos:</span>{' '}
+                        <span className="italic">"{geminiData.pergunta_engajamento}"</span>
+                      </p>
+                    )}
+                    <p className="text-xs mt-2" style={{ color: '#92400e' }}>
+                      Lógica: marca relevante → revelação → posicionamento → pergunta polarizante → comentários explodem dos dois lados
+                    </p>
+                  </div>
                 </section>
               )}
 
@@ -382,6 +452,43 @@ ${(roteiro.hashtags_sugeridas || []).map(h => '#' + String(h).replace(/^#+/, '')
                 </section>
               )}
 
+              {/* Aplicar estratégia: Marca em Alta */}
+              <section className="rounded-r-lg p-5" style={{ borderLeft: '4px solid #b45309', backgroundColor: 'rgba(180,83,9,0.04)' }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="material-symbols-outlined" style={{ color: '#b45309', fontVariationSettings: "'FILL' 1" }}>trending_up</span>
+                  <h2 className="text-xs font-bold uppercase" style={{ color: '#b45309', letterSpacing: '0.05em' }}>Aplicar estratégia: Marca em Alta</h2>
+                </div>
+                <p className="text-xs mb-3" style={{ color: '#717683' }}>
+                  Escolha uma marca, empresa ou tema muito comentado agora. O roteiro vai usar isso como isca pra parar o scroll e gerar comentários dos dois lados.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={marcaTema}
+                    onChange={(e) => setMarcaTema(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && gerarComMarca()}
+                    placeholder="Ex: OpenAI, iPhone 16, Nubank, Shein..."
+                    className="flex-1 px-3 py-2 text-sm rounded-lg"
+                    style={{ border: '1px solid #c3c6d6', outline: 'none', color: '#191c1e', backgroundColor: '#fff' }}
+                  />
+                  <button
+                    onClick={gerarComMarca}
+                    disabled={!marcaTema.trim() || gerandoMarca}
+                    className="px-4 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1"
+                    style={{ backgroundColor: '#b45309', color: '#fff' }}
+                  >
+                    {gerandoMarca ? (
+                      <span className="material-symbols-outlined" style={{ fontSize: '16px', animation: 'spin 1s linear infinite' }}>sync</span>
+                    ) : (
+                      <>
+                        <span className="material-symbols-outlined" style={{ fontSize: '14px', fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                        Gerar
+                      </>
+                    )}
+                  </button>
+                </div>
+              </section>
+
               {/* 6. Métricas */}
               <div className="grid grid-cols-2 gap-3 pb-2">
                 <div className="flex flex-col gap-1 p-4 rounded-lg" style={{ backgroundColor: '#f2f4f6', border: '1px solid #c3c6d6' }}>
@@ -428,6 +535,10 @@ ${(roteiro.hashtags_sugeridas || []).map(h => '#' + String(h).replace(/^#+/, '')
         }
         .animate-fade-in-up {
           animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
         }
       `}</style>
     </div>
