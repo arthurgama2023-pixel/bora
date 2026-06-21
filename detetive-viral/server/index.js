@@ -1627,6 +1627,98 @@ Responda APENAS um JSON válido neste formato:
   }
 }
 
+// ── Prompt COM análise real do Gemini ─────────────────────────────────────────
+// O roteiro é extraído do vídeo real — gancho, fala, edição, CTA literais.
+// Claude organiza e ensina, não inventa.
+function buildPromptComGemini({ creator, niche, theme, painPoints, desires, geminiAnalysis: g }) {
+  return `Você é um roteirista profissional. Você tem em mãos a análise COMPLETA de um reel que viralizou, feita quadro a quadro pelo Gemini. Sua missão: DESCONSTRUIR o que foi feito de verdade nesse vídeo e montar um roteiro detalhado que ensine o usuário a replicar o padrão.
+
+DADOS REAIS DO VÍDEO (extraídos pelo Gemini — use LITERALMENTE):
+═══════════════════════════════════════════════════
+Criador: @${creator || 'desconhecido'}
+Nicho: ${niche || theme}
+
+TRANSCRIÇÃO REAL (o que foi falado no vídeo, palavra por palavra):
+"${g.transcricao || '(não identificado)'}"
+
+GANCHO VISUAL (primeiros 0-3s — o que aparece na tela e é dito):
+"${g.gancho_visual || '(não identificado)'}"
+
+TEXTOS E LEGENDAS NA TELA:
+${g.legendas_tela || '(nenhum identificado)'}
+
+RITMO DE EDIÇÃO E CORTES:
+${g.ritmo_edicao || '(não identificado)'}
+
+ESTRATÉGIA NARRATIVA USADA:
+${g.estrategia_narrativa || '(não identificado)'}
+
+POR QUE PARA O SCROLL:
+${g.por_que_para_o_scroll || '(não identificado)'}
+
+TOM E ENERGIA DO CRIADOR:
+${g.tom_energia || '(não identificado)'}
+
+DURAÇÃO REAL:
+${g.duracao_estimada || '(não identificado)'}
+═══════════════════════════════════════════════════
+
+PERFIL DO USUÁRIO (quem vai adaptar esse padrão):
+- Nicho: ${niche || theme}
+${painPoints ? `- Dores do público: ${painPoints}` : ''}
+${desires ? `- Desejos do público: ${desires}` : ''}
+
+REGRAS CRÍTICAS:
+1. O campo "gancho" deve ser AS PRIMEIRAS PALAVRAS REAIS ditas no vídeo (da transcrição), não uma frase inventada
+2. O campo "desenvolvimento" deve refletir o que foi REALMENTE dito no meio do vídeo
+3. O campo "cta" deve ser o que o criador REALMENTE pediu no final
+4. O campo "padrao_que_funciona" deve listar as técnicas REAIS de edição observadas (cortes, legendas, ritmo)
+5. O campo "exemplo_adaptado" é o ÚNICO lugar onde você adapta para o nicho do usuário
+6. NÃO invente nada — se não está na transcrição ou análise, diga que não foi identificado
+7. "tempo_estimado" = a duração real do vídeo (${g.duracao_estimada || 'use a duração real'})
+
+Responda APENAS um JSON válido:
+{
+  "por_que_funciona": "explique a PSICOLOGIA real por trás do gancho/estrutura desse vídeo específico — por que aquelas palavras exatas prendem atenção nesse nicho",
+  "padrao_que_funciona": ["técnica real de edição 1 (ex: 'Corte seco nos primeiros 0.5s sem música')", "técnica 2 (ex: 'Legenda GRANDE centralizada aparece antes da fala')", "técnica 3 do ritmo real observado", "...até 5 técnicas reais"],
+  "gancho": "as primeiras palavras/frase REAL do vídeo extraída da transcrição (primeiros 3s)",
+  "desenvolvimento": "o que foi dito no meio do vídeo, parafraseando a transcrição real em passos claros",
+  "cta": "a chamada para ação REAL que o criador usou no final do vídeo",
+  "exemplo_adaptado": "como o usuário do nicho '${niche || theme}' faria um vídeo seguindo EXATAMENTE esse padrão — gancho no mesmo estilo, mesmo ritmo de edição, mesmo tipo de revelação",
+  "hashtags_sugeridas": ["5-8 hashtags reais do nicho ${niche || theme}"],
+  "tempo_estimado": "${g.duracao_estimada || 'duração real do vídeo'}",
+  "dificuldade": número de 1 a 5 baseado na complexidade real da edição observada
+}`;
+}
+
+// ── Prompt SEM Gemini (só caption disponível) ──────────────────────────────────
+function buildPromptSemGemini({ creator, niche, theme, caption, painPoints, desires }) {
+  return `Você é um analista de conteúdo viral. Com base apenas na legenda abaixo, reconstrua a estrutura provável do reel e ensine o usuário a criar algo no mesmo estilo.
+
+VÍDEO ORIGINAL:
+Criador: @${creator || 'desconhecido'}
+Nicho: ${niche || theme}
+Legenda: "${caption || '(sem legenda)'}"
+
+PERFIL DO USUÁRIO:
+- Nicho: ${niche || theme}
+${painPoints ? `- Dores do público: ${painPoints}` : ''}
+${desires ? `- Desejos do público: ${desires}` : ''}
+
+Responda APENAS um JSON válido:
+{
+  "por_que_funciona": "2-3 frases sobre a estrutura e psicologia por trás dessa abordagem nesse nicho",
+  "padrao_que_funciona": ["3-5 técnicas prováveis usadas nesse tipo de conteúdo"],
+  "gancho": "frase de abertura (0-3s) baseada no estilo da legenda — específica para esse nicho",
+  "desenvolvimento": "3-4 passos/frases que entregam valor no corpo do vídeo",
+  "cta": "chamada para ação específica para esse nicho",
+  "exemplo_adaptado": "como o usuário faria um vídeo similar para o nicho '${niche || theme}'",
+  "hashtags_sugeridas": ["5-8 hashtags do nicho ${niche || theme}"],
+  "tempo_estimado": "30 a 60 segundos",
+  "dificuldade": número de 1 a 5
+}`;
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // GERAR ROTEIRO: analisa vídeo com Gemini + gera roteiro com Claude
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1643,48 +1735,10 @@ app.post('/api/roteiro', async (req, res) => {
       geminiAnalysis = await analyzeVideoWithGemini(videoUrl);
     }
 
-    const videoContext = geminiAnalysis ? `
-ANÁLISE VISUAL DO VÍDEO (via Gemini — dados reais):
----
-Gancho visual (0-3s): ${geminiAnalysis.gancho_visual || '—'}
-Transcrição real: ${geminiAnalysis.transcricao || '—'}
-Texto na tela: ${geminiAnalysis.legendas_tela || '—'}
-Ritmo de edição: ${geminiAnalysis.ritmo_edicao || '—'}
-Estratégia narrativa: ${geminiAnalysis.estrategia_narrativa || '—'}
-Por que prende o scroll: ${geminiAnalysis.por_que_para_o_scroll || '—'}
-Tom/energia: ${geminiAnalysis.tom_energia || '—'}
-Duração: ${geminiAnalysis.duracao_estimada || '—'}
----` : `
-Legenda (único dado disponível): ${caption || '(sem legenda)'}
----`;
-
-    const prompt = `Você é um analista de conteúdo viral e coach de roteiro. Sua missão é DESCONSTRUIR um reel que funcionou para ensinar o usuário a REPLICAR O PADRÃO.
-
-VÍDEO ORIGINAL (que viralizou):
----
-Criador: @${creator || 'desconhecido'}
-Nicho: ${niche || theme}
-${videoContext}
-
-PERFIL DO USUÁRIO (quem vai gravar):
-- Nicho: ${niche || theme}
-${painPoints ? `- Dores do público: ${painPoints}` : ''}
-${desires ? `- Desejos do público: ${desires}` : ''}
-
-TAREFA: Analise estruturalmente POR QUÊ esse vídeo funcionou, depois ensine ao usuário como fazer ALGO SIMILAR (não cópia, mas seguindo o PADRÃO que funciona).
-
-Responda APENAS um JSON válido neste formato:
-{
-  "por_que_funciona": "2-3 frases explicando a ESTRUTURA e PSICOLOGIA por trás do vídeo original (por que aquele gancho/abordagem funciona naquele nicho)",
-  "padrao_que_funciona": ["3-5 técnicas/elementos do padrão viral, uma por item (ex: 'Corte seco inicial para gerar dinamismo', 'Legendas dinâmicas no centro da tela', 'Revelação contrária no fim')"],
-  "gancho": "frase de 0-3s que PRENDE ATENÇÃO — específica para seu nicho e público (use as dores/desejos dele, não cópia genérica)",
-  "desenvolvimento": "3-4 passos/frases que entregam VALOR (por que a dor existe, o que faz mal, qual é a solução, prova/exemplo)",
-  "cta": "ação específica que você quer que o público faça (não genérico 'me siga', mas algo que IMPORTA pro seu nicho)",
-  "exemplo_adaptado": "exemplo concreto do que VOCÊ poderia falar usando esse padrão (em 2-3 frases, mostrando como adaptar mantendo a estrutura)",
-  "hashtags_sugeridas": ["5-8 hashtags específicas do nicho"],
-  "tempo_estimado": "duração ideal do vídeo (ex: '30 segundos', '45 segundos', '1 minuto')",
-  "dificuldade": "número de 1 a 5 indicando a dificuldade de produzir esse reel (1=muito fácil, 5=difícil)"
-}`;
+    // Dois prompts completamente diferentes dependendo da fonte dos dados
+    const prompt = geminiAnalysis
+      ? buildPromptComGemini({ creator, niche, theme, painPoints, desires, geminiAnalysis })
+      : buildPromptSemGemini({ creator, niche, theme, caption, painPoints, desires });
 
     let t = await callClaude(prompt, 1200);
     const m = t.match(/\{[\s\S]*\}/);
