@@ -175,7 +175,7 @@ ${edicaoItems.map((d, i) => `${i + 1}. ${d}`).join('\n')}
 ${roteiro.sua_versao}
 
 🏷️ HASHTAGS:
-${(roteiro.hashtags_sugeridas || []).map(h => '#' + h).join(' ')}`;
+${(roteiro.hashtags_sugeridas || []).map(h => '#' + String(h).replace(/^#+/, '')).join(' ')}`;
 
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -375,7 +375,7 @@ ${(roteiro.hashtags_sugeridas || []).map(h => '#' + h).join(' ')}`;
                   <div className="flex flex-wrap gap-2">
                     {roteiro.hashtags_sugeridas.map((tag, i) => (
                       <span key={i} className="text-xs font-bold px-3 py-1.5 rounded-full" style={{ color: '#003391', backgroundColor: '#dbe1ff' }}>
-                        #{tag}
+                        #{String(tag).replace(/^#+/, '')}
                       </span>
                     ))}
                   </div>
