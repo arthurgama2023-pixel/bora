@@ -29,12 +29,13 @@ interface AiAnalysis {
 }
 
 interface Roteiro {
-  por_que_funciona: string;
-  padrao_que_funciona: string | string[];
-  gancho: string;
-  desenvolvimento: string;
-  cta: string;
-  exemplo_adaptado: string;
+  por_que_viral: string;
+  abertura_fala: string;
+  abertura_visual: string;
+  meio: string[];
+  final: string;
+  dicas_edicao: string[];
+  sua_versao: string;
   hashtags_sugeridas: string[];
   tempo_estimado?: string;
   dificuldade?: number | string;

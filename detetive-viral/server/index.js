@@ -1631,90 +1631,84 @@ Responda APENAS um JSON válido neste formato:
 // O roteiro é extraído do vídeo real — gancho, fala, edição, CTA literais.
 // Claude organiza e ensina, não inventa.
 function buildPromptComGemini({ creator, niche, theme, painPoints, desires, geminiAnalysis: g }) {
-  return `Você é um roteirista profissional. Você tem em mãos a análise COMPLETA de um reel que viralizou, feita quadro a quadro pelo Gemini. Sua missão: DESCONSTRUIR o que foi feito de verdade nesse vídeo e montar um roteiro detalhado que ensine o usuário a replicar o padrão.
+  return `Você é um roteirista profissional criando um guia de gravação para alguém que NÃO entende de marketing. A pessoa vai ler isso, pegar o celular e gravar. Sem jargão, sem termos técnicos.
 
-DADOS REAIS DO VÍDEO (extraídos pelo Gemini — use LITERALMENTE):
+VÍDEO ORIGINAL ANALISADO (dados reais extraídos pelo Gemini):
 ═══════════════════════════════════════════════════
-Criador: @${creator || 'desconhecido'}
-Nicho: ${niche || theme}
+Criador: @${creator || 'desconhecido'} | Nicho: ${niche || theme}
+Duração real: ${g.duracao_estimada || '?'}
 
-TRANSCRIÇÃO REAL (o que foi falado no vídeo, palavra por palavra):
+TRANSCRIÇÃO REAL (o que foi falado, palavra por palavra):
 "${g.transcricao || '(não identificado)'}"
 
-GANCHO VISUAL (primeiros 0-3s — o que aparece na tela e é dito):
+ABERTURA REAL (primeiros 0-3s — o que apareceu na tela e foi dito):
 "${g.gancho_visual || '(não identificado)'}"
 
 TEXTOS E LEGENDAS NA TELA:
-${g.legendas_tela || '(nenhum identificado)'}
+${g.legendas_tela || '(nenhum)'}
 
-RITMO DE EDIÇÃO E CORTES:
+COMO FOI EDITADO:
 ${g.ritmo_edicao || '(não identificado)'}
 
-ESTRATÉGIA NARRATIVA USADA:
-${g.estrategia_narrativa || '(não identificado)'}
-
-POR QUE PARA O SCROLL:
+POR QUE PRENDEU ATENÇÃO:
 ${g.por_que_para_o_scroll || '(não identificado)'}
 
-TOM E ENERGIA DO CRIADOR:
+ENERGIA DO CRIADOR:
 ${g.tom_energia || '(não identificado)'}
-
-DURAÇÃO REAL:
-${g.duracao_estimada || '(não identificado)'}
 ═══════════════════════════════════════════════════
 
-PERFIL DO USUÁRIO (quem vai adaptar esse padrão):
+QUEM VAI GRAVAR:
 - Nicho: ${niche || theme}
 ${painPoints ? `- Dores do público: ${painPoints}` : ''}
 ${desires ? `- Desejos do público: ${desires}` : ''}
 
-REGRAS CRÍTICAS:
-1. O campo "gancho" deve ser AS PRIMEIRAS PALAVRAS REAIS ditas no vídeo (da transcrição), não uma frase inventada
-2. O campo "desenvolvimento" deve refletir o que foi REALMENTE dito no meio do vídeo
-3. O campo "cta" deve ser o que o criador REALMENTE pediu no final
-4. O campo "padrao_que_funciona" deve listar as técnicas REAIS de edição observadas (cortes, legendas, ritmo)
-5. O campo "exemplo_adaptado" é o ÚNICO lugar onde você adapta para o nicho do usuário
-6. NÃO invente nada — se não está na transcrição ou análise, diga que não foi identificado
-7. "tempo_estimado" = a duração real do vídeo (${g.duracao_estimada || 'use a duração real'})
+REGRAS:
+- Use a transcrição real como base — não invente falas
+- "abertura_fala" = as primeiras palavras REAIS do vídeo (da transcrição)
+- "meio" = o que foi dito no meio, em pontos simples
+- "final" = como o criador encerrou de verdade
+- "dicas_edicao" = técnicas reais de edição observadas pelo Gemini
+- "sua_versao" = único campo onde você adapta pro nicho do usuário (2-3 frases prontas pra gravar)
+- Fale como se fosse um amigo explicando, não como manual de marketing
 
 Responda APENAS um JSON válido:
 {
-  "por_que_funciona": "explique a PSICOLOGIA real por trás do gancho/estrutura desse vídeo específico — por que aquelas palavras exatas prendem atenção nesse nicho",
-  "padrao_que_funciona": ["técnica real de edição 1 (ex: 'Corte seco nos primeiros 0.5s sem música')", "técnica 2 (ex: 'Legenda GRANDE centralizada aparece antes da fala')", "técnica 3 do ritmo real observado", "...até 5 técnicas reais"],
-  "gancho": "as primeiras palavras/frase REAL do vídeo extraída da transcrição (primeiros 3s)",
-  "desenvolvimento": "o que foi dito no meio do vídeo, parafraseando a transcrição real em passos claros",
-  "cta": "a chamada para ação REAL que o criador usou no final do vídeo",
-  "exemplo_adaptado": "como o usuário do nicho '${niche || theme}' faria um vídeo seguindo EXATAMENTE esse padrão — gancho no mesmo estilo, mesmo ritmo de edição, mesmo tipo de revelação",
-  "hashtags_sugeridas": ["5-8 hashtags reais do nicho ${niche || theme}"],
-  "tempo_estimado": "${g.duracao_estimada || 'duração real do vídeo'}",
-  "dificuldade": número de 1 a 5 baseado na complexidade real da edição observada
+  "por_que_viral": "explique em 2 frases simples por que esse vídeo fez as pessoas pararem de rolar o feed — sem jargão, como você contaria pra um amigo",
+  "abertura_fala": "as primeiras palavras REAIS ditas no vídeo (da transcrição), que prendem atenção nos primeiros 3 segundos",
+  "abertura_visual": "o que o criador estava fazendo/mostrando enquanto falava a abertura (expressão, posição, o que aparecia na tela)",
+  "meio": ["ponto 1 do que foi dito/mostrado no meio do vídeo", "ponto 2", "ponto 3 — máximo 4 pontos, diretos e simples"],
+  "final": "como o criador encerrou o vídeo e o que pediu pras pessoas fazerem",
+  "dicas_edicao": ["dica real de edição observada no vídeo 1 (ex: 'Coloca uma legenda grande no centro da tela logo no começo')", "dica 2", "dica 3 — máximo 4, práticas e sem jargão"],
+  "sua_versao": "escreva 3 frases prontas pra gravar: uma de abertura, uma do meio e uma de encerramento — adaptadas pro nicho '${niche || theme}', seguindo o mesmo estilo e energia do vídeo original",
+  "hashtags_sugeridas": ["5 hashtags reais do nicho ${niche || theme}"],
+  "tempo_estimado": "${g.duracao_estimada || 'baseado no vídeo original'}",
+  "dificuldade": número de 1 a 5 (1=gravar com celular parado, 5=precisa de edição profissional)
 }`;
 }
 
-// ── Prompt SEM Gemini (só caption disponível) ──────────────────────────────────
 function buildPromptSemGemini({ creator, niche, theme, caption, painPoints, desires }) {
-  return `Você é um analista de conteúdo viral. Com base apenas na legenda abaixo, reconstrua a estrutura provável do reel e ensine o usuário a criar algo no mesmo estilo.
+  return `Você é um roteirista criando um guia de gravação para alguém que NÃO entende de marketing. A pessoa vai ler, pegar o celular e gravar. Sem jargão.
 
-VÍDEO ORIGINAL:
-Criador: @${creator || 'desconhecido'}
-Nicho: ${niche || theme}
+VÍDEO DE REFERÊNCIA:
+Criador: @${creator || 'desconhecido'} | Nicho: ${niche || theme}
 Legenda: "${caption || '(sem legenda)'}"
 
-PERFIL DO USUÁRIO:
+QUEM VAI GRAVAR:
 - Nicho: ${niche || theme}
 ${painPoints ? `- Dores do público: ${painPoints}` : ''}
 ${desires ? `- Desejos do público: ${desires}` : ''}
 
 Responda APENAS um JSON válido:
 {
-  "por_que_funciona": "2-3 frases sobre a estrutura e psicologia por trás dessa abordagem nesse nicho",
-  "padrao_que_funciona": ["3-5 técnicas prováveis usadas nesse tipo de conteúdo"],
-  "gancho": "frase de abertura (0-3s) baseada no estilo da legenda — específica para esse nicho",
-  "desenvolvimento": "3-4 passos/frases que entregam valor no corpo do vídeo",
-  "cta": "chamada para ação específica para esse nicho",
-  "exemplo_adaptado": "como o usuário faria um vídeo similar para o nicho '${niche || theme}'",
-  "hashtags_sugeridas": ["5-8 hashtags do nicho ${niche || theme}"],
-  "tempo_estimado": "30 a 60 segundos",
+  "por_que_viral": "2 frases simples explicando por que esse tipo de vídeo funciona nesse nicho — sem jargão",
+  "abertura_fala": "frase de abertura que prende atenção nos primeiros 3 segundos — específica pra esse nicho",
+  "abertura_visual": "o que a pessoa deveria estar fazendo/mostrando enquanto fala a abertura",
+  "meio": ["ponto 1 do que dizer/mostrar no meio", "ponto 2", "ponto 3"],
+  "final": "como encerrar o vídeo e o que pedir pras pessoas fazerem",
+  "dicas_edicao": ["dica prática de edição 1", "dica 2", "dica 3"],
+  "sua_versao": "escreva 3 frases prontas pra gravar: abertura, meio e encerramento — adaptadas pro nicho '${niche || theme}'",
+  "hashtags_sugeridas": ["5 hashtags do nicho ${niche || theme}"],
+  "tempo_estimado": "30 a 45 segundos",
   "dificuldade": número de 1 a 5
 }`;
 }
