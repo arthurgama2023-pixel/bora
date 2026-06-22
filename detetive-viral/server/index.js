@@ -599,7 +599,8 @@ app.post('/api/instagram/profile', async (req, res) => {
     }
 
     // CACHE: verificar se já temos esse perfil (12 horas)
-    const cached = getCached('profiles', cleanUsername, 12 * 60 * 60 * 1000);
+    // bucket separado de "profiles" (usado pela busca de vídeos) p/ evitar colisão de cache
+    const cached = getCached('profileInfo', cleanUsername, 12 * 60 * 60 * 1000);
     if (cached) {
       console.log(`[Instagram Profile] 💾 Cache HIT para @${cleanUsername} (${cached.ageMin}m)`);
       return res.json(cached.data);
@@ -639,7 +640,7 @@ app.post('/api/instagram/profile', async (req, res) => {
     };
 
     // CACHE: salvar o resultado por 12 horas
-    setCached('profiles', cleanUsername, result);
+    setCached('profileInfo', cleanUsername, result);
 
     console.log(`[Instagram Profile] ✅ Perfil encontrado: ${result.name}`);
     res.json(result);
@@ -1223,12 +1224,19 @@ function analyzeContentPerformance(videos) {
 // PIPELINE INTELIGENTE: IA classifica nicho → hashtags → reels virais → relevância
 // ══════════════════════════════════════════════════════════════════════════════
 
+// Remove surrogates UTF-16 órfãos (emoji cortado por .slice()) que invalidam o JSON da API
+function stripLoneSurrogates(str) {
+  return str
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+}
+
 // Chamada genérica ao Claude (Haiku) e extração de texto
 async function callClaude(prompt, maxTokens = 1000) {
   const r = await axios.post('https://api.anthropic.com/v1/messages', {
     model: 'claude-haiku-4-5-20251001',
     max_tokens: maxTokens,
-    messages: [{ role: 'user', content: prompt }]
+    messages: [{ role: 'user', content: stripLoneSurrogates(prompt) }]
   }, {
     headers: {
       'x-api-key': process.env.ANTHROPIC_API_KEY,
