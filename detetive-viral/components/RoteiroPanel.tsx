@@ -73,13 +73,15 @@ export default function RoteiroPanel({ reel, profile, onClose }: RoteiroPanelPro
   const [roteiro, setRoteiro] = useState<Roteiro | null>(null);
   const [fonte, setFonte] = useState<'gemini' | 'caption' | null>(null);
   const [geminiData, setGeminiData] = useState<GeminiAnalysis | null>(null);
-  const [marcaTema, setMarcaTema] = useState('');
-  const [gerandoMarca, setGerandoMarca] = useState(false);
   const [estrategia, setEstrategia] = useState<string | null>(null);
   const { getRoteiro, setRoteiro: saveRoteiro, aiAnalysis } = useVideos();
 
   const hasVideo = !!reel.videoUrl;
   const steps = hasVideo ? LOADING_STEPS_VIDEO : LOADING_STEPS_CAPTION;
+
+  // Chave do cache inclui o @ do perfil: roteiros são adaptados ao público de
+  // cada usuário, então um mesmo vídeo gera roteiros diferentes por perfil.
+  const cacheKey = `${reel.id}::${profile.instagram || ''}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -90,11 +92,13 @@ export default function RoteiroPanel({ reel, profile, onClose }: RoteiroPanelPro
       setLoadingStep(0);
       setError(null);
 
-      const cached = getRoteiro(reel.id);
+      const cached = getRoteiro(cacheKey);
       if (cached) {
         if (!cancelled) {
-          setRoteiro(cached as unknown as Roteiro);
-          setFonte('gemini');
+          setRoteiro(cached.roteiro);
+          setFonte(cached.fonte);
+          setGeminiData((cached.geminiAnalysis as GeminiAnalysis) || null);
+          setEstrategia(cached.estrategia);
           setLoading(false);
         }
         return;
@@ -122,11 +126,14 @@ export default function RoteiroPanel({ reel, profile, onClose }: RoteiroPanelPro
         if (!res.ok) throw new Error('Falha ao gerar roteiro');
         const data = await res.json();
         if (!cancelled) {
+          const fonte = data.fonte || 'caption';
+          const geminiAnalysis = data.geminiAnalysis || null;
+          const estrategia = data.estrategia || null;
           setRoteiro(data.roteiro);
-          setFonte(data.fonte || 'caption');
-          setGeminiData(data.geminiAnalysis || null);
-          setEstrategia(data.estrategia || null);
-          saveRoteiro(reel.id, data.roteiro);
+          setFonte(fonte);
+          setGeminiData(geminiAnalysis);
+          setEstrategia(estrategia);
+          saveRoteiro(cacheKey, { roteiro: data.roteiro, fonte, geminiAnalysis, estrategia });
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Erro');
@@ -141,7 +148,7 @@ export default function RoteiroPanel({ reel, profile, onClose }: RoteiroPanelPro
       cancelled = true;
       if (stepTimer) clearInterval(stepTimer);
     };
-  }, [reel.id]);
+  }, [cacheKey]);
 
   const dificuldadeNum = Math.min(5, Math.max(1, Math.round(Number(roteiro?.dificuldade)) || 3));
   const dificuldadeLabel = ['Fácil', 'Fácil', 'Médio', 'Avançado', 'Difícil'][dificuldadeNum - 1];
@@ -187,37 +194,6 @@ ${(roteiro.hashtags_sugeridas || []).map(h => '#' + String(h).replace(/^#+/, '')
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
-  };
-
-  const gerarComMarca = async () => {
-    if (!marcaTema.trim() || gerandoMarca) return;
-    setGerandoMarca(true);
-    setError(null);
-    try {
-      const res = await fetch(`${API_URL}/api/roteiro`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          caption: reel.caption || reel.description,
-          creator: reel.creator,
-          theme: reel.theme,
-          niche: aiAnalysis?.nicho || profile.niche || reel.theme,
-          painPoints: profile.painPoints,
-          desires: profile.desires,
-          videoUrl: reel.videoUrl,
-          marcaTema: marcaTema.trim(),
-        }),
-      });
-      if (!res.ok) throw new Error('Falha ao gerar roteiro');
-      const data = await res.json();
-      setRoteiro(data.roteiro);
-      setFonte(data.fonte || 'caption');
-      setEstrategia('marca_em_alta');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Erro');
-    } finally {
-      setGerandoMarca(false);
-    }
   };
 
   return (
@@ -304,6 +280,25 @@ ${(roteiro.hashtags_sugeridas || []).map(h => '#' + String(h).replace(/^#+/, '')
                 )}
               </div>
 
+              {/* Métricas */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1 p-4 rounded-lg" style={{ backgroundColor: '#f2f4f6', border: '1px solid #c3c6d6' }}>
+                  <span className="text-xs font-bold uppercase" style={{ color: '#717683', letterSpacing: '0.05em' }}>Tempo de vídeo</span>
+                  <span className="text-lg font-bold" style={{ color: '#003391' }}>{roteiro.tempo_estimado || '30–45 segundos'}</span>
+                </div>
+                <div className="flex flex-col gap-2 p-4 rounded-lg" style={{ backgroundColor: '#f2f4f6', border: '1px solid #c3c6d6' }}>
+                  <span className="text-xs font-bold uppercase" style={{ color: '#717683', letterSpacing: '0.05em' }}>Dificuldade</span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex gap-1.5">
+                      {[1,2,3,4,5].map(i => (
+                        <div key={i} className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: i <= dificuldadeNum ? '#003391' : '#c3c6d6' }} />
+                      ))}
+                    </div>
+                    <span className="text-sm font-semibold" style={{ color: '#191c1e' }}>{dificuldadeLabel}</span>
+                  </div>
+                </div>
+              </div>
+
               {/* Transcrição real (só com Gemini) */}
               {geminiData?.transcricao && (
                 <section className="rounded-r-lg p-4" style={{ borderLeft: '4px solid #005a6a', backgroundColor: 'rgba(0,90,106,0.04)' }}>
@@ -350,7 +345,18 @@ ${(roteiro.hashtags_sugeridas || []).map(h => '#' + String(h).replace(/^#+/, '')
                 <p className="text-sm leading-relaxed" style={{ color: '#191c1e', lineHeight: '1.6' }}>{roteiro.por_que_viral}</p>
               </section>
 
-              {/* 2. Como gravar — passo a passo */}
+              {/* 2. Sua versão — pronto pra gravar */}
+              <section className="rounded-r-lg p-5" style={{ borderLeft: '4px solid #0047c3', backgroundColor: 'rgba(219,225,255,0.08)' }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="material-symbols-outlined" style={{ color: '#0047c3', fontVariationSettings: "'FILL' 1" }}>edit_note</span>
+                  <h2 className="text-xs font-bold uppercase" style={{ color: '#0047c3', letterSpacing: '0.05em' }}>Sua versão — pronto pra gravar</h2>
+                </div>
+                <div className="rounded-lg p-4" style={{ backgroundColor: '#f2f4f6', border: '1px solid #c3c6d6' }}>
+                  <p className="text-sm leading-relaxed" style={{ color: '#191c1e', lineHeight: '1.7' }}>{roteiro.sua_versao}</p>
+                </div>
+              </section>
+
+              {/* 3. Como gravar — passo a passo */}
               <section className="rounded-r-lg p-5" style={{ borderLeft: '4px solid #712ae2', backgroundColor: 'rgba(113,42,226,0.05)' }}>
                 <div className="flex items-center gap-2 mb-4">
                   <span className="material-symbols-outlined" style={{ color: '#712ae2', fontVariationSettings: "'FILL' 1" }}>videocam</span>
@@ -424,17 +430,6 @@ ${(roteiro.hashtags_sugeridas || []).map(h => '#' + String(h).replace(/^#+/, '')
                 </section>
               )}
 
-              {/* 4. Sua versão */}
-              <section className="rounded-r-lg p-5" style={{ borderLeft: '4px solid #0047c3', backgroundColor: 'rgba(219,225,255,0.08)' }}>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="material-symbols-outlined" style={{ color: '#0047c3', fontVariationSettings: "'FILL' 1" }}>edit_note</span>
-                  <h2 className="text-xs font-bold uppercase" style={{ color: '#0047c3', letterSpacing: '0.05em' }}>Sua versão — pronto pra gravar</h2>
-                </div>
-                <div className="rounded-lg p-4" style={{ backgroundColor: '#f2f4f6', border: '1px solid #c3c6d6' }}>
-                  <p className="text-sm leading-relaxed" style={{ color: '#191c1e', lineHeight: '1.7' }}>{roteiro.sua_versao}</p>
-                </div>
-              </section>
-
               {/* 5. Hashtags */}
               {(roteiro.hashtags_sugeridas?.length ?? 0) > 0 && (
                 <section className="rounded-r-lg p-5" style={{ borderLeft: '4px solid #712ae2', backgroundColor: 'rgba(113,42,226,0.04)' }}>
@@ -452,61 +447,6 @@ ${(roteiro.hashtags_sugeridas || []).map(h => '#' + String(h).replace(/^#+/, '')
                 </section>
               )}
 
-              {/* Aplicar estratégia: Marca em Alta */}
-              <section className="rounded-r-lg p-5" style={{ borderLeft: '4px solid #b45309', backgroundColor: 'rgba(180,83,9,0.04)' }}>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="material-symbols-outlined" style={{ color: '#b45309', fontVariationSettings: "'FILL' 1" }}>trending_up</span>
-                  <h2 className="text-xs font-bold uppercase" style={{ color: '#b45309', letterSpacing: '0.05em' }}>Aplicar estratégia: Marca em Alta</h2>
-                </div>
-                <p className="text-xs mb-3" style={{ color: '#717683' }}>
-                  Escolha uma marca, empresa ou tema muito comentado agora. O roteiro vai usar isso como isca pra parar o scroll e gerar comentários dos dois lados.
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={marcaTema}
-                    onChange={(e) => setMarcaTema(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && gerarComMarca()}
-                    placeholder="Ex: OpenAI, iPhone 16, Nubank, Shein..."
-                    className="flex-1 px-3 py-2 text-sm rounded-lg"
-                    style={{ border: '1px solid #c3c6d6', outline: 'none', color: '#191c1e', backgroundColor: '#fff' }}
-                  />
-                  <button
-                    onClick={gerarComMarca}
-                    disabled={!marcaTema.trim() || gerandoMarca}
-                    className="px-4 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1"
-                    style={{ backgroundColor: '#b45309', color: '#fff' }}
-                  >
-                    {gerandoMarca ? (
-                      <span className="material-symbols-outlined" style={{ fontSize: '16px', animation: 'spin 1s linear infinite' }}>sync</span>
-                    ) : (
-                      <>
-                        <span className="material-symbols-outlined" style={{ fontSize: '14px', fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-                        Gerar
-                      </>
-                    )}
-                  </button>
-                </div>
-              </section>
-
-              {/* 6. Métricas */}
-              <div className="grid grid-cols-2 gap-3 pb-2">
-                <div className="flex flex-col gap-1 p-4 rounded-lg" style={{ backgroundColor: '#f2f4f6', border: '1px solid #c3c6d6' }}>
-                  <span className="text-xs font-bold uppercase" style={{ color: '#717683', letterSpacing: '0.05em' }}>Tempo de vídeo</span>
-                  <span className="text-lg font-bold" style={{ color: '#003391' }}>{roteiro.tempo_estimado || '30–45 segundos'}</span>
-                </div>
-                <div className="flex flex-col gap-2 p-4 rounded-lg" style={{ backgroundColor: '#f2f4f6', border: '1px solid #c3c6d6' }}>
-                  <span className="text-xs font-bold uppercase" style={{ color: '#717683', letterSpacing: '0.05em' }}>Dificuldade</span>
-                  <div className="flex items-center gap-2">
-                    <div className="flex gap-1.5">
-                      {[1,2,3,4,5].map(i => (
-                        <div key={i} className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: i <= dificuldadeNum ? '#003391' : '#c3c6d6' }} />
-                      ))}
-                    </div>
-                    <span className="text-sm font-semibold" style={{ color: '#191c1e' }}>{dificuldadeLabel}</span>
-                  </div>
-                </div>
-              </div>
             </>
           )}
         </div>

@@ -41,6 +41,15 @@ interface Roteiro {
   dificuldade?: number | string;
 }
 
+// Cache do roteiro guarda o payload COMPLETO (não só o roteiro), p/ reabrir o
+// mesmo vídeo restaurar transcrição/estratégia/badge idênticos à 1ª geração.
+interface RoteiroCacheEntry {
+  roteiro: Roteiro;
+  fonte: 'gemini' | 'caption';
+  geminiAnalysis: Record<string, unknown> | null;
+  estrategia: string | null;
+}
+
 interface VideosContextType {
   videos: Video[];
   setVideos: (videos: Video[]) => void;
@@ -53,9 +62,9 @@ interface VideosContextType {
   setAiAnalysis: (analysis: AiAnalysis | null) => void;
   videosViral: Video[];
   setVideosViral: (videos: Video[]) => void;
-  roteiros: Map<string, Roteiro>;
-  setRoteiro: (reelId: string, roteiro: Roteiro) => void;
-  getRoteiro: (reelId: string) => Roteiro | undefined;
+  roteiros: Map<string, RoteiroCacheEntry>;
+  setRoteiro: (cacheKey: string, entry: RoteiroCacheEntry) => void;
+  getRoteiro: (cacheKey: string) => RoteiroCacheEntry | undefined;
 }
 
 const VideosContext = createContext<VideosContextType | undefined>(undefined);
@@ -66,18 +75,18 @@ export function VideosProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<AiAnalysis | null>(null);
   const [videosViral, setVideosViral] = useState<Video[]>([]);
-  const [roteiros, setRoteiros] = useState<Map<string, Roteiro>>(new Map());
+  const [roteiros, setRoteiros] = useState<Map<string, RoteiroCacheEntry>>(new Map());
 
   const addVideos = (newVideos: Video[]) => {
     setVideos((prev) => [...prev, ...newVideos]);
   };
 
-  const setRoteiro = (reelId: string, roteiro: Roteiro) => {
-    setRoteiros((prev) => new Map(prev).set(reelId, roteiro));
+  const setRoteiro = (cacheKey: string, entry: RoteiroCacheEntry) => {
+    setRoteiros((prev) => new Map(prev).set(cacheKey, entry));
   };
 
-  const getRoteiro = (reelId: string): Roteiro | undefined => {
-    return roteiros.get(reelId);
+  const getRoteiro = (cacheKey: string): RoteiroCacheEntry | undefined => {
+    return roteiros.get(cacheKey);
   };
 
   return (
