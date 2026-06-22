@@ -625,6 +625,10 @@ app.post('/api/instagram/profile', async (req, res) => {
 
     const profile = items[0];
 
+    // Guarda o perfil BRUTO (com latestPosts) p/ a busca de vídeos reusar — evita
+    // raspar o mesmo perfil duas vezes (passo 2 do wizard + passo 5).
+    setCached('profileRaw', cleanUsername, profile);
+
     const result = {
       username: profile.username,
       name: profile.fullName || profile.username,
@@ -1343,6 +1347,148 @@ Responda APENAS um array JSON de números (ex: [0,3,7]). Nada além do array.`;
   return new Set(m ? JSON.parse(m[0]) : []);
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// PIPELINE POR NICHO — roda 1x por conjunto de hashtags (≈ nicho) a cada 12h.
+// Scrape de hashtags (Apify) + filtro de relevância (Claude) são os 2 gastos caros;
+// cacheamos o RESULTADO por nicho e deduplicamos chamadas simultâneas (anti-stampede).
+// ══════════════════════════════════════════════════════════════════════════════
+const NICHE_LIST_MAX = 40;        // máx guardado por lista (fatiado por usuário/plano)
+const inFlightNiche = new Map();  // 1 cômputo por nicho em andamento (evita cache-stampede)
+
+function nicheSlug(niche) {
+  return (niche || 'geral').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'geral';
+}
+
+async function computeNicheVideos(apify, cls, force = false) {
+  const detectedNiche = cls.nicho;
+  const hashtagKey = [...cls.hashtags].sort().join(',');
+
+  // Apify: reels brutos das hashtags (cache 12h por conjunto de hashtags)
+  let rawPosts;
+  const hashtagHit = !force && getCached('hashtags', hashtagKey);
+  if (hashtagHit) {
+    rawPosts = hashtagHit.data;
+    console.log(`[Niche] ⚡ hashtags "${hashtagKey}" do cache (${hashtagHit.ageMin} min) — ${rawPosts.length} reels`);
+  } else {
+    rawPosts = await searchViralHashtags(apify, cls.hashtags, 50); // 50 x 4 hashtags = 200 reels
+    setCached('hashtags', hashtagKey, rawPosts);
+    console.log(`[Niche] 📦 ${rawPosts.length} reels brutos (Apify) cacheados p/ "${hashtagKey}"`);
+  }
+
+  // Filtro de desempenho — corta view-bait/impulsionado
+  const MIN_VIEWS = 10000, MIN_INTERACTIONS = 300, MIN_ENG_RATE = 2.5;
+  const perfPassed = rawPosts
+    .filter(p => (p.type === 'Video' || p.videoUrl))
+    .map(p => {
+      const views = p.videoPlayCount || p.igPlayCount || 0;
+      const likes = p.likesCount || 0;
+      const comments = p.commentsCount || 0;
+      const interactions = likes + comments;
+      const engRate = views > 0 ? (interactions / views) * 100 : 0;
+      let ageDays = 9999;
+      if (p.timestamp) {
+        const d = (Date.now() - new Date(p.timestamp).getTime()) / 86400000;
+        if (d > 0) ageDays = Math.max(d, 1);
+      }
+      const velocity = views / ageDays;
+      return { p, views, likes, comments, interactions, engRate, ageDays, velocity, score: viralityScoreV2(p) };
+    })
+    .filter(x => x.views >= MIN_VIEWS && x.interactions >= MIN_INTERACTIONS && x.engRate >= MIN_ENG_RATE)
+    .filter(x => !isForeignCaption(x.p.caption || ''));
+
+  console.log(`[Niche] 🔥 Após filtro de desempenho: ${perfPassed.length}`);
+
+  // Candidatos p/ relevância (Claude) = TOP por views ∪ TOP por velocidade (1 chamada)
+  const byViews = [...perfPassed].sort((a, b) => b.views - a.views).slice(0, 80);
+  const byVel = [...perfPassed].sort((a, b) => b.velocity - a.velocity).slice(0, 80);
+  const candMap = new Map();
+  [...byViews, ...byVel].forEach(x => candMap.set(x.p.shortCode || x.p.url || x.p.caption, x));
+  const candidates = [...candMap.values()];
+  const candForAI = candidates.map((x, i) => ({ i, caption: x.p.caption || '' }));
+  const relevantSet = await filterRelevanceAI(detectedNiche, candForAI);
+  const relevant = candidates.filter((_, i) => relevantSet.has(i));
+  console.log(`[Niche] 🤖 Relevantes: ${relevant.length} de ${candidates.length}`);
+
+  // Mapper p/ formato do frontend — id baseado no NICHO (compartilhável entre usuários)
+  const slug = nicheSlug(detectedNiche);
+  const toVideo = (x, idx) => {
+    const v = x.p;
+    const caption = v.caption || '';
+    const hashtags = (v.hashtags && v.hashtags.length
+      ? v.hashtags
+      : (caption.match(/#[\wÀ-ÿ]+/g) || []).map(h => h.replace('#', ''))
+    ).slice(0, 20);
+    return {
+      id: `${slug}-${v.shortCode || idx}`,
+      creator: v.ownerUsername || 'Unknown',
+      creatorHandle: `@${v.ownerUsername || 'unknown'}`,
+      likes: x.likes,
+      comments: x.comments,
+      shares: Math.round(x.likes * 0.1),
+      views: x.views,
+      velocity: Math.round(x.velocity),
+      ageDays: Math.round(x.ageDays),
+      description: caption.slice(0, 160),
+      caption,
+      hashtags,
+      theme: detectedNiche,
+      engagementRate: x.views > 0 ? +((x.interactions / x.views) * 100).toFixed(2) : 0,
+      viralityScore: x.score,
+      thumbnail: v.displayUrl ? `https://images.weserv.nl/?url=${encodeURIComponent(v.displayUrl)}&w=400&h=700&fit=cover` : null,
+      videoUrl: v.videoUrl,
+      postUrl: v.url || (v.shortCode ? `https://www.instagram.com/reel/${v.shortCode}/` : null),
+      timestamp: v.timestamp,
+    };
+  };
+
+  // Dedupe (máx 2/criador + remove reposts) e monta as 2 listas do MESMO conjunto
+  const buildList = (sorter) => {
+    const sorted = [...relevant].sort(sorter);
+    const seen = {}, seenCaps = new Set(), out = [];
+    for (const x of sorted) {
+      const creator = x.p.ownerUsername || 'unknown';
+      const capKey = (x.p.caption || '').toLowerCase().replace(/\s+/g, '').slice(0, 50);
+      if (capKey && seenCaps.has(capKey)) continue;
+      seen[creator] = seen[creator] || 0;
+      if (seen[creator] < 2) { out.push(x); seen[creator]++; if (capKey) seenCaps.add(capKey); }
+    }
+    return out.slice(0, NICHE_LIST_MAX).map(toVideo);
+  };
+
+  return {
+    autoridade: buildList((a, b) => b.views - a.views),        // 🏆 maiores + engajados
+    viralizacao: buildList((a, b) => b.velocity - a.velocity), // 🚀 explodiu rápido
+  };
+}
+
+// Cache do RESULTADO por nicho (12h) + dedupe de chamadas simultâneas (anti-stampede).
+// 30 usuários do mesmo nicho ⇒ no máximo 1 cômputo pago a cada 12h.
+function getNicheVideos(apify, cls, force = false) {
+  const key = [...cls.hashtags].sort().join(',');
+  if (!force) {
+    const hit = getCached('nicheVideos', key);
+    if (hit) {
+      console.log(`[Niche] ⚡ RESULTADO do nicho em cache (${hit.ageMin} min) — custo R$0`);
+      return Promise.resolve({ data: hit.data, cached: true, ageMin: hit.ageMin });
+    }
+    if (inFlightNiche.has(key)) {
+      console.log(`[Niche] ⏳ Cômputo do nicho já em andamento — aguardando (sem novo gasto)`);
+      return inFlightNiche.get(key);
+    }
+  }
+  const promise = (async () => {
+    const data = await computeNicheVideos(apify, cls, force);
+    setCached('nicheVideos', key, data);
+    return { data, cached: false, ageMin: 0 };
+  })();
+  if (!force) {
+    inFlightNiche.set(key, promise);
+    promise.finally(() => inFlightNiche.delete(key)).catch(() => {});
+  }
+  return promise;
+}
+
 // Buscar vídeos virais baseado no perfil REAL do usuário (com análise completa)
 app.post('/api/videos/from-user-profile', async (req, res) => {
   try {
@@ -1358,6 +1504,9 @@ app.post('/api/videos/from-user-profile', async (req, res) => {
       return res.status(400).json({ error: 'Username do Instagram inválido.' });
     }
 
+    // Cliente Apify (instanciar é grátis; só .call() custa)
+    const apify = new ApifyClient({ token: process.env.APIFY_API_KEY });
+
     // ⚡ CACHE POR PERFIL (12h): reabrir o mesmo @ não custa nada
     if (!force) {
       const hit = getCached('profiles', cleanUsername);
@@ -1369,147 +1518,53 @@ app.post('/api/videos/from-user-profile', async (req, res) => {
 
     console.log(`[Videos from Profile] 🎬 Buscando vídeos virais similares a @${cleanUsername}...`);
 
-    // Passo 1: ANÁLISE COMPLETA E MULTI-CAMADAS do perfil do usuário
-    const apify = new ApifyClient({ token: process.env.APIFY_API_KEY });
-    const run = await apify.actor('apify/instagram-profile-scraper').call({
-      usernames: [cleanUsername],
-      loginCookies: getInstagramLoginCookies()
-    }, { timeout: 60000 });
-
-    const { items } = await apify.dataset(run.defaultDatasetId).listItems({ limit: 1 });
-    if (!items || items.length === 0) {
-      return res.json({
-        username: cleanUsername,
-        videos: [],
-        message: 'Perfil não encontrado.',
-      });
-    }
-
-    const userProfile = items[0];
-    const bioAnalysis = { keywords: extractKeywordsFromBio(userProfile.biography || ''), raw: userProfile.biography };
-    const posts = userProfile.latestPosts || [];
-
-    // ══ PIPELINE: IA classifica nicho → hashtags → reels virais → relevância ══
-
-    // Passo 2: Claude classifica o nicho e gera hashtags — com cache (7d) p/ hashtags estáveis
+    // Passo 1+2: classificar o nicho (Claude, cache 7d). Classify-first: se o nicho do @
+    // já está em cache, nem raspamos o perfil de novo (Apify R$0).
     let cls;
     const classifyHit = !force && getCached('classify', cleanUsername, CLASSIFY_TTL_MS);
     if (classifyHit) {
       cls = classifyHit.data;
-      console.log(`[Videos from Profile] ⚡ CACHE HIT classificação @${cleanUsername} (${classifyHit.ageMin} min) — hashtags estáveis`);
+      console.log(`[Videos from Profile] ⚡ classificação @${cleanUsername} do cache (${classifyHit.ageMin} min)`);
     } else {
+      // Precisa do perfil completo (latestPosts) — reusa o scrape do passo 2 (profileRaw) se houver
+      let userProfile;
+      const rawHit = !force && getCached('profileRaw', cleanUsername);
+      if (rawHit) {
+        userProfile = rawHit.data;
+        console.log(`[Videos from Profile] ⚡ perfil @${cleanUsername} do cache (sem novo scrape)`);
+      } else {
+        const run = await apify.actor('apify/instagram-profile-scraper').call({
+          usernames: [cleanUsername],
+          loginCookies: getInstagramLoginCookies()
+        }, { timeout: 60000 });
+        const { items } = await apify.dataset(run.defaultDatasetId).listItems({ limit: 1 });
+        if (!items || items.length === 0) {
+          return res.json({ username: cleanUsername, videos: [], message: 'Perfil não encontrado.' });
+        }
+        userProfile = items[0];
+        setCached('profileRaw', cleanUsername, userProfile);
+      }
       cls = await classifyProfileWithAI(userProfile);
       setCached('classify', cleanUsername, cls);
     }
+
     const detectedNiche = cls.nicho;
     console.log(`[Videos from Profile] 🤖 Nicho (IA): ${detectedNiche} [${cls.confianca}]`);
-    console.log(`[Videos from Profile] 🏷️  Hashtags: ${cls.hashtags.join(', ')}`);
+    console.log(`[Videos from Profile] 🏷️  Hashtags: ${(cls.hashtags || []).join(', ')}`);
 
-    if (!cls.hashtags.length) {
+    if (!cls.hashtags || !cls.hashtags.length) {
       return res.json({ username: cleanUsername, videos: [], nicho: detectedNiche, message: 'Não foi possível gerar hashtags para o perfil.' });
     }
 
-    // Passo 3: Buscar reels virais nas hashtags (Apify) — com cache por conjunto de hashtags
-    const hashtagKey = [...cls.hashtags].sort().join(',');
-    let rawPosts;
-    const hashtagHit = !force && getCached('hashtags', hashtagKey);
-    if (hashtagHit) {
-      rawPosts = hashtagHit.data;
-      console.log(`[Videos from Profile] ⚡ CACHE HIT hashtags "${hashtagKey}" (${hashtagHit.ageMin} min) — ${rawPosts.length} reels, custo Apify R$0`);
-    } else {
-      rawPosts = await searchViralHashtags(apify, cls.hashtags, 50); // 50 x 4 hashtags = 200 reels
-      setCached('hashtags', hashtagKey, rawPosts);
-      console.log(`[Videos from Profile] 📦 ${rawPosts.length} reels brutos retornados (Apify) e cacheados`);
-    }
+    // Passo 3: vídeos virais do NICHO — roda 1x por nicho a cada 12h, compartilhado
+    // entre TODOS os usuários do mesmo nicho (Apify hashtags + Claude relevância).
+    const { data: nicheData, cached: nicheCached, ageMin: nicheAgeMin } = await getNicheVideos(apify, cls, force);
 
-    // Passo 4: Filtro de desempenho — prioriza os MAIORES com engajamento REAL
-    // (corta view-bait/impulsionado: muita view + engajamento baixíssimo)
-    const MIN_VIEWS = 10000;        // tamanho mínimo (foco no que o algoritmo distribuiu)
-    const MIN_INTERACTIONS = 300;   // volume mínimo de interações
-    const MIN_ENG_RATE = 2.5;       // % mínimo (likes+coments)/views — mata isca/impulsionado
-    const perfPassed = rawPosts
-      .filter(p => (p.type === 'Video' || p.videoUrl))
-      .map(p => {
-        const views = p.videoPlayCount || p.igPlayCount || 0;
-        const likes = p.likesCount || 0;
-        const comments = p.commentsCount || 0;
-        const interactions = likes + comments;
-        const engRate = views > 0 ? (interactions / views) * 100 : 0;
-        // idade em dias e velocidade (views/dia) — base do modo Viralização
-        let ageDays = 9999;
-        if (p.timestamp) {
-          const d = (Date.now() - new Date(p.timestamp).getTime()) / 86400000;
-          if (d > 0) ageDays = Math.max(d, 1);
-        }
-        const velocity = views / ageDays;
-        return { p, views, likes, comments, interactions, engRate, ageDays, velocity, score: viralityScoreV2(p) };
-      })
-      .filter(x => x.views >= MIN_VIEWS && x.interactions >= MIN_INTERACTIONS && x.engRate >= MIN_ENG_RATE)
-      .filter(x => !isForeignCaption(x.p.caption || ''));
+    // Passo 4: fatia por usuário (cada plano pode pedir um limite diferente)
+    const autoridade = (nicheData.autoridade || []).slice(0, limit);
+    const viralizacao = (nicheData.viralizacao || []).slice(0, limit);
 
-    console.log(`[Videos from Profile] 🔥 Após filtro (views>=${MIN_VIEWS}, eng>=${MIN_ENG_RATE}%): ${perfPassed.length}`);
-
-    // Passo 5: candidatos p/ relevância = união dos TOP por VIEWS + TOP por VELOCIDADE
-    // (cobre os 2 modos: Autoridade e Viralização) numa única chamada de IA
-    const byViews = [...perfPassed].sort((a, b) => b.views - a.views).slice(0, 80);
-    const byVel = [...perfPassed].sort((a, b) => b.velocity - a.velocity).slice(0, 80);
-    const candMap = new Map();
-    [...byViews, ...byVel].forEach(x => candMap.set(x.p.shortCode || x.p.url || x.p.caption, x));
-    const candidates = [...candMap.values()];
-    const candForAI = candidates.map((x, i) => ({ i, caption: x.p.caption || '' }));
-    const relevantSet = await filterRelevanceAI(detectedNiche, candForAI);
-    const relevant = candidates.filter((_, i) => relevantSet.has(i));
-    console.log(`[Videos from Profile] 🤖 Relevantes: ${relevant.length} de ${candidates.length} candidatos`);
-
-    // Passo 6: mapper p/ formato do frontend
-    const toVideo = (x, idx) => {
-      const v = x.p;
-      const caption = v.caption || '';
-      const hashtags = (v.hashtags && v.hashtags.length
-        ? v.hashtags
-        : (caption.match(/#[\wÀ-ÿ]+/g) || []).map(h => h.replace('#', ''))
-      ).slice(0, 20);
-      return {
-        id: `user-${cleanUsername}-${idx}`,
-        creator: v.ownerUsername || 'Unknown',
-        creatorHandle: `@${v.ownerUsername || 'unknown'}`,
-        likes: x.likes,
-        comments: x.comments,
-        shares: Math.round(x.likes * 0.1),
-        views: x.views,
-        velocity: Math.round(x.velocity),
-        ageDays: Math.round(x.ageDays),
-        description: caption.slice(0, 160),
-        caption,
-        hashtags,
-        theme: detectedNiche,
-        engagementRate: x.views > 0 ? +((x.interactions / x.views) * 100).toFixed(2) : 0,
-        viralityScore: x.score,
-        thumbnail: v.displayUrl ? `https://images.weserv.nl/?url=${encodeURIComponent(v.displayUrl)}&w=400&h=700&fit=cover` : null,
-        videoUrl: v.videoUrl,
-        postUrl: v.url || (v.shortCode ? `https://www.instagram.com/reel/${v.shortCode}/` : null),
-        timestamp: v.timestamp,
-      };
-    };
-
-    // Passo 7: dedupe (máx 2/criador + remove reposts) + monta as 2 listas do MESMO conjunto
-    const buildList = (sorter) => {
-      const sorted = [...relevant].sort(sorter);
-      const seen = {}, seenCaps = new Set(), out = [];
-      for (const x of sorted) {
-        const creator = x.p.ownerUsername || 'unknown';
-        const capKey = (x.p.caption || '').toLowerCase().replace(/\s+/g, '').slice(0, 50);
-        if (capKey && seenCaps.has(capKey)) continue;
-        seen[creator] = seen[creator] || 0;
-        if (seen[creator] < 2) { out.push(x); seen[creator]++; if (capKey) seenCaps.add(capKey); }
-      }
-      return out.slice(0, limit).map(toVideo);
-    };
-
-    const autoridade = buildList((a, b) => b.views - a.views);        // 🏆 maiores + engajados
-    const viralizacao = buildList((a, b) => b.velocity - a.velocity); // 🚀 explodiu rápido (views/dia)
-
-    console.log(`[Videos from Profile] ✅ Autoridade: ${autoridade.length} | Viralização: ${viralizacao.length}`);
+    console.log(`[Videos from Profile] ✅ Autoridade: ${autoridade.length} | Viralização: ${viralizacao.length}${nicheCached ? ' (nicho em cache, R$0)' : ''}`);
 
     const result = {
       username: cleanUsername,
@@ -1522,10 +1577,10 @@ app.post('/api/videos/from-user-profile', async (req, res) => {
       viralizacao,
     };
 
-    // 💾 Guarda no cache por perfil (próximas aberturas em 12h = grátis)
+    // 💾 Guarda no cache por perfil (próximas aberturas do MESMO @ em 12h = grátis)
     setCached('profiles', cleanUsername, result);
 
-    res.json(result);
+    res.json({ ...result, nicheCached, nicheAgeMin });
   } catch (error) {
     console.error('[Videos from Profile] Erro:', error.message);
     res.status(500).json({
