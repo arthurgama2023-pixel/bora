@@ -35,7 +35,7 @@ interface Roteiro {
   meio: string[];
   final: string;
   dicas_edicao: string[];
-  sua_versao: string;
+  sua_versao: string | { inicio: string; meio: string; encerramento: string };
   hashtags_sugeridas: string[];
   tempo_estimado?: string;
   dificuldade?: number | string;

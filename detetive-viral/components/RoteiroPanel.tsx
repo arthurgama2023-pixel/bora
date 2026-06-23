@@ -18,6 +18,7 @@ interface RoteiroPanelProps {
     views?: number;
     postUrl?: string;
     videoUrl?: string;
+    thumbnail?: string;
   };
   profile: {
     name: string;
@@ -36,7 +37,7 @@ interface Roteiro {
   meio: string[];
   final: string;
   dicas_edicao: string[];
-  sua_versao: string;
+  sua_versao: string | { inicio: string; meio: string; encerramento: string };
   hashtags_sugeridas: string[];
   tempo_estimado?: string;
   dificuldade?: number | string;
@@ -54,6 +55,31 @@ interface GeminiAnalysis {
   estrategia_detectada?: string;
   marca_ou_tema_usado?: string;
   pergunta_engajamento?: string;
+}
+
+// Roteiros antigos guardam "sua_versao" como texto único com rótulos embutidos
+// (ex: "ABERTURA: '...' MEIO: '...' ENCERRAMENTO: '...'"). Aqui separamos nos 3 blocos.
+function parseSuaVersaoTexto(s: string): { inicio: string; meio: string; encerramento: string } | null {
+  const re = /\b(abertura|in[ií]cio|meio|encerramento|final)\b\s*:?\s*/gi;
+  const matches = [...s.matchAll(re)];
+  if (matches.length < 2) return null;
+  const limpa = (t: string) => t.trim().replace(/^[\s'"|–-]+/, '').replace(/[\s'"|]+$/, '').trim();
+  const pega = (nomes: string[]) => {
+    for (let i = 0; i < matches.length; i++) {
+      const label = matches[i][1].toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      if (nomes.includes(label)) {
+        const start = (matches[i].index ?? 0) + matches[i][0].length;
+        const end = i + 1 < matches.length ? (matches[i + 1].index ?? s.length) : s.length;
+        return limpa(s.slice(start, end));
+      }
+    }
+    return '';
+  };
+  const inicio = pega(['abertura', 'inicio']);
+  const meio = pega(['meio']);
+  const encerramento = pega(['encerramento', 'final']);
+  if (!inicio && !meio && !encerramento) return null;
+  return { inicio, meio, encerramento };
 }
 
 const LOADING_STEPS_VIDEO = [
@@ -74,6 +100,7 @@ export default function RoteiroPanel({ reel, profile, onClose }: RoteiroPanelPro
   const [fonte, setFonte] = useState<'gemini' | 'caption' | null>(null);
   const [geminiData, setGeminiData] = useState<GeminiAnalysis | null>(null);
   const [estrategia, setEstrategia] = useState<string | null>(null);
+  const [videoBroke, setVideoBroke] = useState(false);
   const { getRoteiro, setRoteiro: saveRoteiro, aiAnalysis } = useVideos();
 
   const hasVideo = !!reel.videoUrl;
@@ -91,6 +118,7 @@ export default function RoteiroPanel({ reel, profile, onClose }: RoteiroPanelPro
       setLoading(true);
       setLoadingStep(0);
       setError(null);
+      setVideoBroke(false);
 
       const cached = getRoteiro(cacheKey);
       if (cached) {
@@ -165,6 +193,14 @@ export default function RoteiroPanel({ reel, profile, onClose }: RoteiroPanelPro
       ? [roteiro.dicas_edicao]
       : [];
 
+  // "Sua versão" pode vir como objeto {inicio, meio, encerramento} (novo) ou string (legado).
+  // Se for string com rótulos (ABERTURA/MEIO/ENCERRAMENTO), separamos nos 3 blocos também.
+  const sv = roteiro?.sua_versao;
+  const suaVersao = sv && typeof sv === 'object'
+    ? { inicio: sv.inicio || '', meio: sv.meio || '', encerramento: sv.encerramento || '' }
+    : (typeof sv === 'string' ? parseSuaVersaoTexto(sv) : null);
+  const suaVersaoTexto = (typeof sv === 'string' && !suaVersao) ? sv : null;
+
   const handleCopy = () => {
     if (!roteiro) return;
     const text = `🎬 ROTEIRO — ${reel.creatorHandle}
@@ -186,7 +222,9 @@ ${roteiro.final}
 ${edicaoItems.map((d, i) => `${i + 1}. ${d}`).join('\n')}
 
 ✨ SUA VERSÃO (pronto pra gravar):
-${roteiro.sua_versao}
+${suaVersao
+  ? `INÍCIO: ${suaVersao.inicio}\nMEIO: ${suaVersao.meio}\nENCERRAMENTO: ${suaVersao.encerramento}`
+  : suaVersaoTexto || ''}
 
 🏷️ HASHTAGS:
 ${(roteiro.hashtags_sugeridas || []).map(h => '#' + String(h).replace(/^#+/, '')).join(' ')}`;
@@ -222,6 +260,20 @@ ${(roteiro.hashtags_sugeridas || []).map(h => '#' + String(h).replace(/^#+/, '')
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-7 py-5" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+          {/* Vídeo (mostra logo, enquanto o roteiro é gerado) */}
+          {reel.videoUrl && !videoBroke && (
+            <video
+              src={reel.videoUrl}
+              poster={reel.thumbnail}
+              controls
+              playsInline
+              preload="metadata"
+              onError={() => setVideoBroke(true)}
+              className="w-full rounded-xl"
+              style={{ backgroundColor: '#000', maxHeight: '420px' }}
+            />
+          )}
 
           {/* Loading */}
           {loading && (
@@ -351,9 +403,24 @@ ${(roteiro.hashtags_sugeridas || []).map(h => '#' + String(h).replace(/^#+/, '')
                   <span className="material-symbols-outlined" style={{ color: '#0047c3', fontVariationSettings: "'FILL' 1" }}>edit_note</span>
                   <h2 className="text-xs font-bold uppercase" style={{ color: '#0047c3', letterSpacing: '0.05em' }}>Sua versão — pronto pra gravar</h2>
                 </div>
-                <div className="rounded-lg p-4" style={{ backgroundColor: '#f2f4f6', border: '1px solid #c3c6d6' }}>
-                  <p className="text-sm leading-relaxed" style={{ color: '#191c1e', lineHeight: '1.7' }}>{roteiro.sua_versao}</p>
-                </div>
+                {suaVersao ? (
+                  <div className="flex flex-col gap-2">
+                    {([
+                      { label: 'Início', texto: suaVersao.inicio },
+                      { label: 'Meio', texto: suaVersao.meio },
+                      { label: 'Encerramento', texto: suaVersao.encerramento },
+                    ] as const).map((bloco) => bloco.texto && (
+                      <div key={bloco.label} className="rounded-lg p-4" style={{ backgroundColor: '#f2f4f6', border: '1px solid #c3c6d6' }}>
+                        <p className="text-xs font-bold uppercase mb-1" style={{ color: '#0047c3', letterSpacing: '0.06em' }}>{bloco.label}</p>
+                        <p className="text-sm leading-relaxed" style={{ color: '#191c1e', lineHeight: '1.7' }}>{bloco.texto}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg p-4" style={{ backgroundColor: '#f2f4f6', border: '1px solid #c3c6d6' }}>
+                    <p className="text-sm leading-relaxed" style={{ color: '#191c1e', lineHeight: '1.7' }}>{suaVersaoTexto}</p>
+                  </div>
+                )}
               </section>
 
               {/* 3. Como gravar — passo a passo */}

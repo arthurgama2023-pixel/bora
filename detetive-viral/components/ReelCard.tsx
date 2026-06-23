@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { Play } from 'lucide-react';
+import VideoPlayer from './VideoModal';
 
 interface ReelCardProps {
   reel: {
@@ -26,6 +28,9 @@ interface ReelCardProps {
   selected: boolean;
   onClick: () => void;
   onPlayClick?: () => void;
+  isPlaying?: boolean;
+  onPlayStart?: () => void;
+  onPlayStop?: () => void;
 }
 
 const formatNumber = (num: number) => {
@@ -48,11 +53,26 @@ const getDaysAgo = (timestamp?: string | null) => {
   }
 };
 
-export default function ReelCard({ reel, selected, onClick, onPlayClick }: ReelCardProps) {
+export default function ReelCard({
+  reel,
+  selected,
+  onClick,
+  onPlayClick,
+  isPlaying = false,
+  onPlayStart,
+  onPlayStop
+}: ReelCardProps) {
   const [imgError, setImgError] = useState(false);
 
+  const handlePlayClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (reel.videoUrl && onPlayStart) {
+      onPlayStart();
+    }
+  };
+
   const handleCardClick = () => {
-    if (reel.postUrl) {
+    if (reel.postUrl && !isPlaying) {
       window.open(reel.postUrl, '_blank');
     }
   };
@@ -62,16 +82,39 @@ export default function ReelCard({ reel, selected, onClick, onPlayClick }: ReelC
       onClick={handleCardClick}
       className="group relative aspect-[9/16] rounded-2xl overflow-hidden bg-black cursor-pointer shadow-md hover:shadow-lg transition-all hover:-translate-y-1"
     >
-      {/* Imagem */}
-      <img
-        src={reel.thumbnail || 'https://via.placeholder.com/400x600'}
-        alt={reel.description}
-        onError={() => setImgError(true)}
-        className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-      />
+      {/* Vídeo ou Imagem */}
+      {isPlaying && reel.videoUrl ? (
+        <VideoPlayer
+          videoUrl={reel.videoUrl}
+          title={reel.description}
+          creator={reel.creator}
+          onEnded={onPlayStop}
+        />
+      ) : (
+        <>
+          <img
+            src={reel.thumbnail || 'https://via.placeholder.com/400x600'}
+            alt={reel.description}
+            onError={() => setImgError(true)}
+            className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+          />
+
+          {/* Botão Play - sobreposto na imagem */}
+          {reel.videoUrl && (
+            <button
+              onClick={handlePlayClick}
+              className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/30 transition-colors z-5"
+            >
+              <div className="bg-white/80 hover:bg-white rounded-full p-4 transition-all">
+                <Play size={32} className="text-black fill-black" />
+              </div>
+            </button>
+          )}
+        </>
+      )}
 
       {/* Overlay gradiente */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 p-4 flex flex-col justify-between">
+      <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 p-4 flex flex-col justify-between ${isPlaying ? 'pointer-events-none' : ''}`}>
         {/* Top Section */}
         <div className="flex justify-between items-start">
           {/* Score de tendência */}
@@ -133,7 +176,7 @@ export default function ReelCard({ reel, selected, onClick, onPlayClick }: ReelC
               e.stopPropagation();
               onClick();
             }}
-            className="w-full bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-md py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 active:scale-95"
+            className="w-full bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-md py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 active:scale-95 pointer-events-auto"
           >
             <span className="material-symbols-outlined text-base">description</span> Roteiro
           </button>

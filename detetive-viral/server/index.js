@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+const { execFile } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 3003;
@@ -1318,10 +1319,12 @@ function isForeignCaption(caption) {
 }
 
 // Busca reels virais nas hashtags via Apify
-async function searchViralHashtags(apify, hashtags, perTag = 50) {
-  const tags = hashtags.slice(0, 4);
+// Usa as 6 hashtags do nicho (largura) com perTag alto (profundidade) → ~400 reels brutos,
+// trazendo conteúdo mais diverso e mais candidatos pro filtro de relevância.
+async function searchViralHashtags(apify, hashtags, perTag = 70) {
+  const tags = hashtags.slice(0, 6);
   const run = await apify.actor('apify/instagram-hashtag-scraper').call(
-    { hashtags: tags, resultsType: 'reels', resultsLimit: perTag }, { timeout: 180000 }
+    { hashtags: tags, resultsType: 'reels', resultsLimit: perTag }, { timeout: 240000 }
   );
   const { items } = await apify.dataset(run.defaultDatasetId).listItems({ limit: tags.length * perTag });
   return items || [];
@@ -1371,7 +1374,7 @@ async function computeNicheVideos(apify, cls, force = false) {
     rawPosts = hashtagHit.data;
     console.log(`[Niche] ⚡ hashtags "${hashtagKey}" do cache (${hashtagHit.ageMin} min) — ${rawPosts.length} reels`);
   } else {
-    rawPosts = await searchViralHashtags(apify, cls.hashtags, 50); // 50 x 4 hashtags = 200 reels
+    rawPosts = await searchViralHashtags(apify, cls.hashtags, 70); // 70 x 6 hashtags ≈ 400 reels
     setCached('hashtags', hashtagKey, rawPosts);
     console.log(`[Niche] 📦 ${rawPosts.length} reels brutos (Apify) cacheados p/ "${hashtagKey}"`);
   }
@@ -1631,11 +1634,12 @@ async function analyzeVideoWithGemini(videoUrl) {
     if (!fileUri) throw new Error('Upload falhou — sem fileUri');
     console.log(`[Gemini] ✅ Upload concluído: ${fileUri}`);
 
-    // 3. Aguarda o arquivo estar pronto (ACTIVE)
+    // 3. Aguarda o arquivo estar pronto (ACTIVE) — vídeos longos/grandes (2min+, 30MB+)
+    //    podem levar bem mais que 20s pra processar, então esperamos até ~90s.
     let fileState = uploadRes.data?.file?.state || 'PROCESSING';
     const fileName = uploadRes.data?.file?.name;
     let attempts = 0;
-    while (fileState === 'PROCESSING' && attempts < 10) {
+    while (fileState === 'PROCESSING' && attempts < 45) {
       await new Promise(r => setTimeout(r, 2000));
       const stateRes = await axios.get(
         `https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${GEMINI_API_KEY}`
@@ -1644,6 +1648,7 @@ async function analyzeVideoWithGemini(videoUrl) {
       attempts++;
     }
     if (fileState !== 'ACTIVE') throw new Error(`Arquivo não ficou ACTIVE: ${fileState}`);
+    console.log(`[Gemini] 📼 Arquivo ACTIVE após ${attempts * 2}s — analisando...`);
 
     // 4. Analisar com Gemini 2.5 Flash
     const analyzeRes = await axios.post(
@@ -1745,7 +1750,11 @@ Responda APENAS um JSON válido:
   "meio": ["ponto 1 do que foi dito/mostrado no meio do vídeo", "ponto 2", "ponto 3 — máximo 4 pontos, diretos e simples"],
   "final": "como o criador encerrou o vídeo e o que pediu pras pessoas fazerem",
   "dicas_edicao": ["dica real de edição observada no vídeo 1 (ex: 'Coloca uma legenda grande no centro da tela logo no começo')", "dica 2", "dica 3 — máximo 4, práticas e sem jargão"],
-  "sua_versao": "escreva 3 frases prontas pra gravar: uma de abertura, uma do meio e uma de encerramento — adaptadas pro nicho '${niche || theme}', seguindo o mesmo estilo e energia do vídeo original",
+  "sua_versao": {
+    "inicio": "a FALA de abertura pronta pra gravar (primeiros 3s), adaptada pro nicho '${niche || theme}', no mesmo estilo e energia do vídeo original",
+    "meio": "o desenvolvimento pronto pra gravar — o que falar no meio do vídeo",
+    "encerramento": "o encerramento pronto pra gravar — a frase final e o que pedir pras pessoas fazerem"
+  },
   "hashtags_sugeridas": ["5 hashtags reais do nicho ${niche || theme}"],
   "tempo_estimado": "${g.duracao_estimada || 'baseado no vídeo original'}",
   "dificuldade": número de 1 a 5 (1=gravar com celular parado, 5=precisa de edição profissional)
@@ -1772,7 +1781,11 @@ Responda APENAS um JSON válido:
   "meio": ["ponto 1 do que dizer/mostrar no meio", "ponto 2", "ponto 3"],
   "final": "como encerrar o vídeo e o que pedir pras pessoas fazerem",
   "dicas_edicao": ["dica prática de edição 1", "dica 2", "dica 3"],
-  "sua_versao": "escreva 3 frases prontas pra gravar: abertura, meio e encerramento — adaptadas pro nicho '${niche || theme}'",
+  "sua_versao": {
+    "inicio": "a FALA de abertura pronta pra gravar (primeiros 3s), adaptada pro nicho '${niche || theme}'",
+    "meio": "o desenvolvimento pronto pra gravar — o que falar no meio do vídeo",
+    "encerramento": "o encerramento pronto pra gravar — a frase final e o que pedir pras pessoas fazerem"
+  },
   "hashtags_sugeridas": ["5 hashtags do nicho ${niche || theme}"],
   "tempo_estimado": "30 a 45 segundos",
   "dificuldade": número de 1 a 5
@@ -1825,12 +1838,98 @@ Responda APENAS um JSON válido:
   "meio": ["revelação/ângulo surpreendente sobre ${marcaTema} relevante pro nicho ${niche || theme}", "desenvolvimento do posicionamento do criador", "conexão com o público e o que isso significa pra eles"],
   "final": "a pergunta que obrigatoriamente vai dividir opiniões sobre ${marcaTema} — algo que faz metade concordar e metade discordar",
   "dicas_edicao": ["dica de edição para dar força ao gancho com ${marcaTema}", "dica 2", "dica 3"],
-  "sua_versao": "escreva o roteiro COMPLETO pronto pra gravar — abertura citando '${marcaTema}', desenvolvimento com revelação e posicionamento, e a pergunta final que divide",
+  "sua_versao": {
+    "inicio": "a FALA de abertura pronta pra gravar (primeiros 3s) citando '${marcaTema}'",
+    "meio": "o desenvolvimento pronto pra gravar — a revelação sobre '${marcaTema}' + o posicionamento do criador",
+    "encerramento": "o encerramento pronto pra gravar — a pergunta final que divide opiniões sobre '${marcaTema}'"
+  },
   "hashtags_sugeridas": ["5 hashtags que misturam o nicho ${niche || theme} com o tema ${marcaTema}"],
   "tempo_estimado": "20 a 40 segundos",
   "dificuldade": número de 1 a 5
 }`;
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RESOLVER LINK: yt-dlp extrai o mp4 + metadados de um link (Instagram/TikTok)
+// Devolve um "reel" no mesmo formato dos demais → reusa o RoteiroPanel (Gemini+Claude)
+// Custo: R$0 (yt-dlp roda local, sem Apify)
+// ══════════════════════════════════════════════════════════════════════════════
+function ytDlpPath() {
+  if (process.env.YTDLP_PATH) return process.env.YTDLP_PATH;
+  if (process.platform === 'win32') return path.join(__dirname, '..', '..', 'yt-dlp.exe');
+  return 'yt-dlp'; // Linux/Render: precisa estar instalado (pip install yt-dlp)
+}
+
+function resolveVideoWithYtDlp(url) {
+  return new Promise((resolve, reject) => {
+    const args = ['-j', '-f', 'best[ext=mp4]/best', '--no-warnings', '--no-playlist'];
+    // Cookies do Instagram melhoram a taxa de sucesso em reels
+    if (/instagram\.com/i.test(url) && process.env.INSTAGRAM_SESSION_ID) {
+      const cookie = `sessionid=${process.env.INSTAGRAM_SESSION_ID}; csrftoken=${process.env.INSTAGRAM_CSRF_TOKEN || ''}; ds_user_id=${process.env.INSTAGRAM_DS_USER_ID || ''}`;
+      args.push('--add-header', `Cookie:${cookie}`);
+    }
+    args.push(url);
+    execFile(ytDlpPath(), args, { timeout: 90000, maxBuffer: 30 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err && !stdout) return reject(new Error((stderr || err.message || '').slice(0, 300)));
+      const line = (stdout || '').split('\n').map(l => l.trim()).filter(l => l.startsWith('{')).pop();
+      if (!line) return reject(new Error('yt-dlp não retornou metadados do vídeo'));
+      try { resolve(JSON.parse(line)); }
+      catch (e) { reject(new Error('yt-dlp retornou JSON inválido')); }
+    });
+  });
+}
+
+app.post('/api/resolve-link', async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url || !/^https?:\/\//i.test(url)) {
+      return res.status(400).json({ error: 'Cole um link válido (Instagram ou TikTok).' });
+    }
+    console.log(`[Resolve Link] 🔗 ${url.slice(0, 80)}...`);
+    const m = await resolveVideoWithYtDlp(url);
+
+    const likes = m.like_count || 0;
+    const comments = m.comment_count || 0;
+    const views = m.view_count || 0;
+    // @ real do perfil: prioriza a URL do perfil (instagram.com/<handle>),
+    // depois um uploader_id que não seja só números, senão o nome do criador.
+    const urlHandle = (m.uploader_url || m.channel_url || '').match(/(?:instagram\.com|tiktok\.com)\/@?([^\/?#]+)/i);
+    const handle = (urlHandle && urlHandle[1])
+      || (m.uploader_id && !/^\d+$/.test(m.uploader_id) ? m.uploader_id : null)
+      || (m.channel && !/^\d+$/.test(m.channel) ? m.channel : null)
+      || m.uploader
+      || 'desconhecido';
+    const reel = {
+      id: `link-${m.id || Date.now()}`,
+      creator: m.uploader || m.channel || handle,
+      creatorHandle: '@' + String(handle).replace(/^@+/, ''),
+      likes,
+      comments,
+      shares: 0,
+      views,
+      description: (m.description || m.title || '').slice(0, 160),
+      caption: m.description || m.title || '',
+      theme: '',
+      engagementRate: views > 0 ? +(((likes + comments) / views) * 100).toFixed(2) : 0,
+      viralityScore: 0,
+      thumbnail: m.thumbnail || null,
+      videoUrl: m.url || null,
+      postUrl: m.webpage_url || url,
+      durationSec: m.duration || null,
+    };
+    if (!reel.videoUrl) {
+      return res.status(422).json({ error: 'Não consegui extrair o vídeo desse link.' });
+    }
+    console.log(`[Resolve Link] ✅ @${reel.creator} | ${reel.durationSec || '?'}s`);
+    res.json({ reel });
+  } catch (e) {
+    console.error('[Resolve Link] Erro:', e.message);
+    res.status(500).json({
+      error: 'Não consegui ler esse link. Verifique se é um reel público do Instagram ou TikTok.',
+      details: e.message,
+    });
+  }
+});
 
 // ══════════════════════════════════════════════════════════════════════════════
 // GERAR ROTEIRO: analisa vídeo com Gemini + gera roteiro com Claude

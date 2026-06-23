@@ -38,12 +38,6 @@ const STEPS = [
     placeholder: 'Ex: @joaosilva ou joaosilva',
   },
   {
-    title: 'Seu nicho detectado',
-    description: 'Identificado automaticamente da sua bio',
-    field: 'niche',
-    type: 'detected',
-  },
-  {
     title: 'Qual tipo de conteúdo você busca produzir no digital?',
     description: 'Selecione o tipo de conteúdo que interessa',
     field: 'painPoints',
@@ -98,45 +92,27 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
       'gastronomia': ['gastronomia', 'comida', 'receita', 'chef', 'culinaria'],
     };
 
-    const bioLower = (bio || '').toLowerCase();
+    // Normaliza: minúsculas + remove acentos (ç, ã, é...) para casar palavras
+    const bioNormalized = (bio || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '');
     const detected: string[] = [];
 
     for (const [niche, keywords] of Object.entries(nicheMap)) {
-      if (keywords.some(kw => bioLower.includes(kw))) {
+      const matched = keywords.some(kw => {
+        const k = kw.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+        // Match de PALAVRA INTEIRA (\bia\b) — evita "ia" casar dentro de
+        // "dia", "economia", "familia", "tecnologia", etc.
+        const re = new RegExp(`\\b${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+        return re.test(bioNormalized);
+      });
+      if (matched) {
         detected.push(niche.charAt(0).toUpperCase() + niche.slice(1));
       }
     }
 
     return detected.length > 0 ? detected : ['Geral'];
-  };
-
-  // Mensagens personalizadas
-  const getNicheMessage = (niche: string) => {
-    const messages: { [key: string]: string } = {
-      'Ia': 'Você respira IA',
-      'Marketing': 'Você domina Marketing',
-      'Tech': 'Você vive Tech',
-      'Fitness': 'Você é apaixonado por Fitness',
-      'Negocios': 'Você acredita em Negócios',
-      'Educacao': 'Você transforma através de Educação',
-      'Lifestyle': 'Você inspira com Lifestyle',
-      'Gastronomia': 'Você alimenta com Gastronomia',
-    };
-    return messages[niche] || `Você é especialista em ${niche}`;
-  };
-
-  const getNicheEmoji = (niche: string) => {
-    const emojis: { [key: string]: string } = {
-      'Ia': '🤖',
-      'Marketing': '📊',
-      'Tech': '💻',
-      'Fitness': '💪',
-      'Negocios': '💼',
-      'Educacao': '📚',
-      'Lifestyle': '✨',
-      'Gastronomia': '🍽️',
-    };
-    return emojis[niche] || '🎯';
   };
 
   const fetchInstagramProfile = async (username: string) => {
@@ -355,8 +331,8 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
   const fieldValue = formData[step.field as keyof typeof formData];
   const isFilled = typeof fieldValue === 'string' ? fieldValue.trim() !== '' : false;
   const isInstagramStep = currentStep === 1;
-  const isCheckboxStep = currentStep === 3; // passo 4 (índice 3)
-  const isReviewStep = currentStep === 4; // passo 5 (índice 4)
+  const isCheckboxStep = currentStep === 2; // passo 3 (índice 2)
+  const isReviewStep = currentStep === 3; // passo 4 (índice 3)
   const canProceed = isInstagramStep ? profileConfirmed : isReviewStep ? true : isCheckboxStep ? isFilled : isFilled;
 
   return (
@@ -437,23 +413,6 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
                   </div>
                 </div>
               </div>
-            </div>
-          ) : (step as any).type === 'detected' ? (
-            <div className="space-y-4">
-              {formData.niches && formData.niches.length > 0 ? (
-                <div className="space-y-4">
-                  {formData.niches.map((niche) => (
-                    <div key={niche} className="flex items-center gap-3">
-                      <span className="text-3xl">{getNicheEmoji(niche)}</span>
-                      <span className="text-xl font-semibold text-slate-900">
-                        {getNicheMessage(niche)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-slate-600 font-medium text-center">Carregando nichos...</p>
-              )}
             </div>
           ) : (step as any).type === 'checkboxes' ? (
             <div className="space-y-3">

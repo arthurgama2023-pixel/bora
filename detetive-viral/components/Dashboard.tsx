@@ -41,6 +41,7 @@ interface Reel {
 
 export default function Dashboard({ profile, onRestart }: DashboardProps) {
   const [selectedReel, setSelectedReel] = useState<Reel | null>(null);
+  const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { videos, loading, setVideos, setLoading, aiAnalysis, setAiAnalysis, videosViral, setVideosViral } = useVideos();
@@ -50,6 +51,31 @@ export default function Dashboard({ profile, onRestart }: DashboardProps) {
   const [tiktokLoading, setTiktokLoading] = useState(false);
   const [userArchetype, setUserArchetype] = useState<string | null>(null);
   const [archetypeAnalysis, setArchetypeAnalysis] = useState<any>(null);
+  const [linkInput, setLinkInput] = useState('');
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+
+  // Cola um link de reel → yt-dlp extrai o vídeo → abre o RoteiroPanel (Gemini + Claude)
+  const handleGerarDeLink = async () => {
+    if (!linkInput.trim() || linkLoading) return;
+    setLinkLoading(true);
+    setLinkError(null);
+    try {
+      const res = await fetch(`${API_URL}/api/resolve-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: linkInput.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Não consegui ler esse link.');
+      setSelectedReel(data.reel);
+      setLinkInput('');
+    } catch (e) {
+      setLinkError(e instanceof Error ? e.message : 'Erro ao ler o link');
+    } finally {
+      setLinkLoading(false);
+    }
+  };
 
   const handleRefreshTrends = async () => {
     setIsRefreshing(true);
@@ -260,6 +286,52 @@ export default function Dashboard({ profile, onRestart }: DashboardProps) {
             </>
           )}
 
+          {/* Gerar roteiro a partir de um link */}
+          {currentTab !== 'arquetipo' && (
+            <div className="bg-white border border-[#c4c5d7] rounded-2xl p-5">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="material-symbols-outlined text-[#0037b0]" style={{ fontVariationSettings: "'FILL' 1" }}>link</span>
+                <h3 className="text-lg font-bold text-[#191c1e]">Gerar roteiro de um link</h3>
+              </div>
+              <p className="text-sm text-[#434655] mb-3">
+                Cole o link de um reel (Instagram ou TikTok). A IA traz o vídeo e monta o roteiro completo.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={linkInput}
+                  onChange={(e) => setLinkInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleGerarDeLink()}
+                  placeholder="https://www.instagram.com/reel/..."
+                  className="flex-1 px-4 py-3 rounded-xl border-2 border-[#c4c5d7] focus:border-[#0037b0] focus:outline-none text-sm text-[#191c1e] transition-colors"
+                />
+                <button
+                  onClick={handleGerarDeLink}
+                  disabled={linkLoading || !linkInput.trim()}
+                  className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white bg-[#0037b0] hover:bg-[#002a8a] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  {linkLoading ? (
+                    <>
+                      <Loader size={16} className="animate-spin" />
+                      Lendo o vídeo...
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                      Gerar roteiro
+                    </>
+                  )}
+                </button>
+              </div>
+              {linkError && (
+                <p className="text-sm text-[#ba1a1a] mt-2 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-base">error</span>
+                  {linkError}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Reels/TikTok Section */}
           {currentTab !== 'arquetipo' && (
           <div className="space-y-4 pt-4">
@@ -360,6 +432,9 @@ export default function Dashboard({ profile, onRestart }: DashboardProps) {
                         reel={reel}
                         selected={selectedReel?.id === reel.id}
                         onClick={() => setSelectedReel(reel)}
+                        isPlaying={playingVideoId === reel.id}
+                        onPlayStart={() => setPlayingVideoId(reel.id)}
+                        onPlayStop={() => setPlayingVideoId(null)}
                       />
                     ))}
                   </div>

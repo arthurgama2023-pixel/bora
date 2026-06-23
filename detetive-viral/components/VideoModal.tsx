@@ -1,48 +1,76 @@
 'use client';
 
-import { X } from 'lucide-react';
+import { useRef, useState, useEffect } from 'react';
+import { Play } from 'lucide-react';
 
-interface VideoModalProps {
+interface VideoPlayerProps {
   videoUrl: string;
   title: string;
   creator: string;
-  onClose: () => void;
+  onEnded?: () => void;
 }
 
-export default function VideoModal({
+export default function VideoPlayer({
   videoUrl,
   title,
   creator,
-  onClose,
-}: VideoModalProps) {
+  onEnded
+}: VideoPlayerProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isPlaying, setIsPlaying] = useState(true);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleClick = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (video.paused) {
+        video.play().catch(err => console.log('Play error:', err));
+      } else {
+        video.pause();
+      }
+    };
+
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+
+    video.addEventListener('click', handleClick);
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('pause', handlePause);
+
+    return () => {
+      video.removeEventListener('click', handleClick);
+      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('pause', handlePause);
+    };
+  }, []);
+
   return (
-    <>
-      {/* Overlay escuro semitransparente */}
-      <div
-        className="absolute inset-0 bg-black/50 z-10"
-        onClick={onClose}
+    <div className="relative w-full h-full bg-black">
+      <video
+        ref={videoRef}
+        src={videoUrl}
+        autoPlay
+        muted={false}
+        loop={false}
+        onEnded={onEnded}
+        playsInline
+        className="w-full h-full object-cover cursor-pointer"
+        crossOrigin="anonymous"
+        style={{ display: 'block' }}
       />
 
-      {/* Video player - fica no card */}
-      <div className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-2xl overflow-hidden bg-black">
-        {/* Video */}
-        <video
-          src={videoUrl}
-          controls
-          autoPlay
-          muted
-          className="w-full h-full object-cover"
-          crossOrigin="anonymous"
-        />
-
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-2 right-2 bg-white/20 hover:bg-white/40 rounded-full p-1.5 transition-colors z-30"
-        >
-          <X size={20} className="text-white" />
-        </button>
-      </div>
-    </>
+      {/* Overlay com ícone quando pausado */}
+      {!isPlaying && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none">
+          <div className="bg-white/30 rounded-full p-6">
+            <Play size={48} className="text-white fill-white" />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
