@@ -182,10 +182,18 @@ function extractNicheFromBio(bio_or_url) {
 
 // Health check
 app.get('/api/health', (req, res) => {
+  // DEBUG TEMPORÁRIO: confirma remotamente se DATABASE_URL chegou ao backend
+  // e pra qual host aponta (sem vazar senha) — remover depois do deploy ok.
+  let dbHost = null;
+  try {
+    if (process.env.DATABASE_URL) dbHost = new URL(process.env.DATABASE_URL).host;
+  } catch { dbHost = 'parse_error'; }
   res.json({
     status: 'ok',
     timestamp: new Date(),
     apify: !!process.env.APIFY_API_KEY,
+    dbConfigured: !!process.env.DATABASE_URL,
+    dbHost: dbHost || 'fallback_localhost',
   });
 });
 
