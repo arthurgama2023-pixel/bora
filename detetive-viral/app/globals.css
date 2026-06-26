@@ -12,11 +12,10 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* App é tema-claro fixo (fundos claros/brancos). Sem inverter no modo escuro
+   do celular — senão texto sem cor explícita fica claro sobre fundo claro. */
+html {
+  color-scheme: light;
 }
 
 body {

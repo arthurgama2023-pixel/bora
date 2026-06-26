@@ -28,15 +28,29 @@ interface AiAnalysis {
   confianca: string;
 }
 
+// Duas formas possíveis: (1) o roteiro padrão minimalista — só "o que deu
+// certo" + "modelo usado" no vídeo real; (2) o roteiro da estratégia Marca em
+// Alta, que de fato gera um roteiro novo pra gravar (campos legados).
+interface ComoUsarOpcao {
+  forma: string;
+  como: string;
+}
+
 interface Roteiro {
-  por_que_viral: string;
-  abertura_fala: string;
-  abertura_visual: string;
-  meio: string[];
-  final: string;
-  dicas_edicao: string[];
-  sua_versao: string | { inicio: string; meio: string; encerramento: string };
-  hashtags_sugeridas: string[];
+  formato?: string | null;
+  modelo_usado?: string | null;
+  modelo_explicado?: string;
+  o_que_deu_certo?: string[];
+  como_usar?: ComoUsarOpcao[];
+  // Campos legados — só presentes quando estrategia === 'marca_em_alta'
+  por_que_viral?: string;
+  abertura_fala?: string;
+  abertura_visual?: string;
+  meio?: string[];
+  final?: string;
+  dicas_edicao?: string[];
+  sua_versao?: string | { inicio: string; meio: string; encerramento: string };
+  hashtags_sugeridas?: string[];
   tempo_estimado?: string;
   dificuldade?: number | string;
 }
@@ -45,7 +59,7 @@ interface Roteiro {
 // mesmo vídeo restaurar transcrição/estratégia/badge idênticos à 1ª geração.
 interface RoteiroCacheEntry {
   roteiro: Roteiro;
-  fonte: 'gemini' | 'caption';
+  fonte: 'gemini' | 'sem_dados' | 'caption';
   geminiAnalysis: Record<string, unknown> | null;
   estrategia: string | null;
 }

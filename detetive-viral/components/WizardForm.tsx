@@ -339,11 +339,11 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
     <div className="flex items-center justify-center min-h-screen px-4">
       <div className="w-full max-w-2xl">
         {/* Header */}
-        <div className="mb-12 text-center">
-          <h1 className="text-4xl font-bold text-slate-900 mb-2">
+        <div className="mb-8 md:mb-12 text-center">
+          <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">
             🎬 Radar de Tendências
           </h1>
-          <p className="text-lg text-slate-600">
+          <p className="text-base md:text-lg text-slate-600">
             Descubra o que viraliza no seu nicho
           </p>
         </div>
@@ -367,9 +367,9 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
         </div>
 
         {/* Card */}
-        <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
+        <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 mb-8">
           {/* Step Title */}
-          <h2 className="text-3xl font-bold text-slate-900 mb-2">
+          <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-2">
             {step.title}
           </h2>
           <p className="text-slate-600 mb-8">{step.description}</p>
@@ -443,11 +443,21 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
               rows={isInstagramStep && instagramProfile ? 2 : 4}
             />
           )}
-          {/* Helper text for Instagram step */}
+          {/* Botão de busca — funciona em qualquer dispositivo (Enter não é confiável no teclado mobile) */}
           {isInstagramStep && !instagramProfile && (
-            <p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
-              💡 Digite o @usuario (com ou sem @) e pressione <kbd className="px-2 py-1 bg-slate-100 rounded border border-slate-300 font-mono text-xs">Enter</kbd> para buscar
-            </p>
+            <div className="mt-3 space-y-2">
+              <button
+                onClick={() => fetchInstagramProfile(formData.instagram)}
+                disabled={!formData.instagram.trim() || loadingProfile}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                {loadingProfile ? <Loader className="animate-spin" size={18} /> : null}
+                Buscar perfil
+              </button>
+              <p className="text-xs text-slate-500 hidden sm:flex items-center gap-1">
+                💡 Ou pressione <kbd className="px-2 py-1 bg-slate-100 rounded border border-slate-300 font-mono text-xs">Enter</kbd>
+              </p>
+            </div>
           )}
 
           {/* Instagram Profile Display */}
@@ -582,10 +592,10 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
           <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto">
 
             {/* Conteúdo — Mensagem Inspiradora + Análise */}
-            <div className="p-10 space-y-8">
+            <div className="p-6 md:p-10 space-y-6 md:space-y-8">
               {/* Título Principal */}
               <div className="space-y-4 text-center">
-                <h2 className="text-4xl font-bold text-slate-900 leading-tight">
+                <h2 className="text-2xl md:text-4xl font-bold text-slate-900 leading-tight whitespace-pre-line">
                   {userArchetype === 'Educador' ? `Você não apenas ensina,\nvocê transforma vidas.` :
                    userArchetype === 'Influenciador' ? `Sua voz é poder.\nSeu alcance é responsabilidade.` :
                    userArchetype === 'Empreendedor' ? `Você constrói impérios,\nnão apenas conteúdo.` :
@@ -612,7 +622,7 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
 
               {/* Análise Detalhada */}
               {archetypeAnalysis && (
-                <div className="bg-slate-50 rounded-xl p-6 space-y-4 border border-slate-200">
+                <div className="bg-slate-50 rounded-xl p-4 md:p-6 space-y-4 border border-slate-200">
                   {archetypeAnalysis.por_que && (
                     <div>
                       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Por quê</p>

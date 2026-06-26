@@ -13,50 +13,26 @@ app.use(express.json());
 // Apify Client
 const { ApifyClient } = require('apify-client');
 
+// Influencers
+const { getInfluencerVideos } = require('./get-influencer-videos');
+const { addInfluencer } = require('./add-influencer');
+const { updateFavoritesFromPool, getReferenceUsernames } = require('./favorites');
+
 // ══════════════════════════════════════════════════════════════════════════════
-// CACHE (persistente em arquivo) — corta ~95% do custo de Apify
+// CACHE (persistente em Postgres) — corta ~95% do custo de Apify
 //   • bucket "profiles": resultado final por @ (reabrir o mesmo @ = grátis)
 //   • bucket "hashtags": reels brutos por conjunto de hashtags (mesmo nicho = grátis)
+//
+// Antes era um único .cache.json de 17MB reescrito inteiro e SÍNCRONO a cada
+// gravação (travava o event loop e impedia múltiplas instâncias). Agora cada
+// entrada é uma linha em cache_entries (ver server/db.js). getCached/setCached
+// mantêm a mesma assinatura, mas agora são ASYNC — os call sites usam await.
 // ══════════════════════════════════════════════════════════════════════════════
 const fs = require('fs');
 const path = require('path');
-const CACHE_FILE = path.join(__dirname, '.cache.json');
+const { pool, initDb, getCached, setCached } = require('./db');
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 horas (perfil + hashtags)
 const CLASSIFY_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias (nicho/hashtags mudam pouco)
-
-let cache = { profiles: {}, hashtags: {} };
-try {
-  if (fs.existsSync(CACHE_FILE)) {
-    cache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
-    cache.profiles = cache.profiles || {};
-    cache.hashtags = cache.hashtags || {};
-  }
-} catch (e) {
-  console.warn('[Cache] Não foi possível carregar o cache:', e.message);
-}
-
-function saveCache() {
-  try {
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(cache));
-  } catch (e) {
-    console.warn('[Cache] Erro ao salvar:', e.message);
-  }
-}
-
-function getCached(bucket, key, ttl = CACHE_TTL_MS) {
-  const entry = cache[bucket] && cache[bucket][key];
-  if (entry && (Date.now() - entry.ts) < ttl) {
-    const ageMin = Math.round((Date.now() - entry.ts) / 60000);
-    return { data: entry.data, ageMin };
-  }
-  return null;
-}
-
-function setCached(bucket, key, data) {
-  if (!cache[bucket]) cache[bucket] = {};
-  cache[bucket][key] = { data, ts: Date.now() };
-  saveCache();
-}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // FUNÇÕES AUXILIARES
@@ -601,7 +577,7 @@ app.post('/api/instagram/profile', async (req, res) => {
 
     // CACHE: verificar se já temos esse perfil (12 horas)
     // bucket separado de "profiles" (usado pela busca de vídeos) p/ evitar colisão de cache
-    const cached = getCached('profileInfo', cleanUsername, 12 * 60 * 60 * 1000);
+    const cached = await getCached('profileInfo', cleanUsername, 12 * 60 * 60 * 1000);
     if (cached) {
       console.log(`[Instagram Profile] 💾 Cache HIT para @${cleanUsername} (${cached.ageMin}m)`);
       return res.json(cached.data);
@@ -628,7 +604,7 @@ app.post('/api/instagram/profile', async (req, res) => {
 
     // Guarda o perfil BRUTO (com latestPosts) p/ a busca de vídeos reusar — evita
     // raspar o mesmo perfil duas vezes (passo 2 do wizard + passo 5).
-    setCached('profileRaw', cleanUsername, profile);
+    await setCached('profileRaw', cleanUsername, profile);
 
     const result = {
       username: profile.username,
@@ -645,7 +621,7 @@ app.post('/api/instagram/profile', async (req, res) => {
     };
 
     // CACHE: salvar o resultado por 12 horas
-    setCached('profileInfo', cleanUsername, result);
+    await setCached('profileInfo', cleanUsername, result);
 
     console.log(`[Instagram Profile] ✅ Perfil encontrado: ${result.name}`);
     res.json(result);
@@ -1369,14 +1345,38 @@ async function computeNicheVideos(apify, cls, force = false) {
 
   // Apify: reels brutos das hashtags (cache 12h por conjunto de hashtags)
   let rawPosts;
-  const hashtagHit = !force && getCached('hashtags', hashtagKey);
+  const hashtagHit = !force && await getCached('hashtags', hashtagKey);
   if (hashtagHit) {
     rawPosts = hashtagHit.data;
     console.log(`[Niche] ⚡ hashtags "${hashtagKey}" do cache (${hashtagHit.ageMin} min) — ${rawPosts.length} reels`);
   } else {
     rawPosts = await searchViralHashtags(apify, cls.hashtags, 70); // 70 x 6 hashtags ≈ 400 reels
-    setCached('hashtags', hashtagKey, rawPosts);
+    await setCached('hashtags', hashtagKey, rawPosts);
     console.log(`[Niche] 📦 ${rawPosts.length} reels brutos (Apify) cacheados p/ "${hashtagKey}"`);
+  }
+
+  // ── CAMADA INTELIGENTE (aditiva — não altera o motor de hashtags acima) ──────
+  // 1) aprende os FAVORITOS do nicho a partir deste pool (consistência+performance)
+  // 2) re-puxa reels FRESCOS das referências (favoritos + adds manuais) e mescla
+  //    no pool → os que mais performam SEMPRE voltam, com conteúdo novo.
+  try {
+    await updateFavoritesFromPool(detectedNiche, rawPosts);
+    const refs = await getReferenceUsernames(detectedNiche, 10);
+    if (refs.length) {
+      const favRun = await apify.actor('apify/instagram-reel-scraper').call(
+        { username: refs, resultsLimit: refs.length * 8 }, { timeout: 180000 }
+      );
+      const { items: favReels } = await apify.dataset(favRun.defaultDatasetId).listItems({ limit: refs.length * 8 });
+      const seen = new Set(rawPosts.map(p => p.shortCode || p.id));
+      let added = 0;
+      for (const r of (favReels || [])) {
+        const k = r.shortCode || r.id;
+        if (k && !seen.has(k)) { rawPosts.push(r); seen.add(k); added++; }
+      }
+      console.log(`[Niche] ⭐ Referências: ${refs.length} perfis (favoritos + manuais) → +${added} reels frescos`);
+    }
+  } catch (e) {
+    console.warn('[Niche] ⚠️ Camada de favoritos falhou (seguindo só com hashtags):', e.message);
   }
 
   // Filtro de desempenho — corta view-bait/impulsionado
@@ -1469,20 +1469,24 @@ async function computeNicheVideos(apify, cls, force = false) {
 // 30 usuários do mesmo nicho ⇒ no máximo 1 cômputo pago a cada 12h.
 function getNicheVideos(apify, cls, force = false) {
   const key = [...cls.hashtags].sort().join(',');
-  if (!force) {
-    const hit = getCached('nicheVideos', key);
-    if (hit) {
-      console.log(`[Niche] ⚡ RESULTADO do nicho em cache (${hit.ageMin} min) — custo R$0`);
-      return Promise.resolve({ data: hit.data, cached: true, ageMin: hit.ageMin });
-    }
-    if (inFlightNiche.has(key)) {
-      console.log(`[Niche] ⏳ Cômputo do nicho já em andamento — aguardando (sem novo gasto)`);
-      return inFlightNiche.get(key);
-    }
+  // A trava anti-stampede tem que ser SÍNCRONA: checar e registrar inFlightNiche
+  // sem nenhum await no meio, senão dois requests simultâneos passam os dois e
+  // pagam o Apify em dobro. Por isso a leitura de cache (agora async, no Postgres)
+  // foi movida pra DENTRO da promise — o fast-path de cache hit custa só 1 SELECT.
+  if (!force && inFlightNiche.has(key)) {
+    console.log(`[Niche] ⏳ Cômputo do nicho já em andamento — aguardando (sem novo gasto)`);
+    return inFlightNiche.get(key);
   }
   const promise = (async () => {
+    if (!force) {
+      const hit = await getCached('nicheVideos', key);
+      if (hit) {
+        console.log(`[Niche] ⚡ RESULTADO do nicho em cache (${hit.ageMin} min) — custo R$0`);
+        return { data: hit.data, cached: true, ageMin: hit.ageMin };
+      }
+    }
     const data = await computeNicheVideos(apify, cls, force);
-    setCached('nicheVideos', key, data);
+    await setCached('nicheVideos', key, data);
     return { data, cached: false, ageMin: 0 };
   })();
   if (!force) {
@@ -1512,7 +1516,7 @@ app.post('/api/videos/from-user-profile', async (req, res) => {
 
     // ⚡ CACHE POR PERFIL (12h): reabrir o mesmo @ não custa nada
     if (!force) {
-      const hit = getCached('profiles', cleanUsername);
+      const hit = await getCached('profiles', cleanUsername);
       if (hit) {
         console.log(`[Videos from Profile] ⚡ CACHE HIT @${cleanUsername} (${hit.ageMin} min atrás) — custo R$0`);
         return res.json({ ...hit.data, cached: true, cacheAgeMin: hit.ageMin });
@@ -1524,14 +1528,14 @@ app.post('/api/videos/from-user-profile', async (req, res) => {
     // Passo 1+2: classificar o nicho (Claude, cache 7d). Classify-first: se o nicho do @
     // já está em cache, nem raspamos o perfil de novo (Apify R$0).
     let cls;
-    const classifyHit = !force && getCached('classify', cleanUsername, CLASSIFY_TTL_MS);
+    const classifyHit = !force && await getCached('classify', cleanUsername, CLASSIFY_TTL_MS);
     if (classifyHit) {
       cls = classifyHit.data;
       console.log(`[Videos from Profile] ⚡ classificação @${cleanUsername} do cache (${classifyHit.ageMin} min)`);
     } else {
       // Precisa do perfil completo (latestPosts) — reusa o scrape do passo 2 (profileRaw) se houver
       let userProfile;
-      const rawHit = !force && getCached('profileRaw', cleanUsername);
+      const rawHit = !force && await getCached('profileRaw', cleanUsername);
       if (rawHit) {
         userProfile = rawHit.data;
         console.log(`[Videos from Profile] ⚡ perfil @${cleanUsername} do cache (sem novo scrape)`);
@@ -1545,22 +1549,19 @@ app.post('/api/videos/from-user-profile', async (req, res) => {
           return res.json({ username: cleanUsername, videos: [], message: 'Perfil não encontrado.' });
         }
         userProfile = items[0];
-        setCached('profileRaw', cleanUsername, userProfile);
+        await setCached('profileRaw', cleanUsername, userProfile);
       }
       cls = await classifyProfileWithAI(userProfile);
-      setCached('classify', cleanUsername, cls);
+      await setCached('classify', cleanUsername, cls);
     }
 
     const detectedNiche = cls.nicho;
-    console.log(`[Videos from Profile] 🤖 Nicho (IA): ${detectedNiche} [${cls.confianca}]`);
+    console.log(`[Videos from Profile] 🤖 Nicho: ${detectedNiche} [${cls.confianca}]`);
     console.log(`[Videos from Profile] 🏷️  Hashtags: ${(cls.hashtags || []).join(', ')}`);
 
-    if (!cls.hashtags || !cls.hashtags.length) {
-      return res.json({ username: cleanUsername, videos: [], nicho: detectedNiche, message: 'Não foi possível gerar hashtags para o perfil.' });
-    }
-
-    // Passo 3: vídeos virais do NICHO — roda 1x por nicho a cada 12h, compartilhado
-    // entre TODOS os usuários do mesmo nicho (Apify hashtags + Claude relevância).
+    // Motor de hashtags (que já funcionava bem) é sempre o caminho. As referências
+    // (favoritos aprendidos + adds manuais) são mescladas DENTRO do computeNicheVideos,
+    // então os perfis que mais performam voltam frescos sem trocar o motor.
     const { data: nicheData, cached: nicheCached, ageMin: nicheAgeMin } = await getNicheVideos(apify, cls, force);
 
     // Passo 4: fatia por usuário (cada plano pode pedir um limite diferente)
@@ -1581,7 +1582,7 @@ app.post('/api/videos/from-user-profile', async (req, res) => {
     };
 
     // 💾 Guarda no cache por perfil (próximas aberturas do MESMO @ em 12h = grátis)
-    setCached('profiles', cleanUsername, result);
+    await setCached('profiles', cleanUsername, result);
 
     res.json({ ...result, nicheCached, nicheAgeMin });
   } catch (error) {
@@ -1593,10 +1594,38 @@ app.post('/api/videos/from-user-profile', async (req, res) => {
   }
 });
 
+// ⭐ Adicionar 1 restaurante/influenciador como REFERÊNCIA do nicho (self-service).
+// Raspa perfil + reels e engorda a base do nicho. Depois invalida o cache do perfil
+// que disparou a busca, pra próxima abertura já trazer a nova referência.
+app.post('/api/influencers/add', async (req, res) => {
+  try {
+    const { username, nicho, forProfile } = req.body;
+    if (!username || !nicho) {
+      return res.status(400).json({ error: 'Informe o @ do restaurante e o nicho.' });
+    }
+    console.log(`[Add Influencer] ➕ @${username} no nicho "${nicho}"`);
+    const result = await addInfluencer(username, nicho);
+    if (!result.ok) return res.status(404).json(result);
+
+    // Invalida o cache do perfil atual pra refletir a nova referência na próxima busca
+    if (forProfile) {
+      const clean = extractInstagramUsername(forProfile);
+      if (clean) {
+        try { await pool.query(`DELETE FROM cache_entries WHERE bucket='profiles' AND key=$1`, [clean]); } catch {}
+      }
+    }
+    console.log(`[Add Influencer] ✅ @${result.username}: ${result.reels} reels (nicho ${result.nicho} agora tem ${result.totalInfluencers} perfis / ${result.totalReels} reels)`);
+    res.json(result);
+  } catch (error) {
+    console.error('[Add Influencer] Erro:', error.message);
+    res.status(500).json({ error: 'Não foi possível adicionar a referência.', details: error.message });
+  }
+});
+
 // ══════════════════════════════════════════════════════════════════════════════
 // GEMINI: análise visual + áudio completa do vídeo
 // ══════════════════════════════════════════════════════════════════════════════
-async function analyzeVideoWithGemini(videoUrl) {
+async function analyzeVideoWithGemini(videoUrl, signal) {
   const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
   if (!GEMINI_API_KEY || !videoUrl) return null;
 
@@ -1608,6 +1637,7 @@ async function analyzeVideoWithGemini(videoUrl) {
       responseType: 'arraybuffer',
       timeout: 30000,
       headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal,
     });
     const videoBuffer = Buffer.from(videoRes.data);
     const mimeType = videoRes.headers['content-type'] || 'video/mp4';
@@ -1627,6 +1657,7 @@ async function analyzeVideoWithGemini(videoUrl) {
         timeout: 60000,
         maxContentLength: Infinity,
         maxBodyLength: Infinity,
+        signal,
       }
     );
 
@@ -1640,9 +1671,11 @@ async function analyzeVideoWithGemini(videoUrl) {
     const fileName = uploadRes.data?.file?.name;
     let attempts = 0;
     while (fileState === 'PROCESSING' && attempts < 45) {
+      if (signal?.aborted) throw new Error('Análise cancelada — cliente desconectou');
       await new Promise(r => setTimeout(r, 2000));
       const stateRes = await axios.get(
-        `https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${GEMINI_API_KEY}`
+        `https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${GEMINI_API_KEY}`,
+        { signal }
       );
       fileState = stateRes.data?.state;
       attempts++;
@@ -1662,7 +1695,9 @@ async function analyzeVideoWithGemini(videoUrl) {
 Responda APENAS um JSON válido neste formato:
 {
   "gancho_visual": "descreva exatamente o que acontece nos primeiros 3 segundos — o que aparece na tela, expressão, movimento, corte",
-  "transcricao": "transcrição literal de tudo que é falado ou aparece escrito na tela ao longo do vídeo",
+  "tem_narracao": true ou false — existe ALGUÉM FALANDO (voz humana / narração) no vídeo? Responda false se for só música, som ambiente, ou apenas texto na tela sem voz,
+  "tipo_audio": "classifique o áudio do vídeo: 'narracao' (alguém falando), 'narracao_e_musica', 'musica' (só trilha sonora, sem voz), 'som_ambiente' (sons do local, sem voz), 'sem_audio'",
+  "transcricao": "transcrição literal APENAS do que é FALADO por voz/narração. Se NINGUÉM fala no vídeo, responda EXATAMENTE: '(sem fala — vídeo sem narração)'. Não invente. Não coloque aqui texto que só aparece escrito na tela",
   "legendas_tela": "textos, emojis e legendas dinâmicas que aparecem sobrepostos na tela e quando aparecem",
   "ritmo_edicao": "descreva o ritmo de cortes, transições, velocidade — ex: corte a cada 1s, zoom no ponto X, B-roll em Y",
   "estrategia_narrativa": "qual é a estrutura narrativa usada — ex: Problema→Solução, Contrário→Revelação, Antes→Depois",
@@ -1675,14 +1710,16 @@ Responda APENAS um JSON válido neste formato:
 }` }
           ]
         }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 1500 }
+        generationConfig: { temperature: 0.2, maxOutputTokens: 8192, responseMimeType: 'application/json' }
       },
-      { timeout: 60000 }
+      { timeout: 60000, signal }
     );
 
+    const finishReason = analyzeRes.data?.candidates?.[0]?.finishReason;
     const rawText = analyzeRes.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if (finishReason === 'MAX_TOKENS') console.warn('[Gemini] ⚠️ Resposta cortada por limite de tokens (MAX_TOKENS)');
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('Gemini não retornou JSON válido');
+    if (!jsonMatch) throw new Error(`Gemini não retornou JSON válido (finishReason=${finishReason})`);
 
     const analysis = JSON.parse(jsonMatch[0]);
     console.log(`[Gemini] ✅ Análise concluída — gancho: "${analysis.gancho_visual?.slice(0, 60)}..."`);
@@ -1699,96 +1736,49 @@ Responda APENAS um JSON válido neste formato:
 }
 
 // ── Prompt COM análise real do Gemini ─────────────────────────────────────────
-// O roteiro é extraído do vídeo real — gancho, fala, edição, CTA literais.
-// Claude organiza e ensina, não inventa.
+// Escopo: (1) o que REALMENTE deu certo no vídeo + (2) qual modelo/estrutura
+// foi usado — fatos, vindos só da análise real, sem inventar fala/cena.
+// (3) "como_usar": diferente das duas primeiras partes, aqui é EXPLICITAMENTE
+// uma sugestão nova (não uma descrição do vídeo original) — formas variadas
+// de aplicar esse mesmo modelo no negócio do usuário. Por ser rotulado como
+// sugestão e não como fato sobre o vídeo, não viola a transparência.
 function buildPromptComGemini({ creator, niche, theme, painPoints, desires, geminiAnalysis: g }) {
-  return `Você é um roteirista profissional criando um guia de gravação para alguém que NÃO entende de marketing. A pessoa vai ler isso, pegar o celular e gravar. Sem jargão, sem termos técnicos.
+  return `Você é um analista de conteúdo viral e consultor de criação de conteúdo. Você só pode tratar como FATO os dados REAIS abaixo, extraídos do vídeo pelo Gemini. NUNCA invente fala, cena ou contexto que não esteja nos dados ao descrever o vídeo original.
 
-VÍDEO ORIGINAL ANALISADO (dados reais extraídos pelo Gemini):
-═══════════════════════════════════════════════════
-Criador: @${creator || 'desconhecido'} | Nicho: ${niche || theme}
-Duração real: ${g.duracao_estimada || '?'}
+DADOS REAIS DO VÍDEO (@${creator || 'desconhecido'} | nicho do vídeo: ${niche || theme}):
+TEM NARRAÇÃO? ${g.tem_narracao === false ? 'NÃO — vídeo visual (música/texto na tela), sem voz' : g.tem_narracao === true ? 'SIM' : '(não identificado)'}
+Tipo de áudio: ${g.tipo_audio || '(não identificado)'}
+Transcrição real (só o que foi falado): "${g.transcricao || '(não identificado)'}"
+Gancho/abertura real (0-3s): "${g.gancho_visual || '(não identificado)'}"
+Textos na tela: ${g.legendas_tela || '(nenhum)'}
+Ritmo de edição: ${g.ritmo_edicao || '(não identificado)'}
+Por que prendeu atenção: ${g.por_que_para_o_scroll || '(não identificado)'}
+Energia/tom do criador: ${g.tom_energia || '(não identificado)'}
+Estrutura narrativa identificada: ${g.estrategia_narrativa || '(não identificado)'}
+Pergunta/CTA de encerramento: ${g.pergunta_engajamento || '(nenhuma)'}
 
-TRANSCRIÇÃO REAL (o que foi falado, palavra por palavra):
-"${g.transcricao || '(não identificado)'}"
-
-ABERTURA REAL (primeiros 0-3s — o que apareceu na tela e foi dito):
-"${g.gancho_visual || '(não identificado)'}"
-
-TEXTOS E LEGENDAS NA TELA:
-${g.legendas_tela || '(nenhum)'}
-
-COMO FOI EDITADO:
-${g.ritmo_edicao || '(não identificado)'}
-
-POR QUE PRENDEU ATENÇÃO:
-${g.por_que_para_o_scroll || '(não identificado)'}
-
-ENERGIA DO CRIADOR:
-${g.tom_energia || '(não identificado)'}
-═══════════════════════════════════════════════════
-
-QUEM VAI GRAVAR:
+QUEM VAI USAR ESSE MODELO (pra quem sugerir as opções de uso):
 - Nicho: ${niche || theme}
 ${painPoints ? `- Dores do público: ${painPoints}` : ''}
 ${desires ? `- Desejos do público: ${desires}` : ''}
 
-REGRAS:
-- Use a transcrição real como base — não invente falas
-- "abertura_fala" = as primeiras palavras REAIS do vídeo (da transcrição)
-- "meio" = o que foi dito no meio, em pontos simples
-- "final" = como o criador encerrou de verdade
-- "dicas_edicao" = técnicas reais de edição observadas pelo Gemini
-- "sua_versao" = único campo onde você adapta pro nicho do usuário (2-3 frases prontas pra gravar)
-- Fale como se fosse um amigo explicando, não como manual de marketing
+Sua tarefa tem 3 partes:
+1. O que REALMENTE deu certo nesse vídeo específico (fato, baseado só nos dados acima).
+2. Qual modelo/estrutura narrativa foi usado (fato).
+3. 3 opções DIFERENTES de como aplicar esse MESMO modelo no negócio do nicho acima — cada opção é uma sugestão nova e deve ter um ângulo distinto das outras (ex: uma focada em atrair gente nova, outra em fidelizar quem já conhece, outra em prova social/autoridade). Deixe claro que são sugestões de aplicação, não invente que isso aconteceu no vídeo original.
 
 Responda APENAS um JSON válido:
 {
-  "por_que_viral": "explique em 2 frases simples por que esse vídeo fez as pessoas pararem de rolar o feed — sem jargão, como você contaria pra um amigo",
-  "abertura_fala": "as primeiras palavras REAIS ditas no vídeo (da transcrição), que prendem atenção nos primeiros 3 segundos",
-  "abertura_visual": "o que o criador estava fazendo/mostrando enquanto falava a abertura (expressão, posição, o que aparecia na tela)",
-  "meio": ["ponto 1 do que foi dito/mostrado no meio do vídeo", "ponto 2", "ponto 3 — máximo 4 pontos, diretos e simples"],
-  "final": "como o criador encerrou o vídeo e o que pediu pras pessoas fazerem",
-  "dicas_edicao": ["dica real de edição observada no vídeo 1 (ex: 'Coloca uma legenda grande no centro da tela logo no começo')", "dica 2", "dica 3 — máximo 4, práticas e sem jargão"],
-  "sua_versao": {
-    "inicio": "a FALA de abertura pronta pra gravar (primeiros 3s), adaptada pro nicho '${niche || theme}', no mesmo estilo e energia do vídeo original",
-    "meio": "o desenvolvimento pronto pra gravar — o que falar no meio do vídeo",
-    "encerramento": "o encerramento pronto pra gravar — a frase final e o que pedir pras pessoas fazerem"
-  },
-  "hashtags_sugeridas": ["5 hashtags reais do nicho ${niche || theme}"],
-  "tempo_estimado": "${g.duracao_estimada || 'baseado no vídeo original'}",
-  "dificuldade": número de 1 a 5 (1=gravar com celular parado, 5=precisa de edição profissional)
-}`;
-}
-
-function buildPromptSemGemini({ creator, niche, theme, caption, painPoints, desires }) {
-  return `Você é um roteirista criando um guia de gravação para alguém que NÃO entende de marketing. A pessoa vai ler, pegar o celular e gravar. Sem jargão.
-
-VÍDEO DE REFERÊNCIA:
-Criador: @${creator || 'desconhecido'} | Nicho: ${niche || theme}
-Legenda: "${caption || '(sem legenda)'}"
-
-QUEM VAI GRAVAR:
-- Nicho: ${niche || theme}
-${painPoints ? `- Dores do público: ${painPoints}` : ''}
-${desires ? `- Desejos do público: ${desires}` : ''}
-
-Responda APENAS um JSON válido:
-{
-  "por_que_viral": "2 frases simples explicando por que esse tipo de vídeo funciona nesse nicho — sem jargão",
-  "abertura_fala": "frase de abertura que prende atenção nos primeiros 3 segundos — específica pra esse nicho",
-  "abertura_visual": "o que a pessoa deveria estar fazendo/mostrando enquanto fala a abertura",
-  "meio": ["ponto 1 do que dizer/mostrar no meio", "ponto 2", "ponto 3"],
-  "final": "como encerrar o vídeo e o que pedir pras pessoas fazerem",
-  "dicas_edicao": ["dica prática de edição 1", "dica 2", "dica 3"],
-  "sua_versao": {
-    "inicio": "a FALA de abertura pronta pra gravar (primeiros 3s), adaptada pro nicho '${niche || theme}'",
-    "meio": "o desenvolvimento pronto pra gravar — o que falar no meio do vídeo",
-    "encerramento": "o encerramento pronto pra gravar — a frase final e o que pedir pras pessoas fazerem"
-  },
-  "hashtags_sugeridas": ["5 hashtags do nicho ${niche || theme}"],
-  "tempo_estimado": "30 a 45 segundos",
-  "dificuldade": número de 1 a 5
+  "formato": "'narrado' se tem_narracao for true; 'visual_musica' se for só música/sem texto na tela; 'visual_texto' se for imagens/texto na tela sem narração",
+  "modelo_usado": "nome curto do modelo/estrutura narrativa (ex: 'Problema → Solução', 'Revelação', 'Antes → Depois', 'Opinião polarizante', 'Storytelling pessoal', 'Tutorial direto', 'Gancho + Prova social')",
+  "modelo_explicado": "2-3 frases explicando COMO esse modelo aparece de fato nesse vídeo — citando o gancho real, a fala ou cena real, e como fecha",
+  "o_que_deu_certo": ["elemento real 1 que funcionou (gancho, ritmo, tom, CTA — só com base nos dados reais acima)", "elemento real 2", "elemento real 3 (máx 4)"],
+  "como_usar": [
+    { "forma": "nome curto do ângulo (ex: 'Pra atrair quem não te conhece')", "como": "2 frases de como aplicar esse modelo nesse ângulo, adaptado pro nicho '${niche || theme}'" },
+    { "forma": "ângulo 2, diferente do primeiro", "como": "2 frases de como aplicar" },
+    { "forma": "ângulo 3, diferente dos outros dois", "como": "2 frases de como aplicar" }
+  ],
+  "hashtags_sugeridas": ["6 a 8 hashtags relevantes pro nicho '${niche || theme}', misturando hashtags amplas (alcance) com hashtags de nicho (público certo) — sem o caractere #, só a palavra"]
 }`;
 }
 
@@ -1935,6 +1925,16 @@ app.post('/api/resolve-link', async (req, res) => {
 // GERAR ROTEIRO: analisa vídeo com Gemini + gera roteiro com Claude
 // ══════════════════════════════════════════════════════════════════════════════
 app.post('/api/roteiro', async (req, res) => {
+  // Se o cliente desconectar (modal fechado, StrictMode remontando em dev) antes
+  // de terminar, aborta a análise do Gemini em andamento — evita pagar por uma
+  // chamada cujo resultado ninguém vai usar.
+  // IMPORTANTE: usar res.on('close'), não req.on('close') — o 'close' do req
+  // dispara assim que o body-parser termina de LER o corpo da requisição
+  // (quase instantâneo), não quando o cliente desconecta de fato. Isso abortava
+  // toda análise do Gemini em ~100ms, sempre caindo em "sem_dados".
+  const abortController = new AbortController();
+  res.on('close', () => { if (!res.writableEnded) abortController.abort(); });
+
   try {
     const { caption, creator, theme, niche, painPoints, desires, postUrl, videoUrl, marcaTema } = req.body;
     if (!caption && !theme) {
@@ -1944,26 +1944,39 @@ app.post('/api/roteiro', async (req, res) => {
     // Análise Gemini (se tiver videoUrl) — enriquece muito o contexto
     let geminiAnalysis = null;
     if (videoUrl) {
-      geminiAnalysis = await analyzeVideoWithGemini(videoUrl);
+      geminiAnalysis = await analyzeVideoWithGemini(videoUrl, abortController.signal);
     }
 
-    // Três prompts: marca em alta > gemini > caption
-    let prompt;
+    // Marca em Alta é uma estratégia deliberadamente geradora de roteiro novo —
+    // mantém o fluxo antigo. Fora isso, só reportamos o que deu certo no vídeo
+    // REAL. Sem análise real do Gemini não há como saber isso com confiança —
+    // então NÃO chamamos Claude pra "adivinhar" a partir só da legenda (era
+    // exatamente isso que fabricava roteiros desconectados do vídeo real).
+    let roteiro;
     let estrategia = null;
     if (marcaTema) {
-      prompt = buildPromptMarcaEmAlta({ creator, niche, theme, painPoints, desires, marcaTema, geminiAnalysis });
+      const prompt = buildPromptMarcaEmAlta({ creator, niche, theme, painPoints, desires, marcaTema, geminiAnalysis });
       estrategia = 'marca_em_alta';
+      let t = await callClaude(prompt, 1200);
+      const m = t.match(/\{[\s\S]*\}/);
+      if (m) t = m[0];
+      roteiro = JSON.parse(t);
     } else if (geminiAnalysis) {
-      prompt = buildPromptComGemini({ creator, niche, theme, painPoints, desires, geminiAnalysis });
+      const prompt = buildPromptComGemini({ creator, niche, theme, painPoints, desires, geminiAnalysis });
+      let t = await callClaude(prompt, 1300);
+      const m = t.match(/\{[\s\S]*\}/);
+      if (m) t = m[0];
+      roteiro = JSON.parse(t);
     } else {
-      prompt = buildPromptSemGemini({ creator, niche, theme, caption, painPoints, desires });
+      roteiro = {
+        formato: null,
+        modelo_usado: null,
+        modelo_explicado: 'Não foi possível analisar o vídeo original — sem dados reais suficientes pra identificar o que deu certo e qual modelo foi usado.',
+        o_que_deu_certo: [],
+      };
     }
 
-    let t = await callClaude(prompt, 1200);
-    const m = t.match(/\{[\s\S]*\}/);
-    if (m) t = m[0];
-    const roteiro = JSON.parse(t);
-    const fonte = geminiAnalysis ? 'gemini' : 'caption';
+    const fonte = geminiAnalysis ? 'gemini' : 'sem_dados';
     console.log(`[Roteiro] ✅ Roteiro gerado via ${estrategia || fonte} para @${creator || '?'}`);
     res.json({ roteiro, fonte, geminiAnalysis, estrategia });
   } catch (error) {
@@ -2402,10 +2415,16 @@ function detectNicheMultiLayer(profile, bioAnalysis, postAnalysis, posts) {
 // INICIAR SERVIDOR
 // ══════════════════════════════════════════════════════════════════════════════
 
+// Garante a tabela de cache antes de aceitar requests (idempotente)
+initDb()
+  .then(() => console.log('[DB] ✅ Postgres conectado, cache_entries pronta'))
+  .catch((e) => console.error('[DB] ❌ Falha ao inicializar o Postgres:', e.message));
+
 app.listen(PORT, () => {
   console.log(`\n🎬 Radar de Tendências - Backend`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   console.log(`✅ Server rodando em: http://localhost:${PORT}`);
   console.log(`✅ Apify API: ${process.env.APIFY_API_KEY ? 'Configurado' : 'NÃO CONFIGURADO'}`);
+  console.log(`✅ Banco: ${process.env.DATABASE_URL ? 'Postgres configurado' : 'usando default local'}`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 });

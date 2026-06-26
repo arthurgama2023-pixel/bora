@@ -1,8 +1,48 @@
 # HANDOFF — Radar de Tendências (estado do projeto)
 
-**ÚLTIMA SESSÃO:** 2026-06-19. Status: Frontend pode estar em erro 500 (modal do perfil em desenvolvimento). Catálogo Fase 1+2 pronto e testado.
+**ÚLTIMA SESSÃO:** 2026-06-24. Status: **Escalabilidade Fase 1 FEITA** — cache migrado do arquivo de 17MB para Postgres. Plano de escala definido (beta grátis, 50-500 users, stack gerenciada simples).
 
 > Leia também `ARQUITETURA_COMPLETA_TRENDS.md` (detalhe técnico do pipeline).
+
+## PLANO DE ESCALABILIDADE (decidido 2026-06-24)
+**Objetivo:** validar com beta grátis | **Escala:** 50-500 users | **Deploy:** gerenciado simples (Vercel front + Render/Railway back + Supabase Postgres na publicação).
+**Decisão-chave:** usar **Supabase** (junta Auth pronto + Postgres gerenciado). Dev local usa Postgres nativo; trocar só a `DATABASE_URL` ao publicar.
+
+Fases: **[1] DB/cache ✅FEITO** → [2] Auth (Supabase Auth + tabela users) → [3] Limites de uso + kill-switch (tabela usage) → [4] Robustez (retry/timeout no callClaude, rate-limit, travar CORS, Sentry, deploy).
+
+### ✅ CAMADA INTELIGENTE — FAVORITOS DO NICHO (2026-06-24)
+Decisão do user: **manter o motor de hashtags** (que funciona bem) e fazer ele APRENDER os bons sozinho, em vez de buscar restaurantes via web/# separadamente. Web search foi testada e descartada (traz nomes de artigos, não @ confiáveis; e traz influenciador de receita, não restaurante).
+
+**Como funciona** (tudo ADITIVO, não mexe no motor de hashtags):
+- `server/favorites.js` (NOVO) + tabela `niche_favorites(nicho_key, username, appearances, runs_seen, viral_hits, best_views, median_views, avg_engagement, score)`.
+- Em CADA `computeNicheVideos`: (1) `updateFavoritesFromPool` aprende do pool de hashtags — agrega por criador, conta aparições + reels que passam no corte viral (≥10k views, ≥2,5% eng), acumula score a cada run. (2) `getReferenceUsernames` = adds manuais (sempre) ∪ top 10 favoritos. (3) re-puxa reels FRESCOS dessas referências via reel-scraper (1 call batched, `username:[...]`) e MESCLA no rawPosts antes do filtro/rank. Envolto em try/catch — se falhar, segue só com hashtags.
+- **Gate de favorito (escolha do user): consistência + performance** = `appearances >= 2 AND viral_hits >= 1`. Filtra "sorte de 1 vídeo"; premia quem repete. Re-pull: **top 10**.
+- **Intercept de influenciadores REMOVIDO** do `/api/videos/from-user-profile`: agora SEMPRE passa por `getNicheVideos` (hashtags + favoritos + manuais mesclados). `get-influencer-videos.js` virou código legado (require ainda no index, inofensivo). `nicheKey`/`getReferenceUsernames` casam nichos por palavra-chave (resolve nome livre do Claude variar).
+- **Custo:** o re-pull faz parte do custo da busca fresca normal (1x/nicho/TTL via cache+inFlight); ~+R$0,50/nicho/refresh p/ 10 perfis.
+- **Verificado SEM gastar Apify:** módulos carregam; learning/scoring testado com pool sintético (chefviral 2 virais→favorito; umhitsozinho 1 viral→barrado; reaparecer sobe score 38→54); backend sobe ok. **FALTA exercer o merge+re-pull numa busca real** (precisa autorizar Apify — user disse "ainda não" p/ gasto).
+
+### ✅ PIPELINE DE INFLUENCIADORES (2026-06-24) — fluxo "TOP perfis por nicho"
+Ideia do produto (decidida com o user): em vez de hashtags genéricas, o app mostra reels dos **TOP influenciadores curados do nicho** (ele entra com o @ do próprio negócio → detecta nicho → mostra reels de referência dos grandes do nicho, atualizável). Custo é por NICHO (não por user): descobrir 1 nicho novo ~R$10-15; nichos repetidos = R$0.
+
+**Tabelas novas:** `nicho_influencers` (top perfis por nicho), `influencer_reels` (reels deles c/ display_url/video_url/post_url/short_code — colunas de mídia adicionadas via ALTER), `discovery_log` (status por nicho).
+**Arquivos novos:** `discover-influencers.js` (Claude sugere 100 + Apify valida + busca reels), `get-influencer-videos.js` (monta os cards na ESTRUTURA EXATA do ReelCard + arrays autoridade/viralizacao), `seed-gastronomia-test.js` (seed manual c/ handles reais), `test-influencer.js` (debug 1 perfil). Integrado em `index.js` no `/api/videos/from-user-profile` ANTES do fallback de hashtags.
+
+**3 bugs achados e corrigidos testando (a razão de o front não mostrar):**
+1. reel-scraper usa `username` (singular), não `usernames` → causava 0 reels.
+2. caminho de influencer não preenchia `viralizacao`/`autoridade` → front (modo padrão Viralização) abria vazio. Agora retorna os 2 arrays.
+3. **Nome do nicho do Claude é texto livre e VARIA a cada chamada** ("Gastronomia e Negócios" vs "...e Gestão de Restaurantes" vs "...Rede de Foodservice"). Match exato falhava. Resolvido com match por PALAVRA-CHAVE principal (`nicheKey` = 1º token significativo do slug) e, entre empates, pega o de mais reels. ⚠️ **PENDENTE:** isso é um band-aid — o certo é uma TAXONOMIA CANÔNICA (Claude classifica DENTRO de uma lista fixa de nichos) pra não depender de string livre quando escalar p/ vários nichos.
+4. likes=-1 (ocultos) tratado como 0 (antes reprovava o vídeo no filtro de engajamento).
+
+**Verificado:** `/api/videos/from-user-profile {bauruoficiall}` → `source:'influencers'`, 5 cards (dedupe 2/criador) com thumbnail+videoUrl+postUrl OK, topInfluencers = [bauru, marmitarialucrativa.je, hiperfrango.restaurante]. Seed atual = 3 influenciadores reais / 45 reels no nicho Gastronomia. Front na :3000 serve o resultado cacheado (chamada sem force).
+**PRÓXIMO:** user vai mandar ~50 handles reais de Gastronomia → rodar seed → conferir no front. Discovery via Claude gera nomes FAKE (chefde*, cheff*) — NÃO confiável; usar lista manual do user ou hashtag-proxy.
+
+### ✅ FASE 1 — DB + cache (2026-06-24)
+- Postgres 17 instalado nativo (Windows, via winget). Serviço `postgresql-x64-17`. Senha `postgres`. Banco `detetiveviral`.
+- `DATABASE_URL` no `server/.env`: `postgresql://postgres:postgres@localhost:5432/detetiveviral`.
+- **`server/db.js`** (NOVO): camada de cache em Postgres. Tabela `cache_entries(bucket,key,data jsonb,ts)`. Funções `getCached`/`setCached` agora **async**, mesma assinatura de antes. `sanitizeJsonString` remove   e surrogates órfãos (jsonb rejeita).
+- **`server/migrate-cache.js`** (NOVO): importou os 57 registros do `.cache.json` → Postgres (idempotente, rerun seguro). Os 6 buckets preservados.
+- **`server/index.js`**: removido o bloco de cache em arquivo (`fs.writeFileSync` de 17MB síncrono — o gargalo nº1). Adicionado `await` em todos os 13 call sites. `getNicheVideos` reescrito: trava anti-stampede continua SÍNCRONA (check+set de `inFlightNiche` sem await), leitura de cache movida pra dentro da promise. `initDb()` no startup.
+- Verificado e2e: cache HIT/MISS ok, gravação no Postgres ok, frontend HTTP 200. `.cache.json` continua no disco como backup (não é mais lido).
 
 ## O QUE É
 SaaS que descobre conteúdo viral por nicho. Usuário digita um `@` → IA detecta nicho + gera hashtags → Apify scrapeia reels → filtros → IA confirma relevância → entrega 2 listas (Autoridade / Viralização).

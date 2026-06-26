@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { RefreshCw, Settings, Loader } from 'lucide-react';
+import { RefreshCw, Settings, Loader, Menu, X } from 'lucide-react';
 import ReelCard from './ReelCard';
 import RoteiroPanel from './RoteiroPanel';
 import { useVideos } from '@/context/VideosContext';
@@ -15,7 +15,6 @@ interface DashboardProps {
     painPoints: string;
     desires: string;
   };
-  onRestart: () => void;
 }
 
 interface Reel {
@@ -39,11 +38,9 @@ interface Reel {
   publishedAt?: string;
 }
 
-export default function Dashboard({ profile, onRestart }: DashboardProps) {
+export default function Dashboard({ profile }: DashboardProps) {
   const [selectedReel, setSelectedReel] = useState<Reel | null>(null);
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const { videos, loading, setVideos, setLoading, aiAnalysis, setAiAnalysis, videosViral, setVideosViral } = useVideos();
   const [mode, setMode] = useState<'autoridade' | 'viralizacao'>('viralizacao');
   const [currentTab, setCurrentTab] = useState<'instagram' | 'tiktok' | 'arquetipo'>('instagram');
@@ -54,6 +51,7 @@ export default function Dashboard({ profile, onRestart }: DashboardProps) {
   const [linkInput, setLinkInput] = useState('');
   const [linkLoading, setLinkLoading] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Cola um link de reel → yt-dlp extrai o vídeo → abre o RoteiroPanel (Gemini + Claude)
   const handleGerarDeLink = async () => {
@@ -78,7 +76,6 @@ export default function Dashboard({ profile, onRestart }: DashboardProps) {
   };
 
   const handleRefreshTrends = async () => {
-    setIsRefreshing(true);
     setLoading(true);
     try {
       const response = await fetch(`${API_URL}/api/videos/from-user-profile`, {
@@ -99,14 +96,12 @@ export default function Dashboard({ profile, onRestart }: DashboardProps) {
         const lista = data.autoridade || data.videos || [];
         if (lista.length > 0) {
           setVideos(lista);
-          setLastUpdated(new Date());
           console.log('✅ Tendências atualizadas com sucesso!');
         }
       }
     } catch (error) {
       console.error('Erro ao atualizar tendências:', error);
     } finally {
-      setIsRefreshing(false);
       setLoading(false);
     }
   };
@@ -141,7 +136,6 @@ export default function Dashboard({ profile, onRestart }: DashboardProps) {
     setVideos([]);
     setVideosViral([]);
     setAiAnalysis(null);
-    setLastUpdated(null);
     setSelectedReel(null);
     setMode('viralizacao');
 
@@ -160,19 +154,35 @@ export default function Dashboard({ profile, onRestart }: DashboardProps) {
   }, [profile.instagram]);
 
   const displayVideos = mode === 'autoridade' ? videos : videosViral;
-  const formattedTime = lastUpdated ? lastUpdated.toLocaleTimeString('pt-BR') : '';
 
   return (
     <div className="flex min-h-screen bg-[#f7f9fb]">
-      {/* Sidebar */}
-      <aside className="w-64 fixed left-0 top-0 h-screen border-r border-[#c4c5d7] bg-[#f7f9fb] flex flex-col gap-2 p-4 z-50">
-        <div className="px-4 py-6 mb-4">
-          <h1 className="text-xl font-bold text-[#191c1e]">Radar de Tendências</h1>
-          <p className="text-xs text-[#434655] opacity-70">Inteligência de Reels</p>
+      {/* Overlay (só mobile, quando o menu está aberto) */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-40 md:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Sidebar — off-canvas no mobile, fixa no desktop */}
+      <aside
+        className={`w-64 fixed left-0 top-0 h-screen border-r border-[#c4c5d7] bg-[#f7f9fb] flex flex-col gap-2 p-4 z-50 transition-transform duration-200 ${
+          mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        } md:translate-x-0`}
+      >
+        <div className="px-4 py-6 mb-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-[#191c1e]">Radar de Tendências</h1>
+            <p className="text-xs text-[#434655] opacity-70">Inteligência de Reels</p>
+          </div>
+          <button onClick={() => setMobileMenuOpen(false)} className="md:hidden text-[#434655] p-1">
+            <X size={22} />
+          </button>
         </div>
         <nav className="flex-1 space-y-1">
           <button
-            onClick={() => setCurrentTab('instagram')}
+            onClick={() => { setCurrentTab('instagram'); setMobileMenuOpen(false); }}
             className={`w-full flex items-center gap-4 px-4 py-2 rounded-lg font-semibold transition-all ${
               currentTab === 'instagram'
                 ? 'bg-[#8455ef] text-white'
@@ -185,6 +195,7 @@ export default function Dashboard({ profile, onRestart }: DashboardProps) {
           <button
             onClick={() => {
               setCurrentTab('tiktok');
+              setMobileMenuOpen(false);
               if (tiktokVideos.length === 0) {
                 handleLoadTikTok();
               }
@@ -199,7 +210,7 @@ export default function Dashboard({ profile, onRestart }: DashboardProps) {
             <span className="text-sm">TikTok</span>
           </button>
           <button
-            onClick={() => setCurrentTab('arquetipo')}
+            onClick={() => { setCurrentTab('arquetipo'); setMobileMenuOpen(false); }}
             className={`w-full flex items-center gap-4 px-4 py-2 rounded-lg font-semibold transition-all ${
               currentTab === 'arquetipo'
                 ? 'bg-[#8455ef] text-white'
@@ -227,15 +238,20 @@ export default function Dashboard({ profile, onRestart }: DashboardProps) {
       </aside>
 
       {/* Main Content */}
-      <main className="ml-64 w-[calc(100%-256px)] min-h-screen">
+      <main className="w-full md:ml-64 md:w-[calc(100%-256px)] min-h-screen">
         {/* TopNavBar */}
-        <header className="fixed top-0 right-0 w-[calc(100%-256px)] z-40 bg-[#f7f9fb]/85 border-b border-[#c4c5d7] backdrop-blur-sm flex justify-between items-center px-6 py-4">
-          <div className="flex items-center gap-3 bg-[#e0e3e5] px-4 py-2 rounded-full">
-            <span className="material-symbols-outlined text-[#0037b0]">search</span>
-            <span className="text-sm text-[#434655]">Buscar reels...</span>
+        <header className="fixed top-0 left-0 right-0 md:left-64 w-full md:w-[calc(100%-256px)] z-40 bg-white/90 border-b border-[#c4c5d7] backdrop-blur-sm flex items-center px-4 md:px-6 py-3 gap-3">
+          {/* Mobile: hambúrguer + marca (dá identidade ao header) */}
+          <button onClick={() => setMobileMenuOpen(true)} className="md:hidden text-[#434655] -ml-1 p-1 flex-shrink-0">
+            <Menu size={24} />
+          </button>
+          <div className="md:hidden flex items-center gap-1.5 flex-shrink-0">
+            <span className="material-symbols-outlined text-[#0037b0]">movie_filter</span>
+            <span className="text-base font-bold text-[#191c1e]">Radar</span>
           </div>
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-4">
+
+          <div className="flex items-center gap-2 md:gap-6 ml-auto">
+            <div className="hidden lg:flex items-center gap-4">
               <span className="material-symbols-outlined text-[#434655] cursor-pointer hover:text-[#0037b0] transition-colors">
                 notifications
               </span>
@@ -243,18 +259,12 @@ export default function Dashboard({ profile, onRestart }: DashboardProps) {
                 help
               </span>
             </div>
-            <div className="h-8 w-px bg-[#c4c5d7]"></div>
-            <div className="flex items-center gap-3">
-              <button className="px-4 py-2 border border-[#c4c5d7] text-[#434655] text-xs font-semibold rounded-lg hover:bg-[#e0e3e5] transition-colors">
+            <div className="hidden lg:block h-8 w-px bg-[#c4c5d7]"></div>
+            <div className="flex items-center gap-2 md:gap-3">
+              <button className="hidden sm:inline-flex px-4 py-2 border border-[#c4c5d7] text-[#434655] text-xs font-semibold rounded-lg hover:bg-[#e0e3e5] transition-colors">
                 Suporte
               </button>
-              <button
-                onClick={onRestart}
-                className="px-4 py-2 bg-[#0037b0] text-white text-xs font-semibold rounded-lg hover:shadow-lg transition-all"
-              >
-                Editar Perfil
-              </button>
-              <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-[#dce1ff]">
+              <div className="w-9 h-9 md:w-10 md:h-10 rounded-full overflow-hidden border-2 border-[#dce1ff] flex-shrink-0">
                 <div className="w-full h-full bg-gradient-to-br from-[#0037b0] to-[#890051]"></div>
               </div>
             </div>
@@ -262,127 +272,22 @@ export default function Dashboard({ profile, onRestart }: DashboardProps) {
         </header>
 
         {/* Content Canvas */}
-        <section className="pt-24 p-6 space-y-6">
+        <section className="pt-24 p-4 md:p-6 space-y-6">
           {currentTab !== 'arquetipo' && (
             <>
               {/* Header Section */}
-              <div className="flex justify-between items-end mb-8">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="material-symbols-outlined text-[#0037b0]">movie_filter</span>
-                    <h2 className="text-3xl font-bold text-[#191c1e]">Radar de Tendências</h2>
-                  </div>
-                  <p className="text-sm text-[#434655]">
-                    Análise de reels virais para <span className="font-bold text-[#191c1e]">{profile.name}</span>
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button className="flex items-center gap-2 px-4 py-2 bg-white border border-[#c4c5d7] rounded-xl text-xs font-semibold text-[#434655] hover:border-[#0037b0] transition-all">
-                    <span className="material-symbols-outlined text-lg">share</span>
-                    Exportar
-                  </button>
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-3 mb-8">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[#0037b0]">movie_filter</span>
+                  <h2 className="text-2xl md:text-3xl font-bold text-[#191c1e]">Radar de Tendências</h2>
                 </div>
               </div>
             </>
           )}
 
-          {/* Gerar roteiro a partir de um link */}
-          {currentTab !== 'arquetipo' && (
-            <div className="bg-white border border-[#c4c5d7] rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="material-symbols-outlined text-[#0037b0]" style={{ fontVariationSettings: "'FILL' 1" }}>link</span>
-                <h3 className="text-lg font-bold text-[#191c1e]">Gerar roteiro de um link</h3>
-              </div>
-              <p className="text-sm text-[#434655] mb-3">
-                Cole o link de um reel (Instagram ou TikTok). A IA traz o vídeo e monta o roteiro completo.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type="text"
-                  value={linkInput}
-                  onChange={(e) => setLinkInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleGerarDeLink()}
-                  placeholder="https://www.instagram.com/reel/..."
-                  className="flex-1 px-4 py-3 rounded-xl border-2 border-[#c4c5d7] focus:border-[#0037b0] focus:outline-none text-sm text-[#191c1e] transition-colors"
-                />
-                <button
-                  onClick={handleGerarDeLink}
-                  disabled={linkLoading || !linkInput.trim()}
-                  className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white bg-[#0037b0] hover:bg-[#002a8a] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
-                  {linkLoading ? (
-                    <>
-                      <Loader size={16} className="animate-spin" />
-                      Lendo o vídeo...
-                    </>
-                  ) : (
-                    <>
-                      <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-                      Gerar roteiro
-                    </>
-                  )}
-                </button>
-              </div>
-              {linkError && (
-                <p className="text-sm text-[#ba1a1a] mt-2 flex items-center gap-1">
-                  <span className="material-symbols-outlined text-base">error</span>
-                  {linkError}
-                </p>
-              )}
-            </div>
-          )}
-
           {/* Reels/TikTok Section */}
           {currentTab !== 'arquetipo' && (
           <div className="space-y-4 pt-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <span className="material-symbols-outlined text-[#191c1e] text-3xl">
-                  {currentTab === 'instagram' ? 'movie' : 'music_note'}
-                </span>
-                <div>
-                  <h3 className="text-2xl font-bold">
-                    {currentTab === 'instagram' ? 'Reels Virais Similares' : 'TikToks em Alta'}
-                  </h3>
-                  {currentTab === 'tiktok' && (
-                    <p className="text-sm text-[#747686] mt-1">
-                      Nicho: <span className="font-semibold text-[#191c1e]">{aiAnalysis?.nicho || profile.niche}</span>
-                    </p>
-                  )}
-                </div>
-                {(currentTab === 'instagram' ? displayVideos : tiktokVideos).length > 0 && (
-                  <div className="flex items-center gap-2 bg-[#e0e3e5] px-4 py-2 rounded-full">
-                    <span className="material-symbols-outlined text-sm text-[#ba1a1a]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                      push_pin
-                    </span>
-                    <span className="text-xs font-semibold text-[#434655] uppercase tracking-wider">
-                      {(currentTab === 'instagram' ? displayVideos : tiktokVideos).length} Vídeos · {currentTab === 'instagram' && mode === 'autoridade' ? 'Maiores e mais engajados' : currentTab === 'instagram' ? 'Explodindo agora' : 'Mais virais'}
-                    </span>
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                {lastUpdated && (
-                  <p className="text-xs text-[#434655] flex items-center gap-1">
-                    <span className="material-symbols-outlined text-sm">schedule</span> Atualizado: {formattedTime}
-                  </p>
-                )}
-                <button
-                  onClick={handleRefreshTrends}
-                  disabled={isRefreshing}
-                  className="flex items-center gap-2 px-4 py-2 border-2 border-[#0037b0]/40 text-[#0037b0] rounded-xl text-xs font-semibold hover:bg-[#0037b0] hover:text-white transition-all group"
-                >
-                  <span
-                    className="material-symbols-outlined text-lg group-hover:rotate-180 transition-transform"
-                    style={{ fontVariationSettings: "'FILL' 0" }}
-                  >
-                    sync
-                  </span>
-                  {isRefreshing ? 'Buscando...' : 'Buscar Novo Nicho'}
-                </button>
-              </div>
-            </div>
-
             {/* Tabs/Filters - só mostrar no Instagram */}
             {currentTab === 'instagram' && (videos.length > 0 || videosViral.length > 0) && (
               <div className="flex gap-2">
@@ -476,18 +381,18 @@ export default function Dashboard({ profile, onRestart }: DashboardProps) {
             <div className="max-w-5xl mx-auto">
               <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
                 {/* Header Arquétipo */}
-                <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-12 text-white">
-                  <h2 className="text-4xl font-bold mb-2">Seu Arquétipo</h2>
-                  <p className="text-purple-100 text-lg">Análise completa do seu padrão e posicionamento</p>
+                <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-6 md:p-12 text-white">
+                  <h2 className="text-3xl md:text-4xl font-bold mb-2">Seu Arquétipo</h2>
+                  <p className="text-purple-100 text-base md:text-lg">Análise completa do seu padrão e posicionamento</p>
                 </div>
 
                 {/* Conteúdo Arquétipo */}
-                <div className="p-12 space-y-8">
+                <div className="p-6 md:p-12 space-y-8">
                   {userArchetype ? (
                     <>
                       {/* Arquétipo Principal */}
-                      <div className="flex items-center gap-8 pb-8 border-b-2 border-slate-200">
-                        <div className="text-9xl">
+                      <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-8 pb-8 border-b-2 border-slate-200 text-center sm:text-left">
+                        <div className="text-7xl sm:text-9xl">
                           {userArchetype === 'Educador' ? '👨‍🏫' :
                            userArchetype === 'Influenciador' ? '⭐' :
                            userArchetype === 'Empreendedor' ? '🚀' :
@@ -563,8 +468,8 @@ export default function Dashboard({ profile, onRestart }: DashboardProps) {
         <RoteiroPanel reel={selectedReel} profile={profile} onClose={() => setSelectedReel(null)} />
       )}
 
-      {/* FAB */}
-      <button className="fixed bottom-6 right-6 w-14 h-14 bg-[#6b38d4] text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-90 transition-all z-50 group">
+      {/* FAB — escondido no mobile (sobrepõe os reels) */}
+      <button className="hidden md:flex fixed bottom-6 right-6 w-14 h-14 bg-[#6b38d4] text-white rounded-full shadow-2xl items-center justify-center hover:scale-110 active:scale-90 transition-all z-50 group">
         <span className="material-symbols-outlined group-hover:rotate-12 transition-transform">add_chart</span>
         <div className="absolute right-16 bg-[#2d3133] text-[#eff1f3] px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
           Nova Análise

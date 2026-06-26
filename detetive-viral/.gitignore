@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 server/.cache.json
+server/_*.json
+server/.live.log
+.frontend.log
