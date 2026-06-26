@@ -633,6 +633,9 @@ app.post('/api/instagram/profile', async (req, res) => {
       // DEBUG TEMPORÁRIO — remover depois de achar a causa do 500 em produção.
       debugName: error.name,
       debugStack: error.stack,
+      debugInnerErrors: error.errors ? error.errors.map(e => ({
+        message: e.message, code: e.code, address: e.address, port: e.port,
+      })) : null,
     });
   }
 });
