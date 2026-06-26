@@ -626,10 +626,13 @@ app.post('/api/instagram/profile', async (req, res) => {
     console.log(`[Instagram Profile] ✅ Perfil encontrado: ${result.name}`);
     res.json(result);
   } catch (error) {
-    console.error('[Instagram Profile] ❌ Erro:', error.message);
+    console.error('[Instagram Profile] ❌ Erro:', error.message, error.stack);
     res.status(500).json({
       error: 'Não foi possível buscar o perfil. Verifique o @ e tente novamente.',
       details: error.message,
+      // DEBUG TEMPORÁRIO — remover depois de achar a causa do 500 em produção.
+      debugName: error.name,
+      debugStack: error.stack,
     });
   }
 });
