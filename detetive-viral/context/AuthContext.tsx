@@ -38,12 +38,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signUp = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signUp({
+    const { error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: { emailRedirectTo: window.location.origin },
     });
-    return { error: error ? traduzErro(error.message) : null };
+
+    // Se signup teve erro, retorna
+    if (signUpError) {
+      return { error: traduzErro(signUpError.message) };
+    }
+
+    // Após registrar com sucesso, tenta fazer login automaticamente
+    // (funcionará se email confirmation não for obrigatório)
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    return { error: signInError ? traduzErro(signInError.message) : null };
   };
 
   const signOut = async () => {
