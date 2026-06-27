@@ -648,6 +648,41 @@ app.post('/api/instagram/profile', async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+// PROXY DE IMAGEM DO INSTAGRAM
+// O CDN do Instagram serve fotos com header `Cross-Origin-Resource-Policy: same-origin`,
+// o que faz o navegador BLOQUEAR a imagem quando carregada de outro domínio (nosso app).
+// curl/servidor não sofre essa restrição — então buscamos a imagem aqui e reservimos
+// a partir do nosso próprio domínio, sem o header bloqueador.
+// ══════════════════════════════════════════════════════════════════════════════
+app.get('/api/instagram/image', async (req, res) => {
+  try {
+    const { url } = req.query;
+    if (!url) return res.status(400).send('url ausente');
+
+    // Segurança (anti-SSRF): só aceita hosts do CDN do Instagram/Facebook
+    let host;
+    try { host = new URL(url).hostname; } catch { return res.status(400).send('url inválida'); }
+    if (!/(^|\.)(cdninstagram\.com|fbcdn\.net)$/.test(host)) {
+      return res.status(400).send('host não permitido');
+    }
+
+    const imgRes = await axios.get(url, {
+      responseType: 'arraybuffer',
+      timeout: 15000,
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.instagram.com/' },
+    });
+
+    res.set('Content-Type', imgRes.headers['content-type'] || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=86400'); // 1 dia
+    // NÃO repassamos o cross-origin-resource-policy do Instagram → navegador exibe normal
+    res.send(Buffer.from(imgRes.data));
+  } catch (err) {
+    console.error('[Image Proxy] ❌', err.message);
+    res.status(502).send('erro ao buscar imagem');
+  }
+});
+
 // Análise COMPLETA do Instagram (perfil + reels virais do nicho)
 app.post('/api/instagram/analyze', async (req, res) => {
   try {

@@ -2,7 +2,7 @@
 
 import { useState, useContext } from 'react';
 import { ChevronRight, ChevronLeft, Loader, AlertCircle, CheckCircle } from 'lucide-react';
-import { API_URL } from '@/lib/api';
+import { API_URL, proxiedImage } from '@/lib/api';
 import { useVideos } from '@/context/VideosContext';
 
 interface WizardFormProps {
@@ -20,6 +20,8 @@ interface InstagramProfile {
   name: string;
   bio: string;
   followers: number;
+  following: number;
+  posts: number;
   profilePic: string | null;
   verified: boolean;
 }
@@ -492,8 +494,16 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
                   }`}
                 >
                   <div className="flex items-start gap-4">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-400 via-pink-400 to-red-400 flex items-center justify-center text-4xl shadow-sm flex-shrink-0 flex items-center justify-center">
-                      📷
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-400 via-pink-400 to-red-400 shadow-sm flex-shrink-0 overflow-hidden flex items-center justify-center text-4xl">
+                      {proxiedImage(instagramProfile.profilePic) ? (
+                        <img
+                          src={proxiedImage(instagramProfile.profilePic) || undefined}
+                          alt={instagramProfile.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        '📷'
+                      )}
                     </div>
 
                     {/* Profile Info */}
@@ -676,7 +686,15 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
                 Revisar
               </button>
               <button
-                onClick={() => onComplete(formData)}
+                onClick={() => onComplete({
+                  ...formData,
+                  bio: instagramProfile?.bio || '',
+                  followers: instagramProfile?.followers || 0,
+                  following: instagramProfile?.following || 0,
+                  posts: instagramProfile?.posts || 0,
+                  profilePic: instagramProfile?.profilePic || null,
+                  verified: instagramProfile?.verified || false,
+                })}
                 className="flex-1 px-4 py-3 bg-white text-purple-600 hover:bg-slate-100 rounded-xl font-bold transition-all shadow-lg"
               >
                 Vamos Lá! 🎯

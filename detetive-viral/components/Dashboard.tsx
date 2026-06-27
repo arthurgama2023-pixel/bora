@@ -4,8 +4,11 @@ import { useState, useEffect } from 'react';
 import { RefreshCw, Settings, Loader, Menu, X } from 'lucide-react';
 import ReelCard from './ReelCard';
 import RoteiroPanel from './RoteiroPanel';
+import UserMenu from './UserMenu';
+import SettingsPage from './SettingsPage';
+import NewAnalysisModal from './NewAnalysisModal';
 import { useVideos } from '@/context/VideosContext';
-import { API_URL } from '@/lib/api';
+import { API_URL, proxiedImage } from '@/lib/api';
 
 interface DashboardProps {
   profile: {
@@ -14,6 +17,12 @@ interface DashboardProps {
     niche: string;
     painPoints: string;
     desires: string;
+    bio?: string;
+    followers?: number;
+    following?: number;
+    posts?: number;
+    profilePic?: string | null;
+    verified?: boolean;
   };
 }
 
@@ -52,6 +61,38 @@ export default function Dashboard({ profile }: DashboardProps) {
   const [linkLoading, setLinkLoading] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showNewAnalysis, setShowNewAnalysis] = useState(false);
+
+  // Perfil exibido no cabeçalho estilo Instagram — enriquecido em background
+  const [igProfile, setIgProfile] = useState(profile);
+
+  // Busca dados que faltam (posts/seguindo/foto) automaticamente e atualiza localStorage
+  useEffect(() => {
+    const faltaDado = profile.posts === undefined || profile.following === undefined || !profile.profilePic;
+    if (!faltaDado || !profile.instagram) return;
+
+    let cancelado = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/instagram/profile`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: profile.instagram }),
+        });
+        if (!res.ok || cancelado) return;
+        const fresh = await res.json();
+        const merged = { ...profile, ...fresh };
+        setIgProfile(merged);
+        localStorage.setItem('detetiveviral_profile', JSON.stringify(merged));
+      } catch {}
+    })();
+
+    return () => { cancelado = true; };
+  }, [profile.instagram]);
+
+  // Formata números no padrão pt-BR (2.587)
+  const fmtNum = (n?: number) => (n || n === 0 ? n.toLocaleString('pt-BR') : '—');
 
   // Cola um link de reel → yt-dlp extrai o vídeo → abre o RoteiroPanel (Gemini + Claude)
   const handleGerarDeLink = async () => {
@@ -239,8 +280,8 @@ export default function Dashboard({ profile }: DashboardProps) {
 
       {/* Main Content */}
       <main className="w-full md:ml-64 md:w-[calc(100%-256px)] min-h-screen">
-        {/* TopNavBar */}
-        <header className="fixed top-0 left-0 right-0 md:left-64 w-full md:w-[calc(100%-256px)] z-40 bg-white/90 border-b border-[#c4c5d7] backdrop-blur-sm flex items-center px-4 md:px-6 py-3 gap-3">
+        {/* TopNavBar — não-fixa, rola junto com o conteúdo (não tapa o perfil) */}
+        <header className="bg-white/90 border-b border-[#c4c5d7] backdrop-blur-sm flex items-center px-4 md:px-6 py-3 gap-3">
           {/* Mobile: hambúrguer + marca (dá identidade ao header) */}
           <button onClick={() => setMobileMenuOpen(true)} className="md:hidden text-[#434655] -ml-1 p-1 flex-shrink-0">
             <Menu size={24} />
@@ -264,16 +305,85 @@ export default function Dashboard({ profile }: DashboardProps) {
               <button className="hidden sm:inline-flex px-4 py-2 border border-[#c4c5d7] text-[#434655] text-xs font-semibold rounded-lg hover:bg-[#e0e3e5] transition-colors">
                 Suporte
               </button>
-              <div className="w-9 h-9 md:w-10 md:h-10 rounded-full overflow-hidden border-2 border-[#dce1ff] flex-shrink-0">
-                <div className="w-full h-full bg-gradient-to-br from-[#0037b0] to-[#890051]"></div>
-              </div>
+              <UserMenu profileName={profile.name} profile={profile} onProfileClick={() => setShowSettings(true)} />
             </div>
           </div>
         </header>
 
         {/* Content Canvas */}
-        <section className="pt-24 p-4 md:p-6 space-y-6">
-          {currentTab !== 'arquetipo' && (
+        <section className="p-4 md:p-6 space-y-6">
+          {/* Cabeçalho de Perfil estilo Instagram (só na aba Instagram) */}
+          {currentTab === 'instagram' && (
+            <div className="max-w-3xl mx-auto w-full border-b border-[#dbdbdb] pb-6 mb-2">
+              <div className="flex items-center gap-6 md:gap-10">
+                {/* Avatar com anel gradiente */}
+                <div className="flex-shrink-0 p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600">
+                  <div className="w-20 h-20 md:w-[150px] md:h-[150px] rounded-full bg-white p-[3px]">
+                    <div className="w-full h-full rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center">
+                      {igProfile.profilePic ? (
+                        <img src={proxiedImage(igProfile.profilePic) || undefined} alt={igProfile.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-4xl">📷</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Coluna direita: username, stats, nome, bio */}
+                <div className="flex-1 min-w-0">
+                  {/* Username + verificado */}
+                  <div className="flex items-center gap-2 mb-4">
+                    <h2 className="text-xl md:text-2xl text-[#191c1e]">{igProfile.instagram}</h2>
+                    {igProfile.verified && (
+                      <svg className="w-5 h-5 text-[#3897f0]" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2l2.4 1.8 3 .3 1 2.8 2.2 2-1 2.9 1 2.9-2.2 2-1 2.8-3 .3L12 22l-2.4-1.8-3-.3-1-2.8-2.2-2 1-2.9-1-2.9 2.2-2 1-2.8 3-.3L12 2zm-1.3 13.2l5-5-1.2-1.2-3.8 3.8-1.7-1.7-1.2 1.2 2.9 2.9z"/>
+                      </svg>
+                    )}
+                  </div>
+
+                  {/* Stats inline */}
+                  <div className="flex gap-6 md:gap-10 mb-4">
+                    <div className="flex flex-col md:flex-row md:gap-1.5">
+                      <span className="font-bold text-[#191c1e]">{fmtNum(igProfile.posts)}</span>
+                      <span className="text-[#191c1e]">posts</span>
+                    </div>
+                    <div className="flex flex-col md:flex-row md:gap-1.5">
+                      <span className="font-bold text-[#191c1e]">{fmtNum(igProfile.followers)}</span>
+                      <span className="text-[#191c1e]">seguidores</span>
+                    </div>
+                    <div className="flex flex-col md:flex-row md:gap-1.5">
+                      <span className="font-bold text-[#191c1e]">{fmtNum(igProfile.following)}</span>
+                      <span className="text-[#191c1e]">seguindo</span>
+                    </div>
+                  </div>
+
+                  {/* Nome + bio (escondidos no mobile pra caber; aparecem abaixo) */}
+                  <div className="hidden md:block">
+                    <p className="font-semibold text-[#191c1e]">{igProfile.name}</p>
+                    {igProfile.bio && (
+                      <p className="text-sm text-[#191c1e] whitespace-pre-line leading-snug">{igProfile.bio}</p>
+                    )}
+                    <span className="inline-flex items-center gap-1 mt-2 bg-purple-50 text-purple-600 text-xs font-semibold px-2.5 py-1 rounded-md">
+                      ✨ {igProfile.niche}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Nome + bio no mobile (abaixo da linha do avatar) */}
+              <div className="md:hidden mt-4">
+                <p className="font-semibold text-[#191c1e]">{igProfile.name}</p>
+                {igProfile.bio && (
+                  <p className="text-sm text-[#191c1e] whitespace-pre-line leading-snug">{igProfile.bio}</p>
+                )}
+                <span className="inline-flex items-center gap-1 mt-2 bg-purple-50 text-purple-600 text-xs font-semibold px-2.5 py-1 rounded-md">
+                  ✨ {igProfile.niche}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {currentTab === 'tiktok' && (
             <>
               {/* Header Section */}
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-3 mb-8">
@@ -468,13 +578,48 @@ export default function Dashboard({ profile }: DashboardProps) {
         <RoteiroPanel reel={selectedReel} profile={profile} onClose={() => setSelectedReel(null)} />
       )}
 
+      {/* Settings Modal */}
+      {showSettings && (
+        <SettingsPage
+          profile={profile}
+          onBack={() => setShowSettings(false)}
+          onChangeInstagram={(newInstagram) => {
+            // Aqui você pode implementar a lógica de trocar Instagram
+            console.log('Novo Instagram:', newInstagram);
+            setShowSettings(false);
+          }}
+        />
+      )}
+
       {/* FAB — escondido no mobile (sobrepõe os reels) */}
-      <button className="hidden md:flex fixed bottom-6 right-6 w-14 h-14 bg-[#6b38d4] text-white rounded-full shadow-2xl items-center justify-center hover:scale-110 active:scale-90 transition-all z-50 group">
+      <button
+        onClick={() => setShowNewAnalysis(true)}
+        className="hidden md:flex fixed bottom-6 right-6 w-14 h-14 bg-[#6b38d4] text-white rounded-full shadow-2xl items-center justify-center hover:scale-110 active:scale-90 transition-all z-40 group"
+      >
         <span className="material-symbols-outlined group-hover:rotate-12 transition-transform">add_chart</span>
         <div className="absolute right-16 bg-[#2d3133] text-[#eff1f3] px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
           Nova Análise
         </div>
       </button>
+
+      {/* New Analysis Modal */}
+      {showNewAnalysis && (
+        <NewAnalysisModal
+          onClose={() => setShowNewAnalysis(false)}
+          onAnalyze={(instagram) => {
+            // Reload page com novo @ no localStorage
+            const profile = {
+              name: 'Novo Perfil',
+              instagram: instagram,
+              niche: 'Detectando via IA...',
+              painPoints: '',
+              desires: '',
+            };
+            localStorage.setItem('detetiveviral_profile', JSON.stringify(profile));
+            window.location.reload();
+          }}
+        />
+      )}
     </div>
   );
 }

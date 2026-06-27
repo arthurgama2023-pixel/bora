@@ -16,6 +16,12 @@ interface UserProfile {
   niche: string;
   painPoints: string;
   desires: string;
+  bio?: string;
+  followers?: number;
+  following?: number;
+  posts?: number;
+  profilePic?: string | null;
+  verified?: boolean;
 }
 
 export default function Home() {
