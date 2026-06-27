@@ -20,6 +20,7 @@ interface PostingFrequency {
   diagnosis: string;
   avgEngagementPerPost: number;
   bestWindow: { label: string; avgEngagement: number } | null;
+  postsByMonth: { month: string; label: string; count: number }[];
 }
 
 const LEVEL_STYLE: Record<PostingFrequency['level'], { label: string; color: string; bg: string }> = {
@@ -671,6 +672,28 @@ export default function Dashboard({ profile }: DashboardProps) {
                   <p className="text-sm text-[#434655] mt-1">posts por semana (média de {frequencyData.avgDaysBetween} dias entre posts)</p>
                 </div>
 
+                {/* Contagem REAL (não estimada): quantos posts saíram de fato em cada mês */}
+                {frequencyData.postsByMonth.length > 0 && (
+                  <div className="bg-[#f5f7fb] rounded-xl p-4">
+                    <p className="text-xs font-semibold text-[#434655] mb-3">Posts publicados por mês (real)</p>
+                    <div className="flex items-end gap-2 h-20">
+                      {frequencyData.postsByMonth.map((m) => {
+                        const maxCount = Math.max(...frequencyData.postsByMonth.map((x) => x.count));
+                        return (
+                          <div key={m.month} className="flex-1 flex flex-col items-center justify-end h-full">
+                            <span className="text-xs font-bold text-[#191c1e] mb-1">{m.count}</span>
+                            <div
+                              className="w-full rounded-t-md bg-[#0037b0]"
+                              style={{ height: `${Math.max((m.count / maxCount) * 100, 8)}%` }}
+                            />
+                            <span className="text-[9px] text-[#737373] mt-1 whitespace-nowrap">{m.label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Gauge visual: 5 faixas coloridas + marcador na faixa atual */}
                 <div>
                   <div className="flex h-3 rounded-full overflow-hidden">
@@ -753,7 +776,11 @@ export default function Dashboard({ profile }: DashboardProps) {
                     ))}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div className="grid grid-cols-3 gap-2 mb-4">
+                    <div className="bg-[#f5f7fb] rounded-xl p-3 text-center">
+                      <p className="text-lg font-bold text-[#0037b0]">{forecastPostsPerDay * 7}</p>
+                      <p className="text-[10px] text-[#434655] mt-0.5">posts / semana</p>
+                    </div>
                     <div className="bg-[#f5f7fb] rounded-xl p-3 text-center">
                       <p className="text-lg font-bold text-[#0037b0]">{forecastPostsPerDay * 30}</p>
                       <p className="text-[10px] text-[#434655] mt-0.5">posts / mês</p>
@@ -762,33 +789,33 @@ export default function Dashboard({ profile }: DashboardProps) {
                       <p className="text-lg font-bold text-[#0037b0]">
                         {fmtNum(forecastPostsPerDay * 30 * frequencyData.avgEngagementPerPost)}
                       </p>
-                      <p className="text-[10px] text-[#434655] mt-0.5">interações / mês (est.)</p>
+                      <p className="text-[10px] text-[#434655] mt-0.5">interações / mês</p>
                     </div>
                   </div>
 
-                  {/* Comparação visual: hoje vs meta */}
+                  {/* Comparação visual: hoje vs meta — mesma unidade (posts/mês) nas duas barras */}
                   {(() => {
-                    const hojeInteracoes = Math.round(frequencyData.postsPerWeek * 30 / 7) * frequencyData.avgEngagementPerPost;
-                    const metaInteracoes = forecastPostsPerDay * 30 * frequencyData.avgEngagementPerPost;
-                    const max = Math.max(hojeInteracoes, metaInteracoes, 1);
+                    const hojePostsPerMonth = Math.round((frequencyData.postsPerWeek * 30 / 7) * 10) / 10;
+                    const metaPostsPerMonth = forecastPostsPerDay * 30;
+                    const max = Math.max(hojePostsPerMonth, metaPostsPerMonth, 1);
                     return (
                       <div className="space-y-2">
                         <div>
                           <div className="flex justify-between text-xs text-[#434655] mb-1">
-                            <span>Hoje</span>
-                            <span className="font-semibold">{fmtNum(hojeInteracoes)}/mês</span>
+                            <span>Hoje (seu ritmo atual)</span>
+                            <span className="font-semibold">{hojePostsPerMonth} posts/mês</span>
                           </div>
                           <div className="h-2.5 rounded-full bg-[#e0e3e5] overflow-hidden">
-                            <div className="h-full rounded-full bg-[#9ca3af]" style={{ width: `${(hojeInteracoes / max) * 100}%` }} />
+                            <div className="h-full rounded-full bg-[#9ca3af]" style={{ width: `${(hojePostsPerMonth / max) * 100}%` }} />
                           </div>
                         </div>
                         <div>
                           <div className="flex justify-between text-xs text-[#434655] mb-1">
                             <span>Sua meta</span>
-                            <span className="font-semibold text-[#0037b0]">{fmtNum(metaInteracoes)}/mês</span>
+                            <span className="font-semibold text-[#0037b0]">{metaPostsPerMonth} posts/mês</span>
                           </div>
                           <div className="h-2.5 rounded-full bg-[#e0e3e5] overflow-hidden">
-                            <div className="h-full rounded-full bg-[#0037b0]" style={{ width: `${(metaInteracoes / max) * 100}%` }} />
+                            <div className="h-full rounded-full bg-[#0037b0]" style={{ width: `${(metaPostsPerMonth / max) * 100}%` }} />
                           </div>
                         </div>
                       </div>

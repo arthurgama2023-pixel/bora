@@ -674,6 +674,22 @@ app.post('/api/instagram/profile', async (req, res) => {
         ? withSamples.reduce((best, w) => (w.total / w.count > best.total / best.count ? w : best))
         : null;
 
+      // Contagem REAL (não estimada) por mês de publicação — reflete a realidade
+      // de quando os posts saíram, em vez de só uma média ao longo de todo o período.
+      const monthCounts = new Map();
+      postTimestamps.forEach((t) => {
+        const d = new Date(t);
+        const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+        monthCounts.set(key, (monthCounts.get(key) || 0) + 1);
+      });
+      const MES_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+      const postsByMonth = [...monthCounts.entries()]
+        .sort((a, b) => (a[0] > b[0] ? 1 : -1))
+        .map(([key, count]) => {
+          const [year, month] = key.split('-');
+          return { month: key, label: `${MES_PT[Number(month) - 1]}/${year.slice(2)}`, count };
+        });
+
       postingFrequency = {
         postsPerWeek: Math.round(postsPerWeek * 10) / 10,
         avgDaysBetween: Math.round(avgDaysBetween * 10) / 10,
@@ -684,6 +700,7 @@ app.post('/api/instagram/profile', async (req, res) => {
         diagnosis,
         avgEngagementPerPost,
         bestWindow: bestWindow ? { label: bestWindow.label, avgEngagement: Math.round(bestWindow.total / bestWindow.count) } : null,
+        postsByMonth,
       };
     }
 
