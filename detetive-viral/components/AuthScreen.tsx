@@ -22,6 +22,7 @@ export default function AuthScreen({ onAuthenticated, defaultTab = 'entrar' }: A
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [justRegistered, setJustRegistered] = useState(false);
   const { signIn, signUp } = useAuth();
 
   const emailValid = email.length > 0 && isValidEmail(email);
@@ -49,7 +50,17 @@ export default function AuthScreen({ onAuthenticated, defaultTab = 'entrar' }: A
       return;
     }
 
-    // Tanto login quanto registro agora funcionam — o auto-login foi adicionado ao signUp
+    // Se é registro bem-sucedido: guardar credenciais, trocar para login e mostrar mensagem
+    if (aba === 'registrar') {
+      setJustRegistered(true);
+      setAba('entrar');
+      setInfo('✓ Conta criada! Agora você pode fazer login com suas credenciais.');
+      setConfirmPassword('');
+      // Email e password já estão preenchidos
+      return;
+    }
+
+    // Se é login bem-sucedido: chamar onAuthenticated
     onAuthenticated();
   };
 
@@ -196,7 +207,7 @@ export default function AuthScreen({ onAuthenticated, defaultTab = 'entrar' }: A
                   Novo por aqui?{' '}
                   <button
                     type="button"
-                    onClick={() => { setAba('registrar'); setError(null); setInfo(null); setConfirmPassword(''); }}
+                    onClick={() => { setAba('registrar'); setError(null); setInfo(null); setConfirmPassword(''); setJustRegistered(false); }}
                     className="text-blue-600 hover:text-blue-700 font-semibold underline"
                   >
                     Criar conta
