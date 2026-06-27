@@ -34,7 +34,7 @@ interface InstagramProfile {
 
 const STEPS = [
   {
-    title: 'Qual é seu @ do Instagram?',
+    title: 'Qual seu @ no Instagram?',
     description: 'Vamos conectar com seu perfil e já começar a análise',
     field: 'instagram',
     placeholder: 'Ex: @joaosilva ou joaosilva',
@@ -382,9 +382,9 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
 
           {/* Header */}
           <div className="text-center mb-8">
-            <h1 className="text-2xl md:text-[32px] font-bold text-[#0b1c30] mb-3 leading-tight">Qual é o seu perfil?</h1>
+            <h1 className="text-2xl md:text-[32px] font-bold text-[#0b1c30] mb-3 leading-tight">{step.title}</h1>
             <p className="text-[#434656] max-w-[420px] mx-auto">
-              Conecte seu Instagram para que nossa IA possa analisar suas tendências e identificar oportunidades no seu nicho.
+              {step.description}
             </p>
           </div>
 
@@ -446,7 +446,7 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
                   {proxiedImage(instagramProfile.profilePic) ? (
                     <img src={proxiedImage(instagramProfile.profilePic) || undefined} alt={instagramProfile.name} className="w-full h-full object-cover" />
                   ) : (
-                    '📷'
+                    '📸'
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
