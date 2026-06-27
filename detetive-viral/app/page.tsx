@@ -61,16 +61,9 @@ export default function Home() {
     }
   }, [userProfile]);
 
-  // CTA "Analisar meu perfil grátis" na landing: vai direto para auth
+  // CTA "Analisar meu perfil grátis" na landing: mostra a oferta com os planos
   const handleGoToWizard = () => {
-    if (user) {
-      // Se já está logado, vai direto pro wizard
-      setStarted(true);
-    } else {
-      // Se não está logado, vai direto para tela de autenticação (registrar)
-      setAuthTab('registrar');
-      setShowAuth(true);
-    }
+    setShowOffer(true);
   };
 
   // "Começar agora" na tela de oferta (plano pago): exige login antes do wizard
