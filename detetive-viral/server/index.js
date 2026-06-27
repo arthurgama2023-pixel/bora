@@ -614,6 +614,79 @@ app.post('/api/instagram/profile', async (req, res) => {
     // raspar o mesmo perfil duas vezes (passo 2 do wizard + passo 5).
     await setCached('profileRaw', cleanUsername, profile);
 
+    // Frequência de postagem: a partir dos timestamps dos posts mais recentes
+    // (latestPosts), estima quantos posts/semana, o intervalo médio entre eles,
+    // o diagnóstico de nível, o melhor horário (por engajamento) e o engajamento médio.
+    const postsWithData = (profile.latestPosts || [])
+      .filter((p) => p.timestamp && !isNaN(new Date(p.timestamp).getTime()))
+      .map((p) => ({
+        ts: new Date(p.timestamp).getTime(),
+        engagement: (p.likesCount || 0) + (p.commentsCount || 0),
+      }))
+      .sort((a, b) => b.ts - a.ts);
+
+    let postingFrequency = null;
+    if (postsWithData.length >= 2) {
+      const postTimestamps = postsWithData.map((p) => p.ts);
+      const rangeDays = (postTimestamps[0] - postTimestamps[postTimestamps.length - 1]) / 86400000;
+      const avgDaysBetween = rangeDays / (postTimestamps.length - 1);
+      const postsPerWeek = avgDaysBetween > 0 ? 7 / avgDaysBetween : postTimestamps.length;
+      const avgEngagementPerPost = Math.round(
+        postsWithData.reduce((sum, p) => sum + p.engagement, 0) / postsWithData.length
+      );
+
+      // Diagnóstico de nível — referência: 3-7 posts/semana é a faixa saudável p/ crescer no IG.
+      let level, diagnosis;
+      if (postsPerWeek < 1) {
+        level = 'muito_baixa';
+        diagnosis = 'Frequência muito baixa. O algoritmo do Instagram perde o "fio" do seu perfil entre um post e outro, dificultando alcance e crescimento.';
+      } else if (postsPerWeek < 3) {
+        level = 'baixa';
+        diagnosis = 'Frequência baixa. Postar mais regularmente ajudaria o algoritmo a entregar seu conteúdo pra mais gente.';
+      } else if (postsPerWeek <= 7) {
+        level = 'moderada';
+        diagnosis = 'Frequência moderada — dentro da faixa recomendada para manter o algoritmo ativo no seu perfil.';
+      } else if (postsPerWeek <= 14) {
+        level = 'alta';
+        diagnosis = 'Frequência alta. Bom ritmo de produção, desde que a qualidade dos posts se mantenha.';
+      } else {
+        level = 'muito_alta';
+        diagnosis = 'Frequência muito alta. Atenção pra não cansar a audiência — qualidade tende a pesar mais que quantidade nesse ritmo.';
+      }
+
+      // Melhor horário: agrupa os posts da amostra por janela do dia (fuso BRT, UTC-3)
+      // e aponta a janela com maior engajamento médio.
+      const windows = [
+        { label: 'Madrugada (00h–06h)', from: 0, to: 6 },
+        { label: 'Manhã (06h–12h)', from: 6, to: 12 },
+        { label: 'Tarde (12h–18h)', from: 12, to: 18 },
+        { label: 'Noite (18h–24h)', from: 18, to: 24 },
+      ].map((w) => ({ ...w, total: 0, count: 0 }));
+
+      postsWithData.forEach((p) => {
+        const brtHour = (new Date(p.ts).getUTCHours() - 3 + 24) % 24;
+        const win = windows.find((w) => brtHour >= w.from && brtHour < w.to);
+        if (win) { win.total += p.engagement; win.count += 1; }
+      });
+
+      const withSamples = windows.filter((w) => w.count > 0);
+      const bestWindow = withSamples.length > 0
+        ? withSamples.reduce((best, w) => (w.total / w.count > best.total / best.count ? w : best))
+        : null;
+
+      postingFrequency = {
+        postsPerWeek: Math.round(postsPerWeek * 10) / 10,
+        avgDaysBetween: Math.round(avgDaysBetween * 10) / 10,
+        sampleSize: postTimestamps.length,
+        oldestSample: new Date(postTimestamps[postTimestamps.length - 1]).toISOString(),
+        newestSample: new Date(postTimestamps[0]).toISOString(),
+        level,
+        diagnosis,
+        avgEngagementPerPost,
+        bestWindow: bestWindow ? { label: bestWindow.label, avgEngagement: Math.round(bestWindow.total / bestWindow.count) } : null,
+      };
+    }
+
     const result = {
       username: profile.username,
       name: profile.fullName || profile.username,
@@ -626,6 +699,7 @@ app.post('/api/instagram/profile', async (req, res) => {
       isPrivate: !!profile.isPrivate,
       externalUrl: profile.externalUrl || null,
       url: `https://www.instagram.com/${profile.username}/`,
+      postingFrequency,
     };
 
     // CACHE: salvar o resultado por 12 horas

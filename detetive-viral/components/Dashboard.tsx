@@ -10,6 +10,28 @@ import NewAnalysisModal from './NewAnalysisModal';
 import { useVideos } from '@/context/VideosContext';
 import { API_URL, proxiedImage } from '@/lib/api';
 
+interface PostingFrequency {
+  postsPerWeek: number;
+  avgDaysBetween: number;
+  sampleSize: number;
+  oldestSample: string;
+  newestSample: string;
+  level: 'muito_baixa' | 'baixa' | 'moderada' | 'alta' | 'muito_alta';
+  diagnosis: string;
+  avgEngagementPerPost: number;
+  bestWindow: { label: string; avgEngagement: number } | null;
+}
+
+const LEVEL_STYLE: Record<PostingFrequency['level'], { label: string; color: string; bg: string }> = {
+  muito_baixa: { label: 'Muito baixa', color: '#dc2626', bg: '#fef2f2' },
+  baixa: { label: 'Baixa', color: '#ea580c', bg: '#fff7ed' },
+  moderada: { label: 'Moderada', color: '#16a34a', bg: '#f0fdf4' },
+  alta: { label: 'Alta', color: '#0284c7', bg: '#f0f9ff' },
+  muito_alta: { label: 'Muito alta', color: '#7c3aed', bg: '#faf5ff' },
+};
+
+const LEVEL_ORDER: PostingFrequency['level'][] = ['muito_baixa', 'baixa', 'moderada', 'alta', 'muito_alta'];
+
 interface DashboardProps {
   profile: {
     name: string;
@@ -93,6 +115,38 @@ export default function Dashboard({ profile }: DashboardProps) {
 
   // Formata números no padrão pt-BR (2.587)
   const fmtNum = (n?: number) => (n || n === 0 ? n.toLocaleString('pt-BR') : '—');
+
+  // Popup de frequência de postagem — mede ao clicar no avatar (não fica pré-carregado)
+  const [showFrequencyModal, setShowFrequencyModal] = useState(false);
+  const [frequencyLoading, setFrequencyLoading] = useState(false);
+  const [frequencyData, setFrequencyData] = useState<PostingFrequency | null>(null);
+  const [frequencyError, setFrequencyError] = useState<string | null>(null);
+  const [forecastPostsPerDay, setForecastPostsPerDay] = useState(1);
+
+  const handleAvatarClick = async () => {
+    setShowFrequencyModal(true);
+    setFrequencyError(null);
+    if (frequencyData) return; // já medido nesta sessão
+    setFrequencyLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/instagram/profile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: igProfile.instagram }),
+      });
+      if (!res.ok) throw new Error('Não consegui medir a frequência agora.');
+      const fresh = await res.json();
+      if (!fresh.postingFrequency) {
+        setFrequencyError('Poucos posts recentes para estimar a frequência.');
+      } else {
+        setFrequencyData(fresh.postingFrequency);
+      }
+    } catch (e) {
+      setFrequencyError(e instanceof Error ? e.message : 'Erro ao medir frequência');
+    } finally {
+      setFrequencyLoading(false);
+    }
+  };
 
   // Cola um link de reel → yt-dlp extrai o vídeo → abre o RoteiroPanel (Gemini + Claude)
   const handleGerarDeLink = async () => {
@@ -259,7 +313,7 @@ export default function Dashboard({ profile }: DashboardProps) {
             }`}
           >
             <span className="material-symbols-outlined">person</span>
-            <span className="text-sm">Arquétipo</span>
+            <span className="text-sm">Análise de Engajamento</span>
           </button>
           <a
             href="#"
@@ -316,8 +370,12 @@ export default function Dashboard({ profile }: DashboardProps) {
           {currentTab === 'instagram' && (
             <div className="max-w-3xl mx-auto w-full border-b border-[#dbdbdb] pb-6 mb-2">
               <div className="flex items-center gap-6 md:gap-10">
-                {/* Avatar com anel gradiente */}
-                <div className="flex-shrink-0 p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600">
+                {/* Avatar com anel gradiente — clique mede a frequência de postagem */}
+                <button
+                  onClick={handleAvatarClick}
+                  className="flex-shrink-0 p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 hover:opacity-90 active:scale-95 transition-all"
+                  title="Ver frequência de postagem"
+                >
                   <div className="w-20 h-20 md:w-[150px] md:h-[150px] rounded-full bg-white p-[3px]">
                     <div className="w-full h-full rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center">
                       {igProfile.profilePic ? (
@@ -327,7 +385,7 @@ export default function Dashboard({ profile }: DashboardProps) {
                       )}
                     </div>
                   </div>
-                </div>
+                </button>
 
                 {/* Coluna direita: username, stats, nome, bio */}
                 <div className="flex-1 min-w-0">
@@ -492,7 +550,7 @@ export default function Dashboard({ profile }: DashboardProps) {
               <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
                 {/* Header Arquétipo */}
                 <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-6 md:p-12 text-white">
-                  <h2 className="text-3xl md:text-4xl font-bold mb-2">Seu Arquétipo</h2>
+                  <h2 className="text-3xl md:text-4xl font-bold mb-2">Análise de Engajamento</h2>
                   <p className="text-purple-100 text-base md:text-lg">Análise completa do seu padrão e posicionamento</p>
                 </div>
 
@@ -559,7 +617,7 @@ export default function Dashboard({ profile }: DashboardProps) {
                     </>
                   ) : (
                     <div className="text-center py-16">
-                      <p className="text-xl text-slate-600 font-semibold mb-2">Arquétipo não carregado ainda</p>
+                      <p className="text-xl text-slate-600 font-semibold mb-2">Análise de engajamento não carregada ainda</p>
                       <p className="text-slate-500">Clique em "Buscar Novo Nicho" para atualizar</p>
                     </div>
                   )}
@@ -572,6 +630,182 @@ export default function Dashboard({ profile }: DashboardProps) {
         {/* Footer spacer */}
         <div className="h-24"></div>
       </main>
+
+      {/* Popup: Frequência de Postagem (aberto ao clicar no avatar) */}
+      {showFrequencyModal && (
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={() => setShowFrequencyModal(false)}>
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[85vh] overflow-y-auto relative" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setShowFrequencyModal(false)}
+              className="absolute top-4 right-4 text-[#9ca3af] hover:text-[#434655] transition-colors"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-pink-400 flex-shrink-0">
+                {igProfile.profilePic && (
+                  <img src={proxiedImage(igProfile.profilePic) || undefined} alt={igProfile.name} className="w-full h-full object-cover" />
+                )}
+              </div>
+              <div>
+                <p className="font-semibold text-[#191c1e] text-sm">{igProfile.instagram}</p>
+                <p className="text-xs text-[#737373]">Diagnóstico de frequência de postagem</p>
+              </div>
+            </div>
+
+            {frequencyLoading ? (
+              <div className="flex flex-col items-center py-8">
+                <Loader size={28} className="animate-spin text-[#0037b0] mb-3" />
+                <p className="text-sm text-[#434655]">Medindo frequência de posts...</p>
+              </div>
+            ) : frequencyError ? (
+              <div className="text-center py-6">
+                <p className="text-sm text-red-600">{frequencyError}</p>
+              </div>
+            ) : frequencyData ? (
+              <div className="space-y-6">
+                {/* Número principal, bem grande, pra leitura instantânea */}
+                <div className="text-center">
+                  <p className="text-5xl font-extrabold text-[#191c1e] leading-none">{frequencyData.postsPerWeek}</p>
+                  <p className="text-sm text-[#434655] mt-1">posts por semana (média de {frequencyData.avgDaysBetween} dias entre posts)</p>
+                </div>
+
+                {/* Gauge visual: 5 faixas coloridas + marcador na faixa atual */}
+                <div>
+                  <div className="flex h-3 rounded-full overflow-hidden">
+                    {LEVEL_ORDER.map((lvl) => (
+                      <div key={lvl} className="flex-1" style={{ backgroundColor: LEVEL_STYLE[lvl].color, opacity: lvl === frequencyData.level ? 1 : 0.25 }} />
+                    ))}
+                  </div>
+                  <div className="relative h-4">
+                    <div
+                      className="absolute -top-1 w-3 h-3 rotate-45 transition-all"
+                      style={{
+                        left: `calc(${(LEVEL_ORDER.indexOf(frequencyData.level) + 0.5) / LEVEL_ORDER.length * 100}% - 6px)`,
+                        backgroundColor: LEVEL_STYLE[frequencyData.level].color,
+                      }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[10px] text-[#9ca3af] -mt-1">
+                    <span>Muito baixa</span>
+                    <span>Muito alta</span>
+                  </div>
+                </div>
+
+                {/* Diagnóstico de nível */}
+                <div className="rounded-xl p-4" style={{ backgroundColor: LEVEL_STYLE[frequencyData.level].bg }}>
+                  <span
+                    className="inline-block text-xs font-bold px-2.5 py-1 rounded-md mb-2"
+                    style={{ color: LEVEL_STYLE[frequencyData.level].color, backgroundColor: '#fff' }}
+                  >
+                    ● Nível {LEVEL_STYLE[frequencyData.level].label}
+                  </span>
+                  <p className="text-sm" style={{ color: LEVEL_STYLE[frequencyData.level].color }}>
+                    {frequencyData.diagnosis}
+                  </p>
+                </div>
+
+                {/* Melhor horário pra postar */}
+                {frequencyData.bestWindow && (
+                  <div className="flex items-center gap-3 bg-[#f5f7fb] rounded-xl p-4">
+                    <div className="w-11 h-11 rounded-full bg-[#0037b0]/10 flex items-center justify-center flex-shrink-0 text-xl">
+                      ⏰
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-[#434655]">Melhor horário para postar</p>
+                      <p className="text-lg font-bold text-[#191c1e] leading-tight">{frequencyData.bestWindow.label}</p>
+                      <p className="text-xs text-[#737373]">
+                        ~{fmtNum(frequencyData.bestWindow.avgEngagement)} interações/post nesse horário
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Previsão por posts/dia — slider + chips rápidos */}
+                <div className="border-t border-[#dbdbdb] pt-5">
+                  <p className="text-xs font-semibold text-[#434655] mb-3">📈 Simule sua meta de postagem</p>
+
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-[#434655]">posts por dia</span>
+                    <span className="text-2xl font-bold text-[#0037b0]">{forecastPostsPerDay}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={1}
+                    max={10}
+                    step={1}
+                    value={forecastPostsPerDay}
+                    onChange={(e) => setForecastPostsPerDay(Number(e.target.value))}
+                    className="w-full accent-[#0037b0] mb-2"
+                  />
+                  <div className="flex gap-1.5 mb-4">
+                    {[1, 2, 3, 5, 7].map((n) => (
+                      <button
+                        key={n}
+                        onClick={() => setForecastPostsPerDay(n)}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                          forecastPostsPerDay === n ? 'bg-[#0037b0] text-white' : 'bg-[#f5f7fb] text-[#434655] hover:bg-[#e0e3e5]'
+                        }`}
+                      >
+                        {n}x/dia
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="bg-[#f5f7fb] rounded-xl p-3 text-center">
+                      <p className="text-lg font-bold text-[#0037b0]">{forecastPostsPerDay * 30}</p>
+                      <p className="text-[10px] text-[#434655] mt-0.5">posts / mês</p>
+                    </div>
+                    <div className="bg-[#f5f7fb] rounded-xl p-3 text-center">
+                      <p className="text-lg font-bold text-[#0037b0]">
+                        {fmtNum(forecastPostsPerDay * 30 * frequencyData.avgEngagementPerPost)}
+                      </p>
+                      <p className="text-[10px] text-[#434655] mt-0.5">interações / mês (est.)</p>
+                    </div>
+                  </div>
+
+                  {/* Comparação visual: hoje vs meta */}
+                  {(() => {
+                    const hojeInteracoes = Math.round(frequencyData.postsPerWeek * 30 / 7) * frequencyData.avgEngagementPerPost;
+                    const metaInteracoes = forecastPostsPerDay * 30 * frequencyData.avgEngagementPerPost;
+                    const max = Math.max(hojeInteracoes, metaInteracoes, 1);
+                    return (
+                      <div className="space-y-2">
+                        <div>
+                          <div className="flex justify-between text-xs text-[#434655] mb-1">
+                            <span>Hoje</span>
+                            <span className="font-semibold">{fmtNum(hojeInteracoes)}/mês</span>
+                          </div>
+                          <div className="h-2.5 rounded-full bg-[#e0e3e5] overflow-hidden">
+                            <div className="h-full rounded-full bg-[#9ca3af]" style={{ width: `${(hojeInteracoes / max) * 100}%` }} />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs text-[#434655] mb-1">
+                            <span>Sua meta</span>
+                            <span className="font-semibold text-[#0037b0]">{fmtNum(metaInteracoes)}/mês</span>
+                          </div>
+                          <div className="h-2.5 rounded-full bg-[#e0e3e5] overflow-hidden">
+                            <div className="h-full rounded-full bg-[#0037b0]" style={{ width: `${(metaInteracoes / max) * 100}%` }} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <p className="text-[11px] text-[#9ca3af] text-center">
+                  Baseado nos últimos {frequencyData.sampleSize} posts (de{' '}
+                  {new Date(frequencyData.oldestSample).toLocaleDateString('pt-BR')} a{' '}
+                  {new Date(frequencyData.newestSample).toLocaleDateString('pt-BR')}) — engajamento médio atual de ~{fmtNum(frequencyData.avgEngagementPerPost)} por post.
+                </p>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
 
       {/* Modal de Roteiro (centralizado) */}
       {selectedReel && (
