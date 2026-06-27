@@ -4,35 +4,15 @@ import { Sparkles, Search, Target, FileText } from 'lucide-react';
 
 interface LandingPageProps {
   onStart: () => void;
-  onLogin?: () => void;
-  onRegister?: () => void;
 }
 
-export default function LandingPage({ onStart, onLogin, onRegister }: LandingPageProps) {
+export default function LandingPage({ onStart }: LandingPageProps) {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
       {/* HEADER */}
-      <header className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+      <header className="max-w-5xl mx-auto px-4 py-4">
         <div className="inline-flex items-center gap-2 bg-purple-100 text-purple-700 px-4 py-1.5 rounded-full text-sm font-medium">
           <Sparkles size={15} /> Radar de Tendências
-        </div>
-        <div className="flex items-center gap-3">
-          {onRegister && (
-            <button
-              onClick={onRegister}
-              className="px-6 py-2.5 rounded-lg border-2 border-blue-500 text-blue-600 font-semibold hover:bg-blue-50 transition-all"
-            >
-              Registrar
-            </button>
-          )}
-          {onLogin && (
-            <button
-              onClick={onLogin}
-              className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold hover:from-blue-600 hover:to-purple-700 transition-all shadow-lg shadow-purple-200"
-            >
-              Entrar
-            </button>
-          )}
         </div>
       </header>
 

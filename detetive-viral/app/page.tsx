@@ -76,24 +76,6 @@ export default function Home() {
     }
   };
 
-  const handleDirectLogin = () => {
-    if (user) {
-      setStarted(true);
-    } else {
-      setAuthTab('entrar');
-      setShowAuth(true);
-    }
-  };
-
-  const handleDirectRegister = () => {
-    if (user) {
-      setStarted(true);
-    } else {
-      setAuthTab('registrar');
-      setShowAuth(true);
-    }
-  };
-
   // "Começar agora" na tela de oferta (plano pago): exige login antes do wizard
   const handleStartClick = () => {
     if (user) {
@@ -158,7 +140,7 @@ export default function Home() {
       ) : showOffer ? (
         <OfferScreen onStart={handleStartClick} onBack={() => setShowOffer(false)} />
       ) : (
-        <LandingPage onStart={handleGoToWizard} onLogin={handleDirectLogin} onRegister={handleDirectRegister} />
+        <LandingPage onStart={handleGoToWizard} />
       )}
     </main>
   );
