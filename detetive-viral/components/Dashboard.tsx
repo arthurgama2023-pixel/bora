@@ -164,6 +164,16 @@ export default function Dashboard({ profile }: DashboardProps) {
   const [forecastPostsPerDay, setForecastPostsPerDay] = useState(1);
   const [showFrequencyModal, setShowFrequencyModal] = useState(true);
 
+  // Define automaticamente uma meta inteligente quando os dados de frequência chegam
+  useEffect(() => {
+    if (!frequencyData) return;
+
+    // Calcula uma meta baseada no ritmo atual: 3x a frequência, com min 2 e max 7
+    const currentPostsPerDay = frequencyData.postsPerWeek / 7;
+    const suggestedMeta = Math.round(Math.max(2, Math.min(7, currentPostsPerDay * 3)));
+    setForecastPostsPerDay(suggestedMeta);
+  }, [frequencyData]);
+
   // Carrega perfil completo (enriquecimento) + frequência numa única chamada
   // (o /api/instagram/profile já retorna postingFrequency e é cacheado 12h).
   useEffect(() => {
