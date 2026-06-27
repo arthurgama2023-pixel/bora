@@ -6,7 +6,6 @@ import OfferScreen from '@/components/OfferScreen';
 import WizardForm from '@/components/WizardForm';
 import Dashboard from '@/components/Dashboard';
 import AuthScreen from '@/components/AuthScreen';
-import AuthChoiceModal from '@/components/AuthChoiceModal';
 import { useVideos } from '@/context/VideosContext';
 import { useAuth } from '@/context/AuthContext';
 
@@ -30,7 +29,6 @@ export default function Home() {
   const [started, setStarted] = useState(false); // false = mostra a landing/oferta
   const [showOffer, setShowOffer] = useState(false); // true = mostra a tela de planos/oferta
   const [showAuth, setShowAuth] = useState(false); // true = mostra login/registro
-  const [showAuthChoice, setShowAuthChoice] = useState(false); // true = mostra modal de escolha (criar conta / login)
   const [authTab, setAuthTab] = useState<'entrar' | 'registrar'>('entrar');
   const STORAGE_KEY = 'detetiveviral_profile';
   const { setVideos, setVideosViral, setAiAnalysis } = useVideos();
@@ -63,16 +61,15 @@ export default function Home() {
     }
   }, [userProfile]);
 
-  // CTA "Analisar meu perfil grátis" na landing: mostra popup de escolha
-  // (criar conta / fazer login) antes de começar o wizard
+  // CTA "Analisar meu perfil grátis" na landing: vai direto para auth
   const handleGoToWizard = () => {
     if (user) {
       // Se já está logado, vai direto pro wizard
       setStarted(true);
     } else {
-      // Se não está logado, mostra o popup de escolha
-      setShowAuthChoice(true);
-      setAuthTab('registrar'); // padrão é criar conta
+      // Se não está logado, vai direto para tela de autenticação (registrar)
+      setAuthTab('registrar');
+      setShowAuth(true);
     }
   };
 
@@ -104,16 +101,11 @@ export default function Home() {
     if (user) {
       setUserProfile(profile);
     } else {
-      // guarda o perfil preenchido e mostra o modal de escolha (criar conta / login)
+      // guarda o perfil preenchido e vai para tela de autenticação
       setPendingProfile(profile);
-      setShowAuthChoice(true);
+      setAuthTab('registrar');
+      setShowAuth(true);
     }
-  };
-
-  const handleAuthChoice = (choice: 'criar' | 'login') => {
-    setAuthTab(choice === 'criar' ? 'registrar' : 'entrar');
-    setShowAuthChoice(false);
-    setShowAuth(true);
   };
 
   return (
@@ -121,20 +113,7 @@ export default function Home() {
       {userProfile ? (
         <Dashboard profile={userProfile} />
       ) : showAuth ? (
-        <>
-          <AuthScreen onAuthenticated={handleAuthenticated} defaultTab={authTab} />
-          {showAuthChoice && (
-            <AuthChoiceModal
-              onCreateAccount={() => handleAuthChoice('criar')}
-              onLogin={() => handleAuthChoice('login')}
-            />
-          )}
-        </>
-      ) : showAuthChoice ? (
-        <AuthChoiceModal
-          onCreateAccount={() => handleAuthChoice('criar')}
-          onLogin={() => handleAuthChoice('login')}
-        />
+        <AuthScreen onAuthenticated={handleAuthenticated} defaultTab={authTab} />
       ) : started ? (
         <WizardForm onComplete={handleWizardComplete} />
       ) : showOffer ? (
