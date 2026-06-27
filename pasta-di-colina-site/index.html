@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pasta di Colina — Ristorante di Qualità | A mesa italiana do Rio</title>
+  <meta name="description" content="Suba a colina e sente-se à nossa mesa. Massas frescas feitas à mão, o aroma do forno e a tradição italiana no coração do Rio de Janeiro." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;0,800;1,500;1,600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/jpeg" href="assets/logo.jpg" />
+</head>
+<body>
+
+  <!-- ===== NAVBAR ===== -->
+  <header class="nav" id="nav">
+    <div class="nav__inner">
+      <a href="#hero" class="nav__brand">
+        <span class="nav__logo"><img src="assets/logo.jpg" alt="Pasta di Colina" /></span>
+        <span class="nav__name">Pasta di Colina</span>
+      </a>
+      <nav class="nav__links">
+        <a href="#experiencia">A Experiência</a>
+        <a href="#essencia">Nossa Essência</a>
+        <a href="#cardapio">Sabores</a>
+        <a href="#momentos">Momentos</a>
+        <a href="#unidades">Onde Estamos</a>
+        <a href="#convite" class="nav__cta">Visite-nos</a>
+      </nav>
+      <button class="nav__burger" id="burger" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===== HERO ===== -->
+  <section class="hero" id="hero" style="background-image:url('https://images.pexels.com/photos/10439164/pexels-photo-10439164.jpeg')">
+    <div class="hero__overlay"></div>
+    <div class="hero__content">
+      <h1 class="hero__title">A Itália mais perto<br>do que você <em>imagina</em>.</h1>
+      <p class="hero__sub">Massa fresca, forno a lenha e a mesa farta esperando por você.</p>
+      <div class="hero__actions">
+        <a href="#convite" class="btn btn--primary">Reserve Agora</a>
+        <a href="#unidades" class="btn btn--ghost">Onde nos visitar</a>
+      </div>
+      <div class="hero__stats">
+        <div class="stat"><span class="stat__num">33</span><span class="stat__label">massas feitas à mão</span></div>
+        <div class="stat"><span class="stat__num">27</span><span class="stat__label">pizzas saídas do forno</span></div>
+        <div class="stat"><span class="stat__num">8+</span><span class="stat__label">mesas pra te receber</span></div>
+      </div>
+    </div>
+    <a href="#experiencia" class="hero__scroll" aria-label="Rolar para baixo">↓</a>
+  </section>
+
+  <!-- ===== TICKER ===== -->
+  <div class="ticker">
+    <div class="ticker__track">
+      <span>Massa Fresca</span><span>•</span><span>Forno a Lenha</span><span>•</span><span>Mesa Farta</span><span>•</span><span>Cappelletti</span><span>•</span><span>Gnocchi</span><span>•</span><span>Cannelloni</span><span>•</span>
+      <span>Massa Fresca</span><span>•</span><span>Forno a Lenha</span><span>•</span><span>Mesa Farta</span><span>•</span><span>Cappelletti</span><span>•</span><span>Gnocchi</span><span>•</span><span>Cannelloni</span><span>•</span>
+    </div>
+  </div>
+
+  <!-- ===== A EXPERIÊNCIA ===== -->
+  <section class="section experiencia" id="experiencia">
+    <div class="section__head">
+      <p class="section__eyebrow">A Experiência</p>
+      <h2 class="section__title">Não é só uma refeição.<br>É um convite para ficar.</h2>
+      <p class="section__lead">Tem dias que a gente não quer só comer — quer sentir. Sentar à mesa, respirar fundo, deixar o aroma chegar antes do prato. É isso que te espera aqui.</p>
+    </div>
+    <div class="senses">
+      <article class="sense">
+        <div class="sense__media">
+          <img src="https://images.pexels.com/photos/29626982/pexels-photo-29626982.jpeg" alt="Pizza assando em forno a lenha com chamas vivas" loading="lazy" />
+        </div>
+        <h3>O aroma</h3>
+        <p>Antes mesmo de sentar, o perfume do molho fervendo e do pão quente já te abraça. Aquele cheiro que lembra a cozinha da nonna.</p>
+      </article>
+      <article class="sense">
+        <div class="sense__media">
+          <video autoplay muted loop playsinline poster="https://images.pexels.com/photos/546945/pexels-photo-546945.jpeg">
+            <source src="https://videos.pexels.com/video-files/37714300/15994005_1080_1920_60fps.mp4" type="video/mp4" />
+          </video>
+        </div>
+        <h3>O sabor</h3>
+        <p>Massa fresca que se desmancha, molho que pede mais um garfo, queijo derretendo devagar. Cada mordida é um pedaço de Itália.</p>
+      </article>
+      <article class="sense">
+        <div class="sense__media">
+          <img src="https://images.pexels.com/photos/6223232/pexels-photo-6223232.jpeg" alt="Amigos brindando à mesa, cercados de massas e pizzas" loading="lazy" />
+        </div>
+        <h3>O aconchego</h3>
+        <p>A luz baixa, a conversa boa, a mesa que não acaba. Aqui ninguém tem pressa de ir embora — e tudo bem.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- ===== FRASE / IMERSÃO ===== -->
+  <section class="quote">
+    <blockquote>
+      “A boa massa não se serve com pressa.<br>Ela se serve com <em>tempo</em>, com <em>cuidado</em> e com <em>histórias</em> à mesa.”
+    </blockquote>
+    <p class="quote__author">— A nossa filosofia</p>
+  </section>
+
+  <!-- ===== ESSÊNCIA (antes Diferenciais) ===== -->
+  <section class="section essencia" id="essencia">
+    <div class="section__head">
+      <p class="section__eyebrow">Nossa Essência</p>
+      <h2 class="section__title">Feito com tempo. Servido com amor.</h2>
+    </div>
+    <div class="cards">
+      <article class="card" style="background-image:url('https://images.pexels.com/photos/10046967/pexels-photo-10046967.jpeg')">
+        <h3>Massa feita à mão</h3>
+        <p>Todas as manhãs começam com farinha, ovos e paciência. Nada de congelados — só o frescor de quem faz por amor à cozinha.</p>
+      </article>
+      <article class="card" style="background-image:url('https://images.pexels.com/photos/29626981/pexels-photo-29626981.jpeg')">
+        <h3>O calor do forno</h3>
+        <p>Pizzas que saem douradas e fumegantes, com aquela borda que estala. O forno é o coração que mantém a casa quente.</p>
+      </article>
+      <article class="card" style="background-image:url('https://images.pexels.com/photos/10059915/pexels-photo-10059915.jpeg')">
+        <h3>Tradição italiana</h3>
+        <p>Receitas que atravessaram gerações e o oceano. Cada prato carrega um pedacinho da terra de onde tudo começou.</p>
+      </article>
+      <article class="card" style="background-image:url('https://images.pexels.com/photos/15880510/pexels-photo-15880510.jpeg')">
+        <h3>A mesa farta</h3>
+        <p>Aqui ninguém passa vontade. A comida vai e volta, a mesa enche, e a alegria é dividida no melhor estilo italiano.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- ===== SABORES (Cardápio) ===== -->
+  <section class="section cardapio" id="cardapio">
+    <div class="section__head">
+      <p class="section__eyebrow">Sabores que te esperam</p>
+      <h2 class="section__title">Um passeio pela cozinha italiana</h2>
+      <p class="section__lead">Estes são só alguns dos sabores que passam pela sua mesa. Feche os olhos e imagine.</p>
+    </div>
+
+    <div class="menu">
+      <div class="menu__col">
+        <div class="menu__feature">
+          <img src="https://images.pexels.com/photos/5807020/pexels-photo-5807020.jpeg" alt="Espaguete ao molho de tomate com manjericão fresco" loading="lazy" />
+        </div>
+        <div class="menu__label"><span>🍝</span> Das massas</div>
+        <ul class="menu__list">
+          <li><span class="menu__name">Penne ao Funghi</span><span class="menu__desc">Cremoso, com cogumelos e um abraço de parmesão</span></li>
+          <li><span class="menu__name">Cappelletti à Bolonhesa</span><span class="menu__desc">Recheado à mão, ao molho de carne lento</span></li>
+          <li><span class="menu__name">Gnocchi Quatro Queijos</span><span class="menu__desc">Batata fresca que derrete na boca</span></li>
+          <li><span class="menu__name">Cannelloni de Ricota</span><span class="menu__desc">Espinafre, ricota e o conforto do molho branco</span></li>
+          <li><span class="menu__name">Fettuccine Alfredo</span><span class="menu__desc">O clássico que nunca sai de moda</span></li>
+        </ul>
+      </div>
+      <div class="menu__col">
+        <div class="menu__feature">
+          <img src="https://images.pexels.com/photos/31587831/pexels-photo-31587831.jpeg" alt="Fatia de pizza sendo puxada com queijo derretendo" loading="lazy" />
+        </div>
+        <div class="menu__label"><span>🍕</span> Do forno</div>
+        <ul class="menu__list">
+          <li><span class="menu__name">Margherita</span><span class="menu__desc">Muçarela, tomate e manjericão fresquinho</span></li>
+          <li><span class="menu__name">Calabresa Artesanal</span><span class="menu__desc">Cebola roxa e o toque da azeitona</span></li>
+          <li><span class="menu__name">Quatro Queijos</span><span class="menu__desc">Para quem acredita que queijo nunca é demais</span></li>
+          <li><span class="menu__name">Chocolate com Morango</span><span class="menu__desc">A sobremesa que derrete junto com você</span></li>
+          <li><span class="menu__name">Banana com Canela</span><span class="menu__desc">Doce, quentinha, lembrança de infância</span></li>
+        </ul>
+      </div>
+    </div>
+    <p class="cardapio__note">…e dezenas de outros sabores rodando pelo salão, à sua espera</p>
+  </section>
+
+  <!-- ===== MOMENTOS (antes Preços) ===== -->
+  <section class="section momentos" id="momentos">
+    <div class="section__head">
+      <p class="section__eyebrow">Cada hora tem o seu</p>
+      <h2 class="section__title">Qual será o seu momento?</h2>
+      <p class="section__lead">Não importa a hora do dia — sempre há um bom motivo para subir a colina.</p>
+    </div>
+    <div class="moments">
+      <article class="moment">
+        <div class="moment__time">12h às 17h</div>
+        <h3>O almoço sem pressa</h3>
+        <p>Uma pausa no meio do dia que vale por um descanso. Comida boa, conversa leve e tempo pra respirar.</p>
+      </article>
+      <article class="moment moment--featured">
+        <div class="moment__time">A partir das 17h</div>
+        <h3>O jantar que vira noite</h3>
+        <p>Quando a luz baixa, a mesa se enche e a refeição se transforma em encontro. O nosso momento preferido.</p>
+      </article>
+      <article class="moment">
+        <div class="moment__time">Fins de semana</div>
+        <h3>A família reunida</h3>
+        <p>O sábado pede mesa grande, risada alta e prato cheio. A tradição que faz o fim de semana valer.</p>
+      </article>
+    </div>
+    <p class="momentos__note">Rodízio completo a partir de <strong>R$ 37,90</strong> · valores variam por unidade e horário</p>
+  </section>
+
+  <!-- ===== UNIDADES ===== -->
+  <section class="section unidades" id="unidades">
+    <div class="section__head">
+      <p class="section__eyebrow">Onde a colina te espera</p>
+      <h2 class="section__title">Perto de você, pelo Rio</h2>
+    </div>
+    <div class="units">
+      <div class="unit">Shopping Nova Iguaçu</div>
+      <div class="unit">Park Shopping Campo Grande</div>
+      <div class="unit">Via Brasil Shopping</div>
+      <div class="unit">Top Shopping</div>
+      <div class="unit">Shopping Boulevard</div>
+      <div class="unit">Partage São Gonçalo</div>
+      <div class="unit">Parque Shopping Sulacap</div>
+      <div class="unit">Shopping Carioca</div>
+    </div>
+  </section>
+
+  <!-- ===== CONVITE (antes Contato) ===== -->
+  <section class="section convite" id="convite">
+    <div class="convite__box">
+      <p class="convite__eyebrow">Estamos te esperando</p>
+      <h2>A mesa está posta.<br>O molho, no fogo.<br>Só falta <em>você</em>.</h2>
+      <p>Venha conhecer, traga quem você ama e descubra por que tanta gente volta. A colina é sua.</p>
+      <div class="convite__actions">
+        <a href="https://wa.me/552138997346" class="btn btn--primary btn--lg" target="_blank" rel="noopener">💬 Falar com a gente</a>
+        <a href="https://instagram.com/pastadicolina" class="btn btn--ghost btn--lg" target="_blank" rel="noopener">📷 Conhecer no Instagram</a>
+      </div>
+      <p class="convite__phone">📞 (21) 3899-7346</p>
+    </div>
+  </section>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="footer">
+    <div class="footer__inner">
+      <div class="footer__brand">
+        <span class="nav__logo"><img src="assets/logo.jpg" alt="Pasta di Colina" /></span>
+        <strong>Pasta di Colina</strong>
+        <p>Ristorante di Qualità — Rio de Janeiro</p>
+      </div>
+      <div class="footer__links">
+        <a href="#experiencia">A Experiência</a>
+        <a href="#essencia">Nossa Essência</a>
+        <a href="#cardapio">Sabores</a>
+        <a href="#unidades">Onde Estamos</a>
+      </div>
+      <div class="footer__social">
+        <a href="https://instagram.com/pastadicolina" target="_blank" rel="noopener">Instagram</a>
+        <a href="https://wa.me/552138997346" target="_blank" rel="noopener">WhatsApp</a>
+      </div>
+    </div>
+    <p class="footer__copy">© 2026 Pasta di Colina. Feito com 🍅 e tempo, no Rio de Janeiro.</p>
+  </footer>
+
+  <!-- ===== WHATSAPP FLOAT ===== -->
+  <a href="https://wa.me/552138997346" class="wpp-float" target="_blank" rel="noopener" aria-label="WhatsApp">💬</a>
+
+  <script src="script.js"></script>
+</body>
+</html>

@@ -116,7 +116,9 @@ export default function Home() {
   };
 
   const handleWizardComplete = (profile: UserProfile) => {
-    clearViralData(); // garante que o novo @ comece zerado
+    // NÃO limpamos os dados virais aqui: o wizard já pré-carregou os vídeos no
+    // contexto (em background, desde o 1º passo). Limpar agora apagaria tudo e
+    // forçaria nova busca no dashboard. O dashboard reaproveita o que já está pronto.
     if (user) {
       setUserProfile(profile);
     } else {

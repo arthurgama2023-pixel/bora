@@ -1,0 +1,40 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "barberpro",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace=apps/web"],
+      "port": 3000,
+      "cwd": "barberpro",
+      "autoPort": true
+    },
+    {
+      "name": "detetive-viral",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3001,
+      "cwd": "detetive-viral"
+    },
+    {
+      "name": "pasta-di-colina",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "pasta-di-colina-site", "-l", "5050"],
+      "port": 5050
+    },
+    {
+      "name": "rei-das-carnes",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3002,
+      "cwd": "rei-das-carnes"
+    },
+    {
+      "name": "ss-chopp",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3004,
+      "cwd": "ss-chopp"
+    }
+  ]
+}

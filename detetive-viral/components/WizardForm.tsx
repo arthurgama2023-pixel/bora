@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useContext } from 'react';
+import { useState, useContext, useRef } from 'react';
 import { ChevronRight, ChevronLeft, Loader, AlertCircle, CheckCircle } from 'lucide-react';
 import { API_URL, proxiedImage } from '@/lib/api';
 import { useVideos } from '@/context/VideosContext';
@@ -34,16 +34,16 @@ interface InstagramProfile {
 
 const STEPS = [
   {
-    title: 'Qual é seu nome?',
-    description: 'Vamos começar conhecendo você',
-    field: 'name',
-    placeholder: 'Ex: João Silva',
-  },
-  {
     title: 'Qual é seu @ do Instagram?',
-    description: 'Vamos conectar com seu perfil para análise',
+    description: 'Vamos conectar com seu perfil e já começar a análise',
     field: 'instagram',
     placeholder: 'Ex: @joaosilva ou joaosilva',
+  },
+  {
+    title: 'Qual é seu nome?',
+    description: 'Enquanto analisamos seu perfil, conte como te chamamos',
+    field: 'name',
+    placeholder: 'Ex: João Silva',
   },
   {
     title: 'Qual tipo de conteúdo você busca produzir no digital?',
@@ -81,6 +81,10 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
   const [profileConfirmed, setProfileConfirmed] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<any>(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+  // Controla a exibição do modal de resultado separadamente da análise em si —
+  // a análise roda em background desde o 1º passo, mas o modal só aparece no fim.
+  const [showAnalysisModal, setShowAnalysisModal] = useState(false);
+  const analysisStartedRef = useRef(false);
   const [lastFetchedUsername, setLastFetchedUsername] = useState<string | null>(null);
   const [userArchetype, setUserArchetype] = useState<string | null>(null);
   const [archetypeAnalysis, setArchetypeAnalysis] = useState<any>(null);
@@ -187,6 +191,7 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
       setProfileConfirmed(false);
       setInstagramProfile(null);
       setProfileError(null);
+      analysisStartedRef.current = false; // trocou o @ → permite nova análise
     }
   };
 
@@ -202,6 +207,12 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
   const handleConfirmProfile = () => {
     if (instagramProfile) {
       setProfileConfirmed(true);
+      // 🚀 Dispara a análise (vídeos + nicho + arquétipo) em background JÁ no 1º passo.
+      // Enquanto o usuário preenche nome e tipo de conteúdo, tudo carrega por trás.
+      if (!analysisStartedRef.current) {
+        analysisStartedRef.current = true;
+        handleAnalyze();
+      }
     }
   };
 
@@ -316,7 +327,7 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
   };
 
   const handleNext = () => {
-    if (currentStep === 1 && !profileConfirmed && instagramProfile) {
+    if (currentStep === 0 && !profileConfirmed && instagramProfile) {
       setProfileError('Por favor, confirme o perfil para continuar');
       return;
     }
@@ -324,7 +335,13 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
     if (currentStep < STEPS.length - 1) {
       setCurrentStep(currentStep + 1);
     } else {
-      handleAnalyze();
+      // Mostra o modal de resultado. Se a análise em background ainda não terminou,
+      // o modal de "carregando" aparece e troca pro resultado assim que ficar pronto.
+      setShowAnalysisModal(true);
+      if (!analysisStartedRef.current) {
+        analysisStartedRef.current = true;
+        handleAnalyze();
+      }
     }
   };
 
@@ -338,13 +355,154 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
   const isLastStep = currentStep === STEPS.length - 1;
   const fieldValue = formData[step.field as keyof typeof formData];
   const isFilled = typeof fieldValue === 'string' ? fieldValue.trim() !== '' : false;
-  const isInstagramStep = currentStep === 1;
-  const isCheckboxStep = currentStep === 2; // passo 3 (índice 2)
-  const isReviewStep = currentStep === 3; // passo 4 (índice 3)
+  const isInstagramStep = currentStep === 0; // @ agora é o 1º passo
+  const isCheckboxStep = currentStep === 2; // tipo de conteúdo (índice 2)
+  const isReviewStep = currentStep === 3; // revisão (índice 3)
   const canProceed = isInstagramStep ? profileConfirmed : isReviewStep ? true : isCheckboxStep ? isFilled : isFilled;
 
   return (
-    <div className="flex items-center justify-center min-h-screen px-4">
+    <div className="flex items-center justify-center min-h-screen px-4 relative overflow-hidden">
+      {/* Fundo ambiente sutil */}
+      <div className="absolute top-1/4 -right-20 w-[600px] h-[600px] bg-[#003ec7] opacity-[0.03] rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute bottom-1/4 -left-20 w-[400px] h-[400px] bg-[#005569] opacity-[0.03] rounded-full blur-[80px] pointer-events-none" />
+
+      {/* 1º passo (@) — card dedicado de conexão de perfil */}
+      {isInstagramStep && (
+        <div className="w-full max-w-[560px] bg-white/85 backdrop-blur-md border border-[#e2e8f0] rounded-2xl shadow-sm p-6 md:p-10 relative z-10">
+          {/* Progresso */}
+          <div className="mb-8">
+            <div className="flex justify-between items-end mb-2">
+              <span className="text-xs font-bold tracking-[0.05em] text-[#003ec7]">PASSO 1 DE {STEPS.length}</span>
+              <span className="text-xs font-medium text-[#434656] opacity-60">Perfil &amp; Nicho</span>
+            </div>
+            <div className="w-full h-1.5 bg-[#e5eeff] rounded-full overflow-hidden">
+              <div className="h-full bg-[#003ec7] rounded-full transition-all duration-1000 ease-out" style={{ width: `${(1 / STEPS.length) * 100}%` }} />
+            </div>
+          </div>
+
+          {/* Header */}
+          <div className="text-center mb-8">
+            <h1 className="text-2xl md:text-[32px] font-bold text-[#0b1c30] mb-3 leading-tight">Qual é o seu perfil?</h1>
+            <p className="text-[#434656] max-w-[420px] mx-auto">
+              Conecte seu Instagram para que nossa IA possa analisar suas tendências e identificar oportunidades no seu nicho.
+            </p>
+          </div>
+
+          {/* Input + Buscar (antes de encontrar o perfil) */}
+          {!instagramProfile && (
+            <div className="space-y-4">
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-[#434656] group-focus-within:text-[#003ec7] transition-colors">
+                  <span className="material-symbols-outlined">photo_camera</span>
+                </div>
+                <input
+                  type="text"
+                  value={formData.instagram}
+                  onChange={(e) => {
+                    setFormData({ ...formData, instagram: e.target.value });
+                    setProfileConfirmed(false);
+                    setInstagramProfile(null);
+                    setProfileError(null);
+                    analysisStartedRef.current = false;
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (formData.instagram.trim()) fetchInstagramProfile(formData.instagram);
+                    }
+                  }}
+                  placeholder="joaosilva"
+                  className="w-full pl-14 pr-4 h-16 bg-white border border-[#c3c5d9] rounded-xl text-lg text-[#0b1c30] placeholder:text-[#c3c5d9] focus:ring-2 focus:ring-[#003ec7]/20 focus:border-[#003ec7] transition-all outline-none"
+                />
+              </div>
+              <button
+                onClick={() => fetchInstagramProfile(formData.instagram)}
+                disabled={!formData.instagram.trim() || loadingProfile}
+                className="w-full bg-[#003ec7] hover:bg-[#0052ff] text-white font-semibold py-4 rounded-xl shadow-sm hover:shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loadingProfile && <Loader className="animate-spin" size={20} />}
+                <span>{loadingProfile ? 'Buscando...' : 'Buscar perfil'}</span>
+                {!loadingProfile && <span className="material-symbols-outlined">arrow_forward</span>}
+              </button>
+            </div>
+          )}
+
+          {/* Erro */}
+          {profileError && !loadingProfile && (
+            <div className="mt-4 flex items-start gap-3 p-4 bg-[#ffdad6] rounded-xl">
+              <AlertCircle className="text-[#ba1a1a] flex-shrink-0 mt-0.5" size={20} />
+              <div>
+                <p className="font-semibold text-[#93000a]">Perfil não encontrado</p>
+                <p className="text-sm text-[#93000a]/80">{profileError}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Perfil encontrado → conectar e continuar */}
+          {instagramProfile && !loadingProfile && (
+            <div className={`rounded-xl p-4 border-2 transition-all ${profileConfirmed ? 'border-[#003ec7] bg-[#eff4ff]' : 'border-[#c3c5d9] bg-white'}`}>
+              <div className="flex items-start gap-4">
+                <div className="w-16 h-16 rounded-full overflow-hidden bg-gradient-to-br from-purple-400 via-pink-400 to-red-400 flex items-center justify-center text-3xl flex-shrink-0">
+                  {proxiedImage(instagramProfile.profilePic) ? (
+                    <img src={proxiedImage(instagramProfile.profilePic) || undefined} alt={instagramProfile.name} className="w-full h-full object-cover" />
+                  ) : (
+                    '📷'
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-[#0b1c30] truncate">@{instagramProfile.username}</p>
+                    {instagramProfile.verified && <span className="text-[#003ec7] text-sm">✓</span>}
+                  </div>
+                  <p className="text-sm text-[#434656]">{instagramProfile.name}</p>
+                  <p className="text-xs text-[#434656] line-clamp-2 mt-1">{instagramProfile.bio || 'Sem bio'}</p>
+                  <p className="text-xs font-semibold text-[#434656] mt-2">👥 {(instagramProfile.followers / 1000).toFixed(1)}K seguidores</p>
+                </div>
+                {profileConfirmed && <CheckCircle className="text-[#003ec7] flex-shrink-0" size={24} />}
+              </div>
+
+              {!profileConfirmed ? (
+                <button
+                  onClick={handleConfirmProfile}
+                  className="w-full mt-4 py-3 bg-[#003ec7] hover:bg-[#0052ff] text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                >
+                  <CheckCircle size={18} />
+                  Conectar este perfil
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={handleNext}
+                    className="w-full mt-4 py-3 bg-[#003ec7] hover:bg-[#0052ff] text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                  >
+                    Continuar
+                    <ChevronRight size={18} />
+                  </button>
+                  <p className="text-center text-xs text-[#003ec7] mt-2">✓ Perfil conectado — já começamos sua análise em segundo plano</p>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Privacidade e Segurança */}
+          <div className="mt-6 p-4 bg-[#eff4ff] border border-[#c3c5d9] rounded-xl flex items-start gap-3">
+            <span className="material-symbols-outlined text-[#003ec7] flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>verified_user</span>
+            <div>
+              <h3 className="text-xs font-bold text-[#0b1c30] tracking-[0.03em] mb-1">PRIVACIDADE E SEGURANÇA</h3>
+              <p className="text-[13px] leading-relaxed text-[#434656]/80">
+                Nossa IA analisa apenas informações públicas do perfil. Não solicitamos sua senha em nenhum momento. Seus dados estão protegidos.
+              </p>
+            </div>
+          </div>
+
+          {/* Ajuda */}
+          <div className="mt-4 text-center">
+            <a href="#" className="text-xs text-[#434656] hover:text-[#003ec7] transition-all">Precisa de ajuda com a conexão?</a>
+          </div>
+        </div>
+      )}
+
+      {!isInstagramStep && (
       <div className="w-full max-w-2xl">
         {/* Header */}
         <div className="mb-8 md:mb-12 text-center">
@@ -601,9 +759,10 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
           ))}
         </div>
       </div>
+      )}
 
       {/* Modal de Análise — Mensagem Inspiradora Pessoal */}
-      {aiAnalysis && !loadingAnalysis && (
+      {showAnalysisModal && aiAnalysis && !loadingAnalysis && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto">
 
@@ -686,7 +845,7 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
             {/* Buttons */}
             <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-6 flex gap-3 rounded-b-3xl">
               <button
-                onClick={() => setAiAnalysis(null)}
+                onClick={() => setShowAnalysisModal(false)}
                 className="flex-1 px-4 py-3 bg-white/20 hover:bg-white/30 text-white rounded-xl font-semibold transition-colors backdrop-blur-sm"
               >
                 Revisar
@@ -710,8 +869,8 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
         </div>
       )}
 
-      {/* Modal Carregando Análise */}
-      {loadingAnalysis && (
+      {/* Modal Carregando Análise — só quando o usuário pediu pra ver o resultado */}
+      {showAnalysisModal && loadingAnalysis && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
             <Loader className="animate-spin text-blue-600 mx-auto mb-4" size={40} />
