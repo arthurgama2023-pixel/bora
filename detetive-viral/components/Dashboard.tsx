@@ -601,9 +601,9 @@ export default function Dashboard({ profile }: DashboardProps) {
                       </div>
                     )}
 
-                    {/* Previsão por posts/dia — slider + chips rápidos */}
+                    {/* Sugestão de postagem */}
                     <div className="border-t border-[#dbdbdb] pt-5">
-                      <p className="text-xs font-semibold text-[#434655] mb-3">📈 Simule sua meta de postagem</p>
+                      <p className="text-xs font-semibold text-[#434655] mb-3">📈 Sugestão de postagem</p>
 
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm text-[#434655]">posts por dia</span>
@@ -668,7 +668,7 @@ export default function Dashboard({ profile }: DashboardProps) {
                             <div>
                               <div className="flex justify-between text-xs text-[#434655] mb-1">
                                 <span>Sua meta</span>
-                                <span className="font-semibold text-[#0037b0]">{metaPostsPerMonth} posts/mês</span>
+                                <span className="font-semibold text-[#0037b0]">{fmtNum(metaPostsPerMonth * frequencyData.avgEngagementPerPost)} interações/mês</span>
                               </div>
                               <div className="h-2.5 rounded-full bg-[#e0e3e5] overflow-hidden">
                                 <div className="h-full rounded-full bg-[#0037b0]" style={{ width: `${(metaPostsPerMonth / max) * 100}%` }} />
