@@ -50,8 +50,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     // Após registrar com sucesso, tenta fazer login automaticamente
-    // (funcionará se email confirmation não for obrigatório)
+    // Se email confirmation estiver habilitado, vai falhar e retornar erro
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+
+    // Se falhar por email não confirmado, retorna mensagem dizendo que precisa confirmar
+    if (signInError?.message.includes('Email not confirmed')) {
+      return { error: 'Verifique seu e-mail e clique no link de confirmação para ativar sua conta.' };
+    }
+
     return { error: signInError ? traduzErro(signInError.message) : null };
   };
 
