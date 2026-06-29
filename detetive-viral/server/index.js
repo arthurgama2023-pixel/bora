@@ -583,32 +583,56 @@ app.post('/api/instagram/profile', async (req, res) => {
       return res.status(400).json({ error: `"${username}" não é um username válido. Use apenas letras, números, pontos e underscores.` });
     }
 
-    // CACHE: verificar se já temos esse perfil (12 horas)
+    // CACHE: verificar se já temos esse perfil (30 dias)
     // bucket separado de "profiles" (usado pela busca de vídeos) p/ evitar colisão de cache
-    const cached = await getCached('profileInfo', cleanUsername, 12 * 60 * 60 * 1000);
+    // TTL estendido para economizar tokens Apify em fase de teste
+    const cached = await getCached('profileInfo', cleanUsername, 30 * 24 * 60 * 60 * 1000);
     if (cached) {
-      console.log(`[Instagram Profile] 💾 Cache HIT para @${cleanUsername} (${cached.ageMin}m)`);
+      console.log(`[Instagram Profile] 💾 Cache HIT para @${cleanUsername} (${cached.ageMin}m atrás) — economizando token!`);
       return res.json(cached.data);
     }
 
     console.log(`[Instagram Profile] 🔍 Buscando @${cleanUsername}... (Apify)`);
 
-    const apify = new ApifyClient({ token: process.env.APIFY_API_KEY });
-    const run = await apify.actor('apify/instagram-profile-scraper').call(
-      {
-        usernames: [cleanUsername],
-        loginCookies: getInstagramLoginCookies(),
-      },
-      { timeout: 60000 }
-    );
+    let profile;
+    try {
+      const apify = new ApifyClient({ token: process.env.APIFY_API_KEY });
+      const run = await apify.actor('apify/instagram-profile-scraper').call(
+        {
+          usernames: [cleanUsername],
+          loginCookies: getInstagramLoginCookies(),
+        },
+        { timeout: 60000 }
+      );
 
-    const { items } = await apify.dataset(run.defaultDatasetId).listItems({ limit: 1 });
+      const { items } = await apify.dataset(run.defaultDatasetId).listItems({ limit: 1 });
 
-    if (!items || items.length === 0) {
-      return res.status(404).json({ error: 'Perfil não encontrado.' });
+      if (!items || items.length === 0) {
+        console.warn(`[Instagram Profile] ⚠️ Apify retornou vazio para @${cleanUsername}`);
+
+        // Fallback: se Apify falhou, tenta retornar qualquer cache antigo (mesmo expirado)
+        const oldCache = await getCached('profileInfo', cleanUsername, 365 * 24 * 60 * 60 * 1000); // até 1 ano
+        if (oldCache) {
+          console.warn(`[Instagram Profile] 📦 Retornando cache antigo de @${cleanUsername} (${oldCache.ageMin}m)`);
+          return res.json(oldCache.data);
+        }
+
+        return res.status(404).json({ error: `Perfil @${cleanUsername} não encontrado. Pode ser privado, não existir, ou a busca falhou.` });
+      }
+
+      profile = items[0];
+    } catch (apifyError) {
+      console.error(`[Instagram Profile] ❌ Erro Apify para @${cleanUsername}: ${apifyError.message}`);
+
+      // Fallback: se Apify falhou (sem créditos, erro, etc), retorna cache antigo
+      const oldCache = await getCached('profileInfo', cleanUsername, 365 * 24 * 60 * 60 * 1000); // até 1 ano
+      if (oldCache) {
+        console.log(`[Instagram Profile] 💾 Apify indisponível — usando cache antigo de @${cleanUsername} (${oldCache.ageMin}m)`);
+        return res.json(oldCache.data);
+      }
+
+      return res.status(500).json({ error: `Erro ao buscar perfil (Apify indisponível): ${apifyError.message}` });
     }
-
-    const profile = items[0];
 
     // Guarda o perfil BRUTO (com latestPosts) p/ a busca de vídeos reusar — evita
     // raspar o mesmo perfil duas vezes (passo 2 do wizard + passo 5).
