@@ -438,6 +438,15 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
             <span className="material-symbols-outlined">settings</span>
             <span className="text-sm">Configurações</span>
           </button>
+          {onExitProfile && (
+            <button
+              onClick={() => { setMobileMenuOpen(false); onExitProfile(); }}
+              className="w-full flex items-center gap-4 px-4 py-2 rounded-lg text-[#434655] hover:bg-[#ffdad6] hover:text-[#ba1a1a] transition-all"
+            >
+              <span className="material-symbols-outlined">logout</span>
+              <span className="text-sm">Sair</span>
+            </button>
+          )}
         </nav>
         <div className="p-4 bg-[#dce1ff]/10 rounded-xl mb-2">
           <p className="text-sm font-bold text-[#0037b0] mb-1">Plano Premium</p>
@@ -466,18 +475,6 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
       >
         <Menu size={20} />
       </button>
-
-      {/* Botão "Sair do perfil" flutuante — sempre por cima (z-[60]), acima até
-          do modal de frequência. Volta para o COMEÇO (landing page). */}
-      {onExitProfile && (
-        <button
-          onClick={onExitProfile}
-          className="fixed top-4 right-4 z-[60] w-10 h-10 rounded-full bg-white shadow-md border border-[#c4c5d7] flex items-center justify-center text-[#434655] hover:text-[#191c1e] hover:bg-[#f0f0f0] transition-colors"
-          title="Sair do perfil e voltar ao início"
-        >
-          <X size={20} />
-        </button>
-      )}
 
       {/* Main Content */}
       <main className="w-full md:ml-64 md:w-[calc(100%-256px)] min-h-screen">
