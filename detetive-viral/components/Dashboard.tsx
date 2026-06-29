@@ -6,7 +6,7 @@ import ReelCard from './ReelCard';
 import RoteiroPanel from './RoteiroPanel';
 import SettingsPage from './SettingsPage';
 import NewAnalysisModal from './NewAnalysisModal';
-import { useVideos } from '@/context/VideosContext';
+import { useVideos, normalizeHandle } from '@/context/VideosContext';
 import { useAuth } from '@/context/AuthContext';
 import { API_URL, proxiedImage } from '@/lib/api';
 
@@ -107,7 +107,11 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
 
   const [selectedReel, setSelectedReel] = useState<Reel | null>(null);
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
-  const { videos, loading, setVideos, setLoading, aiAnalysis, setAiAnalysis, videosViral, setVideosViral, frequencyData: ctxFrequencyData, setFrequencyData: setCtxFrequencyData } = useVideos();
+  const { videos, loading, setVideos, setLoading, aiAnalysis, setAiAnalysis, videosViral, setVideosViral, frequency: ctxFrequency, setFrequency: setCtxFrequency } = useVideos();
+  // Só aproveita o diagnóstico do contexto se ele for DESTE @ (anti-vazamento).
+  const ctxFrequencyData = ctxFrequency && normalizeHandle(ctxFrequency.username) === normalizeHandle(profile.instagram)
+    ? ctxFrequency.data
+    : null;
   const [mode, setMode] = useState<'autoridade' | 'viralizacao'>('viralizacao');
   const [currentTab, setCurrentTab] = useState<'instagram' | 'tiktok' | 'arquetipo'>('instagram');
   const [tiktokVideos, setTiktokVideos] = useState<Reel[]>([]);
@@ -226,7 +230,8 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
         localStorage.setItem('detetiveviral_profile', JSON.stringify(merged));
         if (fresh.postingFrequency) {
           setFrequencyData(fresh.postingFrequency);
-          setCtxFrequencyData(fresh.postingFrequency); // mantém o contexto em sincronia
+          // Guarda no contexto AMARRADO a este @ (anti-vazamento).
+          setCtxFrequency({ username: normalizeHandle(profile.instagram), data: fresh.postingFrequency });
         } else {
           setFrequencyError('Poucos posts recentes para estimar a frequência.');
         }

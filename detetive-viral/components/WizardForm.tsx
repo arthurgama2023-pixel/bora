@@ -64,7 +64,7 @@ const STEPS = [
 ];
 
 export default function WizardForm({ onComplete }: WizardFormProps) {
-  const { setVideos, setVideosViral, setAiAnalysis: setContextAnalysis, setFrequencyData } = useVideos();
+  const { setVideos, setVideosViral, setAiAnalysis: setContextAnalysis, setFrequency } = useVideos();
 
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState({
@@ -160,10 +160,13 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
       setProfileError(null);
 
       // 📊 Diagnóstico de postagem já vem nesta MESMA resposta (/api/instagram/profile
-      // retorna postingFrequency). Guardamos no contexto agora, no "Buscar perfil",
-      // pro Dashboard já abrir com o diagnóstico pronto — sem novo fetch nem loading.
+      // retorna postingFrequency). Guardamos no contexto AMARRADO ao @ dono, no
+      // "Buscar perfil", pro Dashboard já abrir pronto — sem novo fetch nem loading.
+      // Como é keyed por username, nunca vaza pra outro @.
       if (profile.postingFrequency) {
-        setFrequencyData(profile.postingFrequency);
+        setFrequency({ username: cleanUsername, data: profile.postingFrequency });
+      } else {
+        setFrequency(null); // sem diagnóstico p/ este @ → não herda o anterior
       }
 
       // 🤖 Detectar múltiplos nichos automaticamente

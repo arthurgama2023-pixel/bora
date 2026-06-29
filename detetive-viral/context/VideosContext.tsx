@@ -43,6 +43,18 @@ export interface PostingFrequency {
   postsByMonth: { month: string; label: string; count: number }[];
 }
 
+// O diagnóstico fica AMARRADO ao @ dono (username normalizado). Assim ele nunca
+// vaza para outro perfil: quem consome só usa se o username bater com o @ atual.
+export interface FrequencyEntry {
+  username: string;
+  data: PostingFrequency;
+}
+
+// Normaliza @ para comparação à prova de vazamento (sem @, minúsculo, sem espaços).
+export function normalizeHandle(raw?: string | null): string {
+  return String(raw || '').replace(/@/g, '').trim().toLowerCase();
+}
+
 // Duas formas possíveis: (1) o roteiro padrão minimalista — só "o que deu
 // certo" + "modelo usado" no vídeo real; (2) o roteiro da estratégia Marca em
 // Alta, que de fato gera um roteiro novo pra gravar (campos legados).
@@ -91,8 +103,8 @@ interface VideosContextType {
   setAiAnalysis: (analysis: AiAnalysis | null) => void;
   videosViral: Video[];
   setVideosViral: (videos: Video[]) => void;
-  frequencyData: PostingFrequency | null;
-  setFrequencyData: (data: PostingFrequency | null) => void;
+  frequency: FrequencyEntry | null;
+  setFrequency: (entry: FrequencyEntry | null) => void;
   roteiros: Map<string, RoteiroCacheEntry>;
   setRoteiro: (cacheKey: string, entry: RoteiroCacheEntry) => void;
   getRoteiro: (cacheKey: string) => RoteiroCacheEntry | undefined;
@@ -106,7 +118,7 @@ export function VideosProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<AiAnalysis | null>(null);
   const [videosViral, setVideosViral] = useState<Video[]>([]);
-  const [frequencyData, setFrequencyData] = useState<PostingFrequency | null>(null);
+  const [frequency, setFrequency] = useState<FrequencyEntry | null>(null);
   const [roteiros, setRoteiros] = useState<Map<string, RoteiroCacheEntry>>(new Map());
 
   const addVideos = (newVideos: Video[]) => {
@@ -135,8 +147,8 @@ export function VideosProvider({ children }: { children: ReactNode }) {
         setAiAnalysis,
         videosViral,
         setVideosViral,
-        frequencyData,
-        setFrequencyData,
+        frequency,
+        setFrequency,
         roteiros,
         setRoteiro,
         getRoteiro,
