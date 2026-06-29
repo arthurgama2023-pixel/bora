@@ -85,11 +85,13 @@ function computePostingFrequency(latestPosts) {
     ? withSamples.reduce((best, w) => (w.total / w.count > best.total / best.count ? w : best))
     : null;
 
-  // Contagem REAL (não estimada) por mês de publicação.
+  // Contagem REAL (não estimada) por mês de publicação, em fuso BRT (UTC-3).
+  // Evita contabilizar no mês errado posts feitos no final do dia.
   const monthCounts = new Map();
   postTimestamps.forEach((t) => {
     const d = new Date(t);
-    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    const brtTime = new Date(d.getTime() - 3 * 60 * 60 * 1000);
+    const key = `${brtTime.getUTCFullYear()}-${String(brtTime.getUTCMonth() + 1).padStart(2, '0')}`;
     monthCounts.set(key, (monthCounts.get(key) || 0) + 1);
   });
   const MES_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
