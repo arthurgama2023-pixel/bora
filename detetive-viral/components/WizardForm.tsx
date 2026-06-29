@@ -458,7 +458,21 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
                   <p className="text-xs text-[#434656] line-clamp-2 mt-1">{instagramProfile.bio || 'Sem bio'}</p>
                   <p className="text-xs font-semibold text-[#434656] mt-2">👥 {(instagramProfile.followers / 1000).toFixed(1)}K seguidores</p>
                 </div>
-                {profileConfirmed && <CheckCircle className="text-[#003ec7] flex-shrink-0" size={24} />}
+                <div className="flex items-center gap-2">
+                  {profileConfirmed && <CheckCircle className="text-[#003ec7] flex-shrink-0" size={24} />}
+                  <button
+                    onClick={() => {
+                      setInstagramProfile(null);
+                      setProfileConfirmed(false);
+                      setFormData({ ...formData, instagram: '' });
+                      setProfileError(null);
+                    }}
+                    className="text-[#c3c5d9] hover:text-[#999] transition-colors"
+                    title="Trocar perfil"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
               {!profileConfirmed ? (
