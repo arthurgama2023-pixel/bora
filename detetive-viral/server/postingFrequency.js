@@ -24,7 +24,15 @@ function computePostingFrequency(latestPosts) {
 
   if (postsWithData.length < 2) return null;
 
-  const postTimestamps = postsWithData.map((p) => p.ts); // do mais novo p/ o mais antigo
+  // Remove posts muito antigos (>6 meses): são outliers fixados/pinned que
+  // distorcem o cálculo de frequência. Mantém apenas os recentes.
+  const now = Date.now();
+  const sixMonthsAgo = now - 6 * 30 * 24 * 60 * 60 * 1000;
+  const recentPosts = postsWithData.filter((p) => p.ts >= sixMonthsAgo);
+  const allPostsForMonthChart = postsWithData; // mantém TODOS para o gráfico de meses
+
+  const postTimestamps = recentPosts.map((p) => p.ts); // apenas posts recentes (últimos 6 meses)
+  if (postTimestamps.length < 2) return null; // precisa de >= 2 posts recentes
 
   // Intervalo entre posts CONSECUTIVOS (em dias) → MEDIANA (robusta a outlier).
   const gapsDays = [];
@@ -43,7 +51,7 @@ function computePostingFrequency(latestPosts) {
   // 14 já é "muito_alta", então o teto não muda o diagnóstico — só a exibição.
   const postsPerWeek = medianGap > 0 ? Math.min(7 / medianGap, 50) : 50;
   const avgEngagementPerPost = Math.round(
-    postsWithData.reduce((sum, p) => sum + p.engagement, 0) / postsWithData.length
+    recentPosts.reduce((sum, p) => sum + p.engagement, 0) / recentPosts.length
   );
 
   // Diagnóstico de nível — referência: 3-7 posts/semana é a faixa saudável p/ crescer no IG.
@@ -65,7 +73,7 @@ function computePostingFrequency(latestPosts) {
     diagnosis = 'Frequência muito alta. Atenção pra não cansar a audiência — qualidade tende a pesar mais que quantidade nesse ritmo.';
   }
 
-  // Melhor horário: agrupa os posts da amostra por janela do dia (fuso BRT, UTC-3)
+  // Melhor horário: agrupa os posts RECENTES por janela do dia (fuso BRT, UTC-3)
   // e aponta a janela com maior engajamento médio.
   const windows = [
     { label: 'Madrugada (00h–06h)', from: 0, to: 6 },
@@ -74,7 +82,7 @@ function computePostingFrequency(latestPosts) {
     { label: 'Noite (18h–24h)', from: 18, to: 24 },
   ].map((w) => ({ ...w, total: 0, count: 0 }));
 
-  postsWithData.forEach((p) => {
+  recentPosts.forEach((p) => {
     const brtHour = (new Date(p.ts).getUTCHours() - 3 + 24) % 24;
     const win = windows.find((w) => brtHour >= w.from && brtHour < w.to);
     if (win) { win.total += p.engagement; win.count += 1; }
@@ -86,10 +94,10 @@ function computePostingFrequency(latestPosts) {
     : null;
 
   // Contagem REAL (não estimada) por mês de publicação, em fuso BRT (UTC-3).
-  // Evita contabilizar no mês errado posts feitos no final do dia.
+  // Usa apenas os posts RECENTES (últimos 6 meses) para mostrar padrão relevante.
   const monthCounts = new Map();
-  postTimestamps.forEach((t) => {
-    const d = new Date(t);
+  recentPosts.forEach((p) => {
+    const d = new Date(p.ts);
     const brtTime = new Date(d.getTime() - 3 * 60 * 60 * 1000);
     const key = `${brtTime.getUTCFullYear()}-${String(brtTime.getUTCMonth() + 1).padStart(2, '0')}`;
     monthCounts.set(key, (monthCounts.get(key) || 0) + 1);
@@ -108,6 +116,7 @@ function computePostingFrequency(latestPosts) {
     sampleSize: postTimestamps.length,
     oldestSample: new Date(postTimestamps[postTimestamps.length - 1]).toISOString(),
     newestSample: new Date(postTimestamps[0]).toISOString(),
+    note: recentPosts.length < allPostsForMonthChart.length ? `Cálculo com ${recentPosts.length} posts recentes (últimos 6 meses); ${allPostsForMonthChart.length - recentPosts.length} posts antigos/pinned ignorados na frequência` : undefined,
     level,
     diagnosis,
     avgEngagementPerPost,
