@@ -28,6 +28,21 @@ interface AiAnalysis {
   confianca: string;
 }
 
+// Diagnóstico de frequência de postagem — pré-carregado já no "Buscar perfil"
+// (passo 1) e consumido pelo Dashboard sem novo fetch / sem tela de loading.
+export interface PostingFrequency {
+  postsPerWeek: number;
+  avgDaysBetween: number;
+  sampleSize: number;
+  oldestSample: string;
+  newestSample: string;
+  level: 'muito_baixa' | 'baixa' | 'moderada' | 'alta' | 'muito_alta';
+  diagnosis: string;
+  avgEngagementPerPost: number;
+  bestWindow: { label: string; avgEngagement: number } | null;
+  postsByMonth: { month: string; label: string; count: number }[];
+}
+
 // Duas formas possíveis: (1) o roteiro padrão minimalista — só "o que deu
 // certo" + "modelo usado" no vídeo real; (2) o roteiro da estratégia Marca em
 // Alta, que de fato gera um roteiro novo pra gravar (campos legados).
@@ -76,6 +91,8 @@ interface VideosContextType {
   setAiAnalysis: (analysis: AiAnalysis | null) => void;
   videosViral: Video[];
   setVideosViral: (videos: Video[]) => void;
+  frequencyData: PostingFrequency | null;
+  setFrequencyData: (data: PostingFrequency | null) => void;
   roteiros: Map<string, RoteiroCacheEntry>;
   setRoteiro: (cacheKey: string, entry: RoteiroCacheEntry) => void;
   getRoteiro: (cacheKey: string) => RoteiroCacheEntry | undefined;
@@ -89,6 +106,7 @@ export function VideosProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<AiAnalysis | null>(null);
   const [videosViral, setVideosViral] = useState<Video[]>([]);
+  const [frequencyData, setFrequencyData] = useState<PostingFrequency | null>(null);
   const [roteiros, setRoteiros] = useState<Map<string, RoteiroCacheEntry>>(new Map());
 
   const addVideos = (newVideos: Video[]) => {
@@ -117,6 +135,8 @@ export function VideosProvider({ children }: { children: ReactNode }) {
         setAiAnalysis,
         videosViral,
         setVideosViral,
+        frequencyData,
+        setFrequencyData,
         roteiros,
         setRoteiro,
         getRoteiro,

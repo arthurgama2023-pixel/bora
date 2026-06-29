@@ -31,7 +31,7 @@ export default function Home() {
   const [showAuth, setShowAuth] = useState(false); // true = mostra login/registro
   const [authTab, setAuthTab] = useState<'entrar' | 'registrar'>('entrar');
   const STORAGE_KEY = 'detetiveviral_profile';
-  const { setVideos, setVideosViral, setAiAnalysis } = useVideos();
+  const { setVideos, setVideosViral, setAiAnalysis, setFrequencyData } = useVideos();
   const { user } = useAuth();
 
   // Zera os dados virais do perfil anterior (contexto vive no layout e sobrevive à troca de @)
@@ -39,6 +39,7 @@ export default function Home() {
     setVideos([]);
     setVideosViral([]);
     setAiAnalysis(null);
+    setFrequencyData(null); // limpa o diagnóstico p/ não vazar pro próximo @
   };
 
   // Ao abrir: 1) ?u=usuario (atalho dev) 2) sessão salva (sobrevive a reload/F5)

@@ -35,10 +35,30 @@ const LEVEL_ORDER: PostingFrequency['level'][] = ['muito_baixa', 'baixa', 'moder
 
 // Travas de deduplicação (escopo de módulo: sobrevivem ao StrictMode do React
 // em dev — que invoca os efeitos 2x — e a re-renders). Garantem que as buscas
-// que CUSTAM crédito na Apify disparem no máximo 1 vez por @ na sessão. Em caso
-// de erro, o @ é removido do Set, liberando uma nova tentativa.
-const perfisEnriquecidos = new Set<string>();
+// que CUSTAM crédito na Apify disparem no máximo 1 vez por @ na sessão.
 const tendenciasBuscadas = new Set<string>();
+
+// Enriquecimento de perfil/frequência: cache de Promise EM VOO por @. Quando o
+// StrictMode monta o efeito 2x, as duas execuções compartilham a MESMA Promise
+// → 1 única requisição (sem disparo duplo na Apify e sem travar). Em erro, o @
+// é liberado para uma nova tentativa.
+const profileInfoInFlight = new Map<string, Promise<any>>();
+function fetchProfileInfoOnce(username: string): Promise<any> {
+  const existing = profileInfoInFlight.get(username);
+  if (existing) return existing;
+  const p = (async () => {
+    const res = await fetch(`${API_URL}/api/instagram/profile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  })();
+  profileInfoInFlight.set(username, p);
+  p.catch(() => profileInfoInFlight.delete(username)); // erro → permite retry
+  return p;
+}
 
 interface DashboardProps {
   profile: {
@@ -87,7 +107,7 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
 
   const [selectedReel, setSelectedReel] = useState<Reel | null>(null);
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
-  const { videos, loading, setVideos, setLoading, aiAnalysis, setAiAnalysis, videosViral, setVideosViral } = useVideos();
+  const { videos, loading, setVideos, setLoading, aiAnalysis, setAiAnalysis, videosViral, setVideosViral, frequencyData: ctxFrequencyData, setFrequencyData: setCtxFrequencyData } = useVideos();
   const [mode, setMode] = useState<'autoridade' | 'viralizacao'>('viralizacao');
   const [currentTab, setCurrentTab] = useState<'instagram' | 'tiktok' | 'arquetipo'>('instagram');
   const [tiktokVideos, setTiktokVideos] = useState<Reel[]>([]);
@@ -166,8 +186,10 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
 
   // Frequência de postagem — abre como POPUP ao chegar no dashboard; ao fechar,
   // volta pro dashboard normal (perfil + vídeos). Avatar reabre o popup.
-  const [frequencyLoading, setFrequencyLoading] = useState(true);
-  const [frequencyData, setFrequencyData] = useState<PostingFrequency | null>(null);
+  // Semeia o diagnóstico a partir do contexto: se o wizard já carregou em
+  // "Buscar perfil", o Dashboard abre com tudo pronto (sem loading, sem fetch).
+  const [frequencyLoading, setFrequencyLoading] = useState(!ctxFrequencyData);
+  const [frequencyData, setFrequencyData] = useState<PostingFrequency | null>(ctxFrequencyData);
   const [frequencyError, setFrequencyError] = useState<string | null>(null);
   const [forecastPostsPerDay, setForecastPostsPerDay] = useState(1);
   const [showFrequencyModal, setShowFrequencyModal] = useState(true);
@@ -186,43 +208,35 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
   // (o /api/instagram/profile já retorna postingFrequency e é cacheado 12h).
   useEffect(() => {
     if (!profile.instagram) return;
-    // Trava: enriquece o perfil (chamada Apify) só 1 vez por @ na sessão.
-    if (perfisEnriquecidos.has(profile.instagram)) return;
-    perfisEnriquecidos.add(profile.instagram);
+    // ⚡ Se o diagnóstico já veio pré-carregado do wizard (contexto), não busca
+    // nem mostra loading — o Dashboard abre instantâneo e com tudo pronto.
+    if (frequencyData) {
+      setFrequencyLoading(false);
+      return;
+    }
 
     let cancelado = false;
     setFrequencyLoading(true);
     setFrequencyError(null);
-    (async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/instagram/profile`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: profile.instagram }),
-        });
-        if (!res.ok) {
-          // Falha do servidor: libera nova tentativa numa próxima montagem.
-          perfisEnriquecidos.delete(profile.instagram);
-          return;
-        }
+    fetchProfileInfoOnce(profile.instagram)
+      .then((fresh) => {
         if (cancelado) return;
-        const fresh = await res.json();
         const merged = { ...profile, ...fresh };
         setIgProfile(merged);
         localStorage.setItem('detetiveviral_profile', JSON.stringify(merged));
         if (fresh.postingFrequency) {
           setFrequencyData(fresh.postingFrequency);
+          setCtxFrequencyData(fresh.postingFrequency); // mantém o contexto em sincronia
         } else {
           setFrequencyError('Poucos posts recentes para estimar a frequência.');
         }
-      } catch {
-        // Erro de rede (ex.: backend fora do ar): libera retry e avisa.
-        perfisEnriquecidos.delete(profile.instagram);
+      })
+      .catch(() => {
         if (!cancelado) setFrequencyError('Não foi possível medir a frequência agora.');
-      } finally {
+      })
+      .finally(() => {
         if (!cancelado) setFrequencyLoading(false);
-      }
-    })();
+      });
 
     return () => { cancelado = true; };
   }, [profile.instagram]);

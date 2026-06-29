@@ -64,7 +64,7 @@ const STEPS = [
 ];
 
 export default function WizardForm({ onComplete }: WizardFormProps) {
-  const { setVideos, setVideosViral, setAiAnalysis: setContextAnalysis } = useVideos();
+  const { setVideos, setVideosViral, setAiAnalysis: setContextAnalysis, setFrequencyData } = useVideos();
 
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState({
@@ -158,6 +158,13 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
       setInstagramProfile(profile);
       setLastFetchedUsername(cleanUsername);
       setProfileError(null);
+
+      // 📊 Diagnóstico de postagem já vem nesta MESMA resposta (/api/instagram/profile
+      // retorna postingFrequency). Guardamos no contexto agora, no "Buscar perfil",
+      // pro Dashboard já abrir com o diagnóstico pronto — sem novo fetch nem loading.
+      if (profile.postingFrequency) {
+        setFrequencyData(profile.postingFrequency);
+      }
 
       // 🤖 Detectar múltiplos nichos automaticamente
       const detectedNiches = detectNiches(profile.bio || '');
@@ -568,8 +575,8 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
                     <div className="absolute left-0 top-2 w-3 h-3 bg-purple-500 rounded-full"></div>
                     <div className="absolute left-1 top-5 bottom-0 w-0.5 bg-purple-200"></div>
                     <div className="bg-white rounded-lg p-4 border-2 border-purple-200 hover:shadow-md transition-shadow">
-                      <p className="font-bold text-slate-900 mb-1">🎭 Seu Arquétipo</p>
-                      <p className="text-xs text-slate-600">Padrão de personalidade e estilo único que você transmite</p>
+                      <p className="font-bold text-slate-900 mb-1">📊 Análise de Engajamento</p>
+                      <p className="text-xs text-slate-600">Como seu público interage e qual o seu potencial de alcance</p>
                     </div>
                   </div>
 
