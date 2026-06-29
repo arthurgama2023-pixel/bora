@@ -101,10 +101,17 @@ export default function Home() {
     }
   };
 
+  const handleExitProfile = () => {
+    setUserProfile(null);
+    clearViralData();
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    setStarted(true);
+  };
+
   return (
     <main className="min-h-screen">
       {userProfile ? (
-        <Dashboard profile={userProfile} />
+        <Dashboard profile={userProfile} onExitProfile={handleExitProfile} />
       ) : showAuth ? (
         <AuthScreen onAuthenticated={handleAuthenticated} defaultTab={authTab} />
       ) : started ? (
