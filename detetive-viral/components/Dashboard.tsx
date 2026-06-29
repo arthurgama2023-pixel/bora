@@ -421,6 +421,18 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
         <Menu size={20} />
       </button>
 
+      {/* Botão "Sair do perfil" flutuante — sempre por cima (z-[60]), acima até
+          do modal de frequência. Volta para o COMEÇO (landing page). */}
+      {onExitProfile && (
+        <button
+          onClick={onExitProfile}
+          className="fixed top-4 right-4 z-[60] w-10 h-10 rounded-full bg-white shadow-md border border-[#c4c5d7] flex items-center justify-center text-[#434655] hover:text-[#191c1e] hover:bg-[#f0f0f0] transition-colors"
+          title="Sair do perfil e voltar ao início"
+        >
+          <X size={20} />
+        </button>
+      )}
+
       {/* Main Content */}
       <main className="w-full md:ml-64 md:w-[calc(100%-256px)] min-h-screen">
         {/* Content Canvas */}
@@ -448,22 +460,13 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
 
                 {/* Coluna direita: username, stats, nome, bio */}
                 <div className="flex-1 min-w-0">
-                  {/* Username + verificado + botão sair */}
+                  {/* Username + verificado */}
                   <div className="flex items-center gap-2 mb-4">
                     <h2 className="text-xl md:text-2xl text-[#191c1e]">{igProfile.instagram}</h2>
                     {igProfile.verified && (
                       <svg className="w-5 h-5 text-[#3897f0]" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 2l2.4 1.8 3 .3 1 2.8 2.2 2-1 2.9 1 2.9-2.2 2-1 2.8-3 .3L12 22l-2.4-1.8-3-.3-1-2.8-2.2-2 1-2.9-1-2.9 2.2-2 1-2.8 3-.3L12 2zm-1.3 13.2l5-5-1.2-1.2-3.8 3.8-1.7-1.7-1.2 1.2 2.9 2.9z"/>
                       </svg>
-                    )}
-                    {onExitProfile && (
-                      <button
-                        onClick={onExitProfile}
-                        className="ml-auto text-[#c3c5d9] hover:text-[#191c1e] transition-colors p-1"
-                        title="Sair do perfil"
-                      >
-                        <X size={24} />
-                      </button>
                     )}
                   </div>
 

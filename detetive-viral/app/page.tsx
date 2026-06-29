@@ -102,10 +102,12 @@ export default function Home() {
   };
 
   const handleExitProfile = () => {
-    setUserProfile(null);
+    // Limpa tudo e volta para o COMEÇO REAL (landing page).
+    // Usamos navegação dura para '/' (sem ?u=) porque é à prova de falhas:
+    // zera todo o estado, lê o localStorage já vazio e renderiza a LandingPage.
     clearViralData();
     try { localStorage.removeItem(STORAGE_KEY); } catch {}
-    setStarted(true);
+    window.location.href = '/';
   };
 
   return (
