@@ -392,8 +392,8 @@ export default function WizardForm({ onComplete }: WizardFormProps) {
           {!instagramProfile && (
             <div className="space-y-4">
               <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-[#434656] group-focus-within:text-[#003ec7] transition-colors">
-                  <span className="material-symbols-outlined">photo_camera</span>
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-[#434656] group-focus-within:text-[#003ec7] transition-colors text-xl font-bold">
+                  @
                 </div>
                 <input
                   type="text"
