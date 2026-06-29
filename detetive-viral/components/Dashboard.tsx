@@ -33,6 +33,13 @@ const LEVEL_STYLE: Record<PostingFrequency['level'], { label: string; color: str
 
 const LEVEL_ORDER: PostingFrequency['level'][] = ['muito_baixa', 'baixa', 'moderada', 'alta', 'muito_alta'];
 
+// Travas de deduplicação (escopo de módulo: sobrevivem ao StrictMode do React
+// em dev — que invoca os efeitos 2x — e a re-renders). Garantem que as buscas
+// que CUSTAM crédito na Apify disparem no máximo 1 vez por @ na sessão. Em caso
+// de erro, o @ é removido do Set, liberando uma nova tentativa.
+const perfisEnriquecidos = new Set<string>();
+const tendenciasBuscadas = new Set<string>();
+
 interface DashboardProps {
   profile: {
     name: string;
@@ -179,6 +186,9 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
   // (o /api/instagram/profile já retorna postingFrequency e é cacheado 12h).
   useEffect(() => {
     if (!profile.instagram) return;
+    // Trava: enriquece o perfil (chamada Apify) só 1 vez por @ na sessão.
+    if (perfisEnriquecidos.has(profile.instagram)) return;
+    perfisEnriquecidos.add(profile.instagram);
 
     let cancelado = false;
     setFrequencyLoading(true);
@@ -190,7 +200,12 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: profile.instagram }),
         });
-        if (!res.ok || cancelado) return;
+        if (!res.ok) {
+          // Falha do servidor: libera nova tentativa numa próxima montagem.
+          perfisEnriquecidos.delete(profile.instagram);
+          return;
+        }
+        if (cancelado) return;
         const fresh = await res.json();
         const merged = { ...profile, ...fresh };
         setIgProfile(merged);
@@ -201,6 +216,8 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
           setFrequencyError('Poucos posts recentes para estimar a frequência.');
         }
       } catch {
+        // Erro de rede (ex.: backend fora do ar): libera retry e avisa.
+        perfisEnriquecidos.delete(profile.instagram);
         if (!cancelado) setFrequencyError('Não foi possível medir a frequência agora.');
       } finally {
         if (!cancelado) setFrequencyLoading(false);
@@ -235,7 +252,8 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
     }
   };
 
-  const handleRefreshTrends = async () => {
+  // Retorna true se a busca foi bem-sucedida; false em erro (rede/servidor).
+  const handleRefreshTrends = async (): Promise<boolean> => {
     setLoading(true);
     try {
       const response = await fetch(`${API_URL}/api/videos/from-user-profile`, {
@@ -247,20 +265,22 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
         }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.nicho) {
-          setAiAnalysis({ nicho: data.nicho, hashtags: data.hashtags || [], confianca: data.confianca || '—' });
-        }
-        setVideosViral(data.viralizacao || []);
-        const lista = data.autoridade || data.videos || [];
-        if (lista.length > 0) {
-          setVideos(lista);
-          console.log('✅ Tendências atualizadas com sucesso!');
-        }
+      if (!response.ok) return false;
+
+      const data = await response.json();
+      if (data.nicho) {
+        setAiAnalysis({ nicho: data.nicho, hashtags: data.hashtags || [], confianca: data.confianca || '—' });
       }
+      setVideosViral(data.viralizacao || []);
+      const lista = data.autoridade || data.videos || [];
+      if (lista.length > 0) {
+        setVideos(lista);
+        console.log('✅ Tendências atualizadas com sucesso!');
+      }
+      return true;
     } catch (error) {
       console.error('Erro ao atualizar tendências:', error);
+      return false;
     } finally {
       setLoading(false);
     }
@@ -311,10 +331,17 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
       return;
     }
 
+    // Trava: busca de vídeos (chamada Apify) só 1 vez por @ na sessão.
+    if (tendenciasBuscadas.has(profile.instagram)) return;
+    tendenciasBuscadas.add(profile.instagram);
+
     console.log(`📱 Novo perfil @${profile.instagram} — buscando dados`);
     setSelectedReel(null);
     setMode('viralizacao');
-    handleRefreshTrends();
+    handleRefreshTrends().then((ok) => {
+      // Falhou? Libera o @ para uma nova tentativa numa próxima montagem.
+      if (!ok) tendenciasBuscadas.delete(profile.instagram);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.instagram]);
 
