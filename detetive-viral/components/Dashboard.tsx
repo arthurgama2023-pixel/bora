@@ -591,7 +591,7 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
                     {/* Número principal, bem grande, pra leitura instantânea */}
                     <div className="text-center">
                       <p className="text-5xl font-extrabold text-[#191c1e] leading-none">{frequencyData.postsPerWeek}</p>
-                      <p className="text-sm text-[#434655] mt-1">posts por semana (média de {frequencyData.avgDaysBetween} dias entre posts)</p>
+                      <p className="text-sm text-[#434655] mt-1">posts por semana (intervalo típico de {frequencyData.avgDaysBetween} dias entre posts)</p>
                     </div>
 
                     {/* Contagem REAL (não estimada): quantos posts saíram de fato em cada mês */}
