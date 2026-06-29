@@ -35,6 +35,13 @@
       "runtimeArgs": ["run", "dev"],
       "port": 3004,
       "cwd": "ss-chopp"
+    },
+    {
+      "name": "mansio-web",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "build/web", "-l", "8080", "--no-clipboard", "-s"],
+      "port": 8080,
+      "cwd": "mansio_points"
     }
   ]
 }

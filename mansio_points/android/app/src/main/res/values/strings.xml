@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<resources>
+    <string name="app_name">Mansio Points</string>
+    <string name="facebook_app_id">1375270683509132</string>
+    <string name="fb_login_protocol_scheme">fb1375270683509132</string>
+     <string name="facebook_client_token">002286927ffa8e2fc63f873d9b32d194</string>
+          
+</resources>

@@ -61,9 +61,9 @@ export default function Home() {
     }
   }, [userProfile]);
 
-  // CTA "Analisar meu perfil grátis" na landing: mostra a oferta com os planos
+  // CTA "Analisar meu perfil grátis" na landing: vai direto para o wizard
   const handleGoToWizard = () => {
-    setShowOffer(true);
+    setStarted(true);
   };
 
   // "Começar agora" na tela de oferta (plano pago): exige login antes do wizard
