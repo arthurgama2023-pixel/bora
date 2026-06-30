@@ -11,12 +11,6 @@ import { useAuth } from '@/context/AuthContext';
 import { API_URL, proxiedImage } from '@/lib/api';
 import { saveProfileCache } from '@/lib/profileCache';
 
-interface DashboardProps {
-  profile: any;
-  onExitProfile: () => void;
-  onSwitchProfile?: (newProfile: any) => void;
-}
-
 interface PostingFrequency {
   postsPerWeek: number;
   avgDaysBetween: number;
@@ -82,6 +76,7 @@ interface DashboardProps {
     verified?: boolean;
   };
   onExitProfile?: () => void;
+  onSwitchProfile?: (newProfile: any) => void;
 }
 
 interface Reel {

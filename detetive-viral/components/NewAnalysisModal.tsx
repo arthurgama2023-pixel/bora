@@ -178,7 +178,7 @@ export default function NewAnalysisModal({ onClose, onAnalyze }: NewAnalysisModa
               Cancelar
             </button>
             <button
-              onClick={handleAnalyze}
+              onClick={() => handleAnalyze()}
               disabled={loading || !instagram.trim()}
               className="flex-1 py-3 px-4 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
