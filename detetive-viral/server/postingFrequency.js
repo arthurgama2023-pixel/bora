@@ -94,7 +94,9 @@ function computePostingFrequency(latestPosts) {
     : null;
 
   // Contagem REAL (não estimada) por mês de publicação, em fuso BRT (UTC-3).
-  // Usa apenas os posts RECENTES (últimos 6 meses) para mostrar padrão relevante.
+  // Inclui TODOS os meses dos últimos 6 meses (mesmo com 0 posts) pra visualizar
+  // as pausas reais de postagem — essencial pra diferenciar "pausa de 2 meses" vs
+  // "posta todo dia". Mostra o padrão temporal completo.
   const monthCounts = new Map();
   recentPosts.forEach((p) => {
     const d = new Date(p.ts);
@@ -102,8 +104,18 @@ function computePostingFrequency(latestPosts) {
     const key = `${brtTime.getUTCFullYear()}-${String(brtTime.getUTCMonth() + 1).padStart(2, '0')}`;
     monthCounts.set(key, (monthCounts.get(key) || 0) + 1);
   });
+
+  // Preenche os meses vazios (sem posts) para mostrar o período completo.
+  const nowDate = new Date(now);
+  const sixMonthsAgoDate = new Date(now - 6 * 30 * 24 * 60 * 60 * 1000);
+  const allMonths = new Map();
+  for (let d = new Date(sixMonthsAgoDate); d <= nowDate; d.setMonth(d.getMonth() + 1)) {
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    allMonths.set(key, monthCounts.get(key) || 0);
+  }
+
   const MES_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-  const postsByMonth = [...monthCounts.entries()]
+  const postsByMonth = [...allMonths.entries()]
     .sort((a, b) => (a[0] > b[0] ? 1 : -1))
     .map(([key, count]) => {
       const [year, month] = key.split('-');

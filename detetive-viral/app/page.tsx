@@ -62,9 +62,14 @@ export default function Home() {
     }
   }, [userProfile]);
 
-  // CTA "Analisar meu perfil grátis" na landing: vai direto para o wizard
+  // CTA "Analisar meu perfil grátis" na landing: exige login antes do wizard
   const handleGoToWizard = () => {
-    setStarted(true);
+    if (user) {
+      setStarted(true);
+    } else {
+      setAuthTab('entrar');
+      setShowAuth(true);
+    }
   };
 
   // "Começar agora" na tela de oferta (plano pago): exige login antes do wizard
@@ -114,7 +119,14 @@ export default function Home() {
   return (
     <main className="min-h-screen">
       {userProfile ? (
-        <Dashboard profile={userProfile} onExitProfile={handleExitProfile} />
+        <Dashboard
+          profile={userProfile}
+          onExitProfile={handleExitProfile}
+          onSwitchProfile={(newProfile) => {
+            setUserProfile(newProfile);
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(newProfile)); } catch {}
+          }}
+        />
       ) : showAuth ? (
         <AuthScreen onAuthenticated={handleAuthenticated} defaultTab={authTab} />
       ) : started ? (

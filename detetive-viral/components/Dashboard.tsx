@@ -9,6 +9,13 @@ import NewAnalysisModal from './NewAnalysisModal';
 import { useVideos, normalizeHandle } from '@/context/VideosContext';
 import { useAuth } from '@/context/AuthContext';
 import { API_URL, proxiedImage } from '@/lib/api';
+import { saveProfileCache } from '@/lib/profileCache';
+
+interface DashboardProps {
+  profile: any;
+  onExitProfile: () => void;
+  onSwitchProfile?: (newProfile: any) => void;
+}
 
 interface PostingFrequency {
   postsPerWeek: number;
@@ -98,9 +105,11 @@ interface Reel {
   publishedAt?: string;
 }
 
-export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
+export default function Dashboard({ profile, onExitProfile, onSwitchProfile }: DashboardProps) {
   const { signOut } = useAuth();
   const handleLogout = async () => {
+    // Logout do auth + volta pro início (limpa contexto via onExitProfile se disponível)
+    if (onExitProfile) onExitProfile();
     await signOut();
     window.location.href = '/';
   };
@@ -245,6 +254,19 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
 
     return () => { cancelado = true; };
   }, [profile.instagram]);
+
+  // Salva um cache completo dos dados quando tudo está pronto (frequência + vídeos + análise)
+  useEffect(() => {
+    if (!profile.instagram || !frequencyData || !videos.length) return;
+
+    saveProfileCache(profile.instagram, {
+      timestamp: Date.now(),
+      profile: igProfile || profile,
+      frequencyData,
+      videos,
+      aiAnalysis,
+    });
+  }, [profile.instagram, frequencyData, videos, aiAnalysis, igProfile]);
 
   // Formata números no padrão pt-BR (2.587)
   const fmtNum = (n?: number) => (n || n === 0 ? n.toLocaleString('pt-BR') : '—');
@@ -420,24 +442,6 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
             <span className="material-symbols-outlined">music_note</span>
             <span className="text-sm">TikTok</span>
           </button>
-          <button
-            onClick={() => { setCurrentTab('arquetipo'); setMobileMenuOpen(false); }}
-            className={`w-full flex items-center gap-4 px-4 py-2 rounded-lg font-semibold transition-all ${
-              currentTab === 'arquetipo'
-                ? 'bg-[#8455ef] text-white'
-                : 'text-[#434655] hover:bg-[#e0e3e5]'
-            }`}
-          >
-            <span className="material-symbols-outlined">person</span>
-            <span className="text-sm">Análise de Engajamento</span>
-          </button>
-          <button
-            onClick={() => { setShowSettings(true); setMobileMenuOpen(false); }}
-            className="w-full flex items-center gap-4 px-4 py-2 rounded-lg text-[#434655] hover:bg-[#e0e3e5] transition-all"
-          >
-            <span className="material-symbols-outlined">settings</span>
-            <span className="text-sm">Configurações</span>
-          </button>
           {onExitProfile && (
             <button
               onClick={() => { setMobileMenuOpen(false); onExitProfile(); }}
@@ -595,27 +599,6 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
                     </div>
 
                     {/* Contagem REAL (não estimada): quantos posts saíram de fato em cada mês */}
-                    {frequencyData.postsByMonth.length > 0 && (
-                      <div className="bg-[#f5f7fb] rounded-xl p-4">
-                        <p className="text-xs font-semibold text-[#434655] mb-3">Posts publicados por mês (real)</p>
-                        <div className="flex items-end gap-2 h-20">
-                          {frequencyData.postsByMonth.map((m) => {
-                            const maxCount = Math.max(...frequencyData.postsByMonth.map((x) => x.count));
-                            return (
-                              <div key={m.month} className="flex-1 flex flex-col items-center justify-end h-full">
-                                <span className="text-xs font-bold text-[#191c1e] mb-1">{m.count}</span>
-                                <div
-                                  className="w-full rounded-t-md bg-[#0037b0]"
-                                  style={{ height: `${Math.max((m.count / maxCount) * 100, 8)}%` }}
-                                />
-                                <span className="text-[9px] text-[#737373] mt-1 whitespace-nowrap">{m.label}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
                     {/* Gauge visual: 5 faixas coloridas + marcador na faixa atual */}
                     <div>
                       <div className="flex h-3 rounded-full overflow-hidden">
@@ -991,17 +974,34 @@ export default function Dashboard({ profile, onExitProfile }: DashboardProps) {
       {showNewAnalysis && (
         <NewAnalysisModal
           onClose={() => setShowNewAnalysis(false)}
-          onAnalyze={(instagram) => {
-            // Reload page com novo @ no localStorage
-            const profile = {
-              name: 'Novo Perfil',
-              instagram: instagram,
-              niche: 'Detectando via IA...',
-              painPoints: '',
-              desires: '',
-            };
-            localStorage.setItem('detetiveviral_profile', JSON.stringify(profile));
-            window.location.reload();
+          onAnalyze={(instagram, cachedData) => {
+            if (cachedData) {
+              // Carrega dados em cache (sem gastar créditos, sem reload)
+              console.log('📂 Restaurando dados do cache...');
+              setShowNewAnalysis(false);
+              if (onSwitchProfile) {
+                // Troca o perfil e carrega os dados salvos
+                const newProfile = { ...cachedData.profile, instagram };
+                onSwitchProfile(newProfile);
+                // Restaura o estado
+                setIgProfile(cachedData.profile);
+                setFrequencyData(cachedData.frequencyData);
+                setVideos(cachedData.videos);
+                setAiAnalysis(cachedData.aiAnalysis);
+                setCtxFrequency({ username: normalizeHandle(instagram), data: cachedData.frequencyData });
+              }
+            } else {
+              // Reload page com novo @ no localStorage (análise nova)
+              const profile = {
+                name: 'Novo Perfil',
+                instagram: instagram,
+                niche: 'Detectando via IA...',
+                painPoints: '',
+                desires: '',
+              };
+              localStorage.setItem('detetiveviral_profile', JSON.stringify(profile));
+              window.location.reload();
+            }
           }}
         />
       )}
