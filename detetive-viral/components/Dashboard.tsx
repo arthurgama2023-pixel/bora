@@ -528,6 +528,15 @@ export default function Dashboard({ profile, onExitProfile, onSwitchProfile }: D
                     </div>
                   </div>
 
+                  {/* Botão Nova Análise (visível na web) */}
+                  <button
+                    onClick={() => setShowNewAnalysis(true)}
+                    className="hidden md:inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#6b38d4] to-[#890051] text-white font-semibold rounded-lg hover:opacity-90 transition-all active:scale-95"
+                  >
+                    <span className="material-symbols-outlined text-base">add</span>
+                    Nova Análise
+                  </button>
+
                   {/* Nome + bio (escondidos no mobile pra caber; aparecem abaixo) */}
                   <div className="hidden md:block">
                     <p className="font-semibold text-[#191c1e]">{igProfile.name}</p>
