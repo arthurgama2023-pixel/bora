@@ -698,44 +698,23 @@ app.patch('/api/agent-config', (req, res) => {
 
 app.get('/api/imersao', async (req, res) => {
   try {
-    // Tenta com todas as colunas novas (inclui event_date)
+    // Colunas garantidas (base + event_date). instagram_* são opcionais/podem não existir.
+    const BASE = 'id, title, content, source, active, event_date, created_at';
+    // Tenta enriquecer com instagram_*; se as colunas não existirem, cai no BASE (que preserva event_date).
     let { data, error } = await supabase
       .from('imersao_cases')
-      .select('id, title, content, source, active, instagram_url, instagram_profile, instagram_analyzed_at, event_date, created_at')
+      .select(BASE + ', instagram_url, instagram_profile, instagram_analyzed_at')
       .eq('username', req.user.username)
       .order('created_at', { ascending: false });
 
     if (error) {
-      // Fallback 1: sem event_date (coluna ainda não migrada)
-      const r1 = await supabase
+      const r = await supabase
         .from('imersao_cases')
-        .select('id, title, content, source, active, instagram_url, instagram_profile, instagram_analyzed_at, created_at')
+        .select(BASE)
         .eq('username', req.user.username)
         .order('created_at', { ascending: false });
-
-      if (!r1.error) {
-        data = (r1.data || []).map(e => ({ ...e, event_date: null }));
-      } else {
-        // Fallback 2: sem instagram_profile/instagram_analyzed_at
-        const r2 = await supabase
-          .from('imersao_cases')
-          .select('id, title, content, source, active, instagram_url, created_at')
-          .eq('username', req.user.username)
-          .order('created_at', { ascending: false });
-
-        if (r2.error) {
-          // Fallback 3: só o básico
-          const r3 = await supabase
-            .from('imersao_cases')
-            .select('id, title, content, source, active, created_at')
-            .eq('username', req.user.username)
-            .order('created_at', { ascending: false });
-          if (r3.error) throw r3.error;
-          data = (r3.data || []).map(e => ({ ...e, instagram_url: null, instagram_profile: null, instagram_analyzed_at: null, event_date: null }));
-        } else {
-          data = (r2.data || []).map(e => ({ ...e, instagram_profile: null, instagram_analyzed_at: null, event_date: null }));
-        }
-      }
+      if (r.error) throw r.error;
+      data = (r.data || []).map(e => ({ ...e, instagram_url: null, instagram_profile: null, instagram_analyzed_at: null }));
     }
 
     res.json(data || []);
