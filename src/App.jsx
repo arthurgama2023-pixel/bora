@@ -19,6 +19,26 @@ const IMERSAO_EVENTO = {
   nomes: ["Ismael", "Sandro", "Ana Paula", "Will", "Pedrita", "Breno", "Rafael", "Taty", "Gabriel"],
 };
 
+// Formata timestamp ISO do banco -> "dd/mm/aaaa"
+function fmtDateBR(iso) {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  } catch { return null; }
+}
+// Data da Imersão de um caso: override salvo (localStorage) OU a data de criação no banco
+function getImEventDate(id, createdAt) {
+  try { const s = localStorage.getItem(`im_date_${id}`); if (s) return s; } catch {}
+  return fmtDateBR(createdAt) || "Sem data";
+}
+// "aaaa-mm-dd" (input date) -> "dd/mm/aaaa"
+function isoToBR(iso) {
+  if (!iso || !iso.includes("-")) return iso;
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
 function parseHandle(val) {
   if (!val) return "";
   const s = val.trim().replace(/\/$/, "");
@@ -109,6 +129,7 @@ function AppMain({ onLogout, username }) {
   const [imDragging, setImDragging] = useState(false);
   const [imEventOpen, setImEventOpen] = useState(false);
   const [imEventOpenDates, setImEventOpenDates] = useState(new Set()); // controla quais datas estão abertas
+  const [imEventDate, setImEventDate] = useState(() => new Date().toISOString().slice(0, 10)); // data escolhida ao adicionar (input date, YYYY-MM-DD)
   const imFileRef = useRef(null);
 
   // Per-case expand & Instagram
@@ -217,7 +238,7 @@ function AppMain({ onLogout, username }) {
             return { ...e, instagram_url: igUrl || null, instagram_profile: igProfile || null };
           });
           setIgProfiles(profilesMap);
-          setImersao(restored.map(e => ({ ...e, active: e.active !== false })));
+          setImersao(restored.map(e => ({ ...e, active: e.active !== false, created_date: getImEventDate(e.id, e.created_at) })));
           const previews = {};
           restored.forEach(e => {
             if (e.instagram_url && e.instagram_profile) {
@@ -403,7 +424,9 @@ function AppMain({ onLogout, username }) {
     const res = await apiFetch(`${API}/api/imersao`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: imTitle.trim() || "Caso sem nome", content: c, source: "manual" }) });
     const entry = await res.json();
     if (entry?.id) {
-      const entryWithDate = { ...entry, active: true, created_date: "15/07/2026" };
+      const dateBR = isoToBR(imEventDate);
+      try { localStorage.setItem(`im_date_${entry.id}`, dateBR); } catch {}
+      const entryWithDate = { ...entry, active: true, created_date: dateBR };
       setImersao(im => [entryWithDate, ...im]);
       setImTitle("");
       setImText("");
@@ -959,6 +982,24 @@ function AppMain({ onLogout, username }) {
                 <div className="im-manual-add">
                   <input className="im-add-input" placeholder="Nome do mentorado" value={imTitle} onChange={e => setImTitle(e.target.value)} />
                   <textarea className="im-add-textarea" placeholder="Cole a transcrição da reunião aqui…" value={imText} onChange={e => setImText(e.target.value)} />
+                  <label className="im-date-label">
+                    <span>Salvar na Imersão de:</span>
+                    <input className="im-date-input" type="date" value={imEventDate} onChange={e => setImEventDate(e.target.value)} />
+                  </label>
+                  {Array.from(new Set(imersao.map(e => e.created_date).filter(Boolean))).length > 0 && (
+                    <div className="im-date-chips">
+                      {Array.from(new Set(imersao.map(e => e.created_date).filter(Boolean))).map(d => {
+                        const [dd, mm, yy] = d.split("/");
+                        const iso = yy && mm && dd ? `${yy}-${mm}-${dd}` : null;
+                        if (!iso) return null;
+                        return (
+                          <button key={d} type="button" className={"im-date-chip" + (imEventDate === iso ? " active" : "")} onClick={() => setImEventDate(iso)}>
+                            {d}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                   <button className="im-add-btn" disabled={!imText.trim()} onClick={addImersao}>+ Adicionar caso</button>
                 </div>
               )}
@@ -1435,6 +1476,13 @@ const CSS = `
 .im-add-textarea:focus{border-color:var(--accent);}
 .im-add-btn{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
 .im-add-btn:disabled{background:#e7ddd0;color:#b6ab9b;cursor:not-allowed;}
+.im-date-label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:600;color:var(--muted);}
+.im-date-input{border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-family:inherit;font-size:12.5px;color:var(--ink);outline:none;}
+.im-date-input:focus{border-color:var(--accent);}
+.im-date-chips{display:flex;flex-wrap:wrap;gap:5px;}
+.im-date-chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:3px 10px;font-size:11.5px;font-weight:600;color:var(--muted);cursor:pointer;font-family:inherit;transition:.15s;}
+.im-date-chip:hover{border-color:var(--accent);color:var(--accent);}
+.im-date-chip.active{background:var(--accent);color:#fff;border-color:var(--accent);}
 
 .im-expand{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:3px 0 6px 0;display:flex;flex-direction:column;gap:8px;}
 .ig-row{display:flex;flex-direction:column;align-items:center;gap:8px;}
