@@ -2408,16 +2408,19 @@ app.post('/api/upload-video', (req, res, next) => {
       messages: [
         {
           role: 'system',
-          content: `Você é um assistente sênior de negócios. Analise transcrições de sessões de mentoria.
-Retorne SEMPRE um JSON com exatamente duas chaves de texto simples:
-- "nomeMentorado": string com o nome real da pessoa mentorada (sem objetos aninhados)
-- "resumo": string de texto corrido com análise detalhada em português — desafios de negócio, gargalos, próximos passos. Mínimo 3 parágrafos. NÃO use objetos ou arrays, apenas texto puro.`
+          content: `Você é um assistente sênior de negócios. Analise transcrições de sessões de mentoria conduzidas pela Milena (entrevistadora — NUNCA é mentorado, NUNCA entra na lista de participantes).
+
+Retorne SEMPRE um JSON com exatamente três chaves:
+- "nomeMentorado": string com o nome real do mentorado principal da sessão (quem a reunião é sobre).
+- "participantes": array de strings com o nome de TODAS as pessoas que falam na reunião além da Milena — inclua sócios, colegas, familiares, qualquer segunda voz identificável, mesmo que fale pouco. Se só o mentorado principal estiver presente, o array deve conter só o nome dele. NUNCA inclua a Milena nessa lista.
+- "resumo": string de texto corrido (texto puro, sem objetos/arrays) com análise bem detalhada em português. Não resuma demais — capture o máximo de contexto e detalhes concretos da conversa (números, nomes de produtos/clientes citados, datas, decisões, objeções). Estruture por participante quando houver mais de um: o que cada pessoa disse, papel de cada um na empresa, contribuições e pontos de vista distintos. Cubra: desafios de negócio, gargalos, decisões tomadas, próximos passos acionáveis. Mínimo 5 parágrafos — prefira mais detalhe a menos.`
         },
         {
           role: 'user',
-          content: `Analise a transcrição e extraia:
-1. NOME REAL do mentorado (procure onde se apresentam)
-2. RESUMO em texto corrido: desafios reais, gargalos, próximos passos acionáveis.
+          content: `Analise a transcrição desta sessão de mentoria (entrevistadora: Milena) e extraia:
+1. NOME REAL do mentorado principal.
+2. TODOS os outros participantes que falam na reunião (sócios, colegas etc.) — vasculhe a transcrição inteira, não só o início; pessoas às vezes entram no meio ou falam pouco. Nunca inclua a Milena.
+3. RESUMO detalhado, separando o que cada participante disse/decidiu quando houver mais de uma pessoa.
 
 TRANSCRIÇÃO:
 ${transcript.slice(0, 100000)}`
@@ -2430,7 +2433,10 @@ ${transcript.slice(0, 100000)}`
     if (typeof parsedData.resumo !== 'string') {
       parsedData.resumo = JSON.stringify(parsedData.resumo, null, 2);
     }
-    console.log('[Upload] Resultado:', parsedData.nomeMentorado);
+    if (!Array.isArray(parsedData.participantes)) {
+      parsedData.participantes = parsedData.nomeMentorado ? [parsedData.nomeMentorado] : [];
+    }
+    console.log('[Upload] Resultado:', parsedData.nomeMentorado, '| Participantes:', parsedData.participantes.join(', '));
     res.json(parsedData);
 
   } catch (error) {
