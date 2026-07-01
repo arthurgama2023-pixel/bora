@@ -14,6 +14,11 @@ const EXAMPLES = [
   "Qual a bala de prata pra ele hoje?",
 ];
 
+const IMERSAO_EVENTO = {
+  data: "20/06/2026",
+  nomes: ["Ismael", "Sandro", "Ana Paula", "Will", "Pedrita", "Breno", "Rafael", "Taty", "Gabriel"],
+};
+
 function parseHandle(val) {
   if (!val) return "";
   const s = val.trim().replace(/\/$/, "");
@@ -102,6 +107,8 @@ function AppMain({ onLogout, username }) {
   const [imNotice, setImNotice] = useState("");
   const [imProcessing, setImProcessing] = useState(false);
   const [imDragging, setImDragging] = useState(false);
+  const [imEventOpen, setImEventOpen] = useState(false);
+  const [imEventOpenDates, setImEventOpenDates] = useState(new Set()); // controla quais datas estão abertas
   const imFileRef = useRef(null);
 
   // Per-case expand & Instagram
@@ -395,7 +402,14 @@ function AppMain({ onLogout, username }) {
     if (!c) return;
     const res = await apiFetch(`${API}/api/imersao`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: imTitle.trim() || "Caso sem nome", content: c, source: "manual" }) });
     const entry = await res.json();
-    if (entry?.id) { setImersao(im => [{ ...entry, active: true }, ...im]); setImTitle(""); setImText(""); setImNotice("success"); setTimeout(() => setImNotice(""), 2500); }
+    if (entry?.id) {
+      const entryWithDate = { ...entry, active: true, created_date: "15/07/2026" };
+      setImersao(im => [entryWithDate, ...im]);
+      setImTitle("");
+      setImText("");
+      setImNotice("success");
+      setTimeout(() => setImNotice(""), 2500);
+    }
   }
 
   function toggleImersao(id) { setImersao(im => im.map(e => e.id === id ? { ...e, active: !e.active } : e)); }
@@ -413,7 +427,10 @@ function AppMain({ onLogout, username }) {
           const data = await r.json().catch(() => ({ error: `Erro ${r.status}` }));
           if (!r.ok) throw new Error(data.error || `Erro ${r.status}`);
           if (data.nomeMentorado || data.resumo) {
-            const text = data.resumo || "";
+            const participantesLinha = Array.isArray(data.participantes) && data.participantes.length
+              ? `Participantes: ${data.participantes.join(", ")}\n\n`
+              : "";
+            const text = participantesLinha + (data.resumo || "");
             if (expandedImId) {
               await appendMeeting(expandedImId, text);
             } else {
@@ -953,155 +970,86 @@ function AppMain({ onLogout, username }) {
                   <span>Selecionar tudo</span>
                   <input type="checkbox" checked={imersao.length > 0 && imersao.every(e => e.active !== false)} onChange={e => toggleAllImersao(e.target.checked)} />
                 </div>
-                {imersao.length === 0 && <div className="sources-empty">Nenhum mentorado ainda. Arraste as transcrições.</div>}
-                {imersao.map(e => {
-                  const expanded = expandedImId === e.id;
-                  const profiles = igProfiles[e.id] || [];
-                  const igInputOpen_ = igInputOpen.has(e.id);
-                  const igVal = igInputs[e.id] || "";
-                  const prev = instagramPreviews[e.id];
-                  const isSearching = !!prev?.loading;
-                  const hasPreview = !!(prev?.data || prev?.error);
-                  const isDuplicate = !!(prev?.data && profiles.some(p => parseHandle(p.url) === prev.data?.username));
-                  const showPreview = hasPreview && !isDuplicate;
-                  const showInput = igInputOpen_ && !isSearching && !showPreview;
 
-                  return (
-                    <div key={e.id} className={"im-item-wrap" + (expanded ? " im-item-wrap--selected" : "")}>
-                      <div className="sources-item">
-                        <span className="sources-item-icon"><LayersIcon small /></span>
-                        <span
-                          className="sources-item-title"
-                          style={{ cursor: "pointer" }}
-                          onClick={() => setExpandedImId(expanded ? null : e.id)}
-                          title={expanded ? "Clique para desselecionar" : "Clique para focar"}
+                {/* Renderizar eventos agrupados por data de criação */}
+                {imersao.length > 0 && (() => {
+                  const byDate = {};
+                  imersao.forEach(e => {
+                    const date = e.created_date;
+                    if (date && date !== "Sem data") { // Filtra apenas com data válida
+                      if (!byDate[date]) byDate[date] = [];
+                      byDate[date].push(e);
+                    }
+                  });
+                  return Object.entries(byDate)
+                    .sort(([dateA], [dateB]) => new Date(dateB.split("/").reverse().join("-")) - new Date(dateA.split("/").reverse().join("-")))
+                    .map(([date, items]) => (
+                      <div key={date} className="im-event-wrap">
+                        <button
+                          className="know-btn know-btn-active im-event-btn"
+                          onClick={() => setImEventOpenDates(prev => {
+                            const n = new Set(prev);
+                            n.has(date) ? n.delete(date) : n.add(date);
+                            return n;
+                          })}
                         >
-                          {e.title}
-                        </span>
-                        <input type="checkbox" checked={e.active !== false} onChange={() => toggleImersao(e.id)} />
-                      </div>
-
-                      {expanded && (
-                        <div className="im-expand">
-                          <div className="ig-row">
-                            <div
-                              className={igPressAnim.has(e.id) ? "ig-press" : ""}
-                              style={{ position: "relative", cursor: isSearching ? "default" : "pointer" }}
-                              onClick={() => {
-                                if (isSearching) return;
-                                if (prev?.error) setInstagramPreviews(p => { const n = { ...p }; delete n[e.id]; return n; });
-                                setIgInputOpen(prev2 => { const n = new Set(prev2); n.has(e.id) ? n.delete(e.id) : n.add(e.id); return n; });
-                              }}
-                            >
-                              <InstagramIcon size={32} />
-                              {isSearching && <div className="ig-orbit"><div className="ig-ball" /></div>}
-                            </div>
-
-                            {profiles.map((p, idx) => (
-                              <div key={p.url} className="ig-preview-card">
-                                <div className="ig-preview-body">
-                                  {p.profile?.profilePicUrl && (
-                                    <img src={p.profile.profilePicUrl} className="ig-preview-avatar" alt="" referrerPolicy="no-referrer" crossOrigin="anonymous" onError={ev => { ev.currentTarget.style.display = "none"; }} />
-                                  )}
-                                  <div className="ig-preview-info">
-                                    <div className="ig-preview-username">
-                                      @{p.profile?.username || parseHandle(p.url)}
-                                      {p.profile?.verified && <span className="ig-verified">✓</span>}
-                                    </div>
-                                    {p.profile?.fullName && <div className="ig-preview-name">{p.profile.fullName}</div>}
-                                    {p.profile?.followersCount !== undefined && (
-                                      <div className="ig-preview-stats">{(p.profile.followersCount || 0).toLocaleString("pt-BR")} seguidores · {p.profile.postsCount} posts</div>
-                                    )}
-                                  </div>
-                                  <div className="ig-preview-actions">
-                                    <button className="ig-btn-saved" disabled>✓ Conectado</button>
-                                    <button className="ig-btn-close ig-btn-disconnect" onClick={() => removeIgProfile(e.id, idx)}>Desconectar</button>
-                                  </div>
-                                </div>
+                          <LayersIcon small />
+                          <span>Imersão — {date}</span>
+                          <span className="know-count">{items.length}</span>
+                        </button>
+                        {imEventOpenDates.has(date) && (
+                          <div className="im-event-expand">
+                            {items.map(e => (
+                              <div
+                                key={e.id}
+                                className="sources-item"
+                                style={{ cursor: "pointer" }}
+                                onClick={() => setExpandedImId(expandedImId === e.id ? null : e.id)}
+                              >
+                                <span className="sources-item-icon"><LayersIcon small /></span>
+                                <span className="sources-item-title">{e.title}</span>
+                                <input type="checkbox" checked={e.active !== false} onChange={() => toggleImersao(e.id)} />
                               </div>
                             ))}
-
-                            {showInput && (
-                              <div className="ig-input-wrap">
-                                <span className="ig-at">@</span>
-                                <input
-                                  className="ig-input"
-                                  autoFocus
-                                  placeholder="username"
-                                  value={igVal}
-                                  onChange={ev => setIgInputs(i => ({ ...i, [e.id]: ev.target.value.replace(/@/g, "").replace(/\s/g, "") }))}
-                                  onKeyDown={ev => { if (ev.key === "Enter") triggerIgFetch(e.id); }}
-                                  onPaste={ev => {
-                                    const pasted = ev.clipboardData.getData("text").replace(/@/g, "").replace(/\s/g, "");
-                                    if (pasted.length >= 2) {
-                                      setIgInputs(i => ({ ...i, [e.id]: pasted }));
-                                      ev.preventDefault();
-                                      triggerIgFetch(e.id, pasted);
-                                    }
-                                  }}
-                                />
-                                <button className="ig-search-btn" onClick={() => triggerIgFetch(e.id)} title="Buscar">→</button>
-                              </div>
-                            )}
                           </div>
+                        )}
+                      </div>
+                    ));
+                })()}
 
-                          {showPreview && (
-                            <div className="ig-preview-card">
-                              {prev.error ? (
-                                <div className="ig-preview-error">
-                                  <div style={{ marginBottom: 6 }}>Perfil restrito ou não encontrado — Instagram bloqueou o acesso automático.</div>
-                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                    <button className="ig-btn-close" onClick={() => {
-                                      setInstagramPreviews(p => { const n = { ...p }; delete n[e.id]; return n; });
-                                      setIgInputs(i => { const n = { ...i }; delete n[e.id]; return n; });
-                                    }}>Tentar novamente</button>
-                                    {igVal && (
-                                      <button className="ig-btn-use" onClick={() => saveInstagramUrl(e.id, `https://www.instagram.com/${igVal}/`, null)}>
-                                        Conectar @{igVal} mesmo assim
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              ) : prev.data && (
-                                <div className="ig-preview-body">
-                                  {prev.data.profilePicUrl && (
-                                    <img src={prev.data.profilePicUrl} className="ig-preview-avatar" alt="" referrerPolicy="no-referrer" crossOrigin="anonymous" onError={ev => { ev.currentTarget.style.display = "none"; }} />
-                                  )}
-                                  <div className="ig-preview-info">
-                                    <div className="ig-preview-username">
-                                      @{prev.data.username}
-                                      {prev.data.verified && <span className="ig-verified">✓</span>}
-                                    </div>
-                                    <div className="ig-preview-name">{prev.data.fullName}</div>
-                                    <div className="ig-preview-stats">
-                                      {prev.data.followersCount?.toLocaleString("pt-BR")} seguidores · {prev.data.postsCount} posts
-                                    </div>
-                                  </div>
-                                  <div className="ig-preview-actions">
-                                    <button className="ig-btn-use" onClick={() => saveInstagramUrl(e.id, prev.data.url || `https://www.instagram.com/${prev.data.username}/`, prev.data)}>+ Adicionar</button>
-                                    <button className="ig-btn-close" onClick={() => {
-                                      setInstagramPreviews(p => { const n = { ...p }; delete n[e.id]; return n; });
-                                      setIgInputOpen(prev2 => { const n = new Set(prev2); n.delete(e.id); return n; });
-                                      setIgInputs(i => { const n = { ...i }; delete n[e.id]; return n; });
-                                    }}>Fechar</button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {expanded && (
-                        <div className="im-meet-row">
-                          <button className="im-meet-btn" onClick={() => setReunioesModal(e)} title="Reuniões">
-                            <MeetIcon />
-                          </button>
-                        </div>
-                      )}
+                {/* Evento estático 20/06/2026 no final */}
+                <div className="im-event-wrap">
+                  <button className="know-btn know-btn-active im-event-btn" onClick={() => setImEventOpen(o => !o)}>
+                    <LayersIcon small />
+                    <span>Imersão — {IMERSAO_EVENTO.data}</span>
+                    <span className="know-count">{IMERSAO_EVENTO.nomes.length}</span>
+                  </button>
+                  {imEventOpen && (
+                    <div className="im-event-expand">
+                      {IMERSAO_EVENTO.nomes.map(nome => {
+                        const match = imersao.find(e => e.title === nome);
+                        return (
+                          <div
+                            key={nome}
+                            className="sources-item"
+                            style={{ cursor: match ? "pointer" : "default" }}
+                          >
+                            <span className="sources-item-icon"><LayersIcon small /></span>
+                            <span
+                              className="sources-item-title"
+                              onClick={() => match && setExpandedImId(match.id)}
+                              title={match ? "Ver o caso completo" : "Reunião ainda não subida"}
+                            >
+                              {nome}
+                            </span>
+                            {!match && <span className="im-event-missing">sem reunião</span>}
+                            <input type="checkbox" checked={match?.active !== false} disabled={!match} onChange={() => match && toggleImersao(match.id)} />
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                  )}
+                </div>
               </div>
             </>)}
 
@@ -1457,6 +1405,15 @@ const CSS = `
 .im-focus-badge{font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:5px;padding:2px 6px;white-space:nowrap;flex-shrink:0;letter-spacing:.3px;}
 .im-list-has-focus .im-item-wrap:not(.im-item-wrap--selected) .sources-item-title{color:var(--muted);}
 .im-list-has-focus .im-item-wrap:not(.im-item-wrap--selected) .sources-item-icon{opacity:.4;}
+
+/* Imersão — card do evento passado (agrupa vários mentorados) */
+.im-event-wrap{margin:0 0 10px;}
+.im-event-btn{width:100%;justify-content:flex-start;}
+.im-event-expand{background:var(--surface);border:1px solid var(--line);border-radius:8px;margin-top:8px;padding:6px 8px 8px;display:flex;flex-direction:column;gap:2px;}
+.im-event-name-row{display:flex;align-items:center;gap:8px;padding:6px 6px;border-radius:8px;font-size:13px;color:var(--ink);}
+.im-event-name-row:hover{background:var(--cream);}
+.im-event-name-row svg{color:var(--muted);flex-shrink:0;}
+.im-event-missing{margin-left:auto;font-size:10.5px;color:var(--muted);font-style:italic;flex-shrink:0;}
 
 .im-drop-zone{display:flex;align-items:center;gap:8px;background:#fff;border:2px dashed var(--line);border-radius:11px;padding:12px 14px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;transition:.15s;}
 .im-drop-zone:hover,.im-drop-zone.drag{border-color:var(--accent);color:var(--accent);}
