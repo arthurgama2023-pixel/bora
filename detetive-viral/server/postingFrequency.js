@@ -106,12 +106,14 @@ function computePostingFrequency(latestPosts) {
   });
 
   // Preenche os meses vazios (sem posts) para mostrar o período completo.
-  const nowDate = new Date(now);
-  const sixMonthsAgoDate = new Date(now - 6 * 30 * 24 * 60 * 60 * 1000);
+  // IMPORTANTE: usar getUTCMonth/getUTCFullYear (não getMonth/getFullYear) porque
+  // getMonth() usa timezone LOCAL e pode dessincroniazar com os timestamps calculados em UTC.
+  const sixMonthsAgoMs = now - 6 * 30 * 24 * 60 * 60 * 1000;
   const allMonths = new Map();
-  for (let d = new Date(sixMonthsAgoDate); d <= nowDate; d.setMonth(d.getMonth() + 1)) {
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  for (let d = new Date(sixMonthsAgoMs); d.getTime() <= now; ) {
+    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
     allMonths.set(key, monthCounts.get(key) || 0);
+    d.setUTCMonth(d.getUTCMonth() + 1); // incrementa para próximo mês (UTC)
   }
 
   const MES_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];

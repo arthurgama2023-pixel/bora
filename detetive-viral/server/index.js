@@ -183,18 +183,23 @@ function extractNicheFromBio(bio_or_url) {
 
 // Health check
 app.get('/api/health', (req, res) => {
-  // DEBUG TEMPORÁRIO: confirma remotamente se DATABASE_URL chegou ao backend
-  // e pra qual host aponta (sem vazar senha) — remover depois do deploy ok.
   let dbHost = null;
   try {
     if (process.env.DATABASE_URL) dbHost = new URL(process.env.DATABASE_URL).host;
   } catch { dbHost = 'parse_error'; }
+
+  const geminiKey = process.env.GEMINI_API_KEY || '';
+  const geminiOk  = geminiKey.startsWith('AIza') && geminiKey.length > 20;
+
   res.json({
     status: 'ok',
     timestamp: new Date(),
     apify: !!process.env.APIFY_API_KEY,
+    anthropic: !!process.env.ANTHROPIC_API_KEY,
+    gemini: geminiOk ? 'configured' : (geminiKey ? 'key_invalid_format' : 'not_configured'),
     dbConfigured: !!process.env.DATABASE_URL,
     dbHost: dbHost || 'fallback_localhost',
+    instagram_cookies: !!process.env.INSTAGRAM_SESSION_ID,
   });
 });
 
@@ -2500,10 +2505,15 @@ initDb()
   .catch((e) => console.error('[DB] ❌ Falha ao inicializar o Postgres:', e.message));
 
 app.listen(PORT, () => {
+  const geminiKey = process.env.GEMINI_API_KEY || '';
+  const geminiOk  = geminiKey.startsWith('AIza') && geminiKey.length > 20;
   console.log(`\n🎬 Radar de Tendências - Backend`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-  console.log(`✅ Server rodando em: http://localhost:${PORT}`);
-  console.log(`✅ Apify API: ${process.env.APIFY_API_KEY ? 'Configurado' : 'NÃO CONFIGURADO'}`);
-  console.log(`✅ Banco: ${process.env.DATABASE_URL ? 'Postgres configurado' : 'usando default local'}`);
+  console.log(`✅ Server: http://localhost:${PORT}`);
+  console.log(`${process.env.APIFY_API_KEY       ? '✅' : '❌'} Apify`);
+  console.log(`${process.env.ANTHROPIC_API_KEY   ? '✅' : '❌'} Anthropic (Claude)`);
+  console.log(`${geminiOk                         ? '✅' : '❌'} Gemini${!geminiOk && geminiKey ? ' (chave inválida — precisa começar com AIza)' : !geminiKey ? ' (não configurado)' : ''}`);
+  console.log(`${process.env.DATABASE_URL         ? '✅' : '⚠️'} Banco: ${process.env.DATABASE_URL ? 'Postgres configurado' : 'fallback localhost (cache não funciona no Render!)'}`);
+  console.log(`${process.env.INSTAGRAM_SESSION_ID ? '✅' : '⚠️'} Instagram cookies`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 });
