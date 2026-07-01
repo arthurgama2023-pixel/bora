@@ -1058,40 +1058,6 @@ function AppMain({ onLogout, username }) {
                       </div>
                     ));
                 })()}
-
-                {/* Evento estático 20/06/2026 no final */}
-                <div className="im-event-wrap">
-                  <button className="know-btn know-btn-active im-event-btn" onClick={() => setImEventOpen(o => !o)}>
-                    <LayersIcon small />
-                    <span>Imersão — {IMERSAO_EVENTO.data}</span>
-                    <span className="know-count">{IMERSAO_EVENTO.nomes.length}</span>
-                  </button>
-                  {imEventOpen && (
-                    <div className="im-event-expand">
-                      {IMERSAO_EVENTO.nomes.map(nome => {
-                        const match = imersao.find(e => e.title === nome);
-                        return (
-                          <div
-                            key={nome}
-                            className="sources-item"
-                            style={{ cursor: match ? "pointer" : "default" }}
-                          >
-                            <span className="sources-item-icon"><LayersIcon small /></span>
-                            <span
-                              className="sources-item-title"
-                              onClick={() => match && setExpandedImId(match.id)}
-                              title={match ? "Ver o caso completo" : "Reunião ainda não subida"}
-                            >
-                              {nome}
-                            </span>
-                            {!match && <span className="im-event-missing">sem reunião</span>}
-                            <input type="checkbox" checked={match?.active !== false} disabled={!match} onChange={() => match && toggleImersao(match.id)} />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
               </div>
             </>)}
 
