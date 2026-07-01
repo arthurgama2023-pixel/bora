@@ -27,8 +27,9 @@ function fmtDateBR(iso) {
     return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
   } catch { return null; }
 }
-// Data da Imersão de um caso: override salvo (localStorage) OU a data de criação no banco
-function getImEventDate(id, createdAt) {
+// Data da Imersão de um caso: event_date do banco (cross-device) > override localStorage > data de criação
+function getImEventDate(id, createdAt, eventDate) {
+  if (eventDate) { const br = isoToBR(String(eventDate).slice(0, 10)); if (br) return br; }
   try { const s = localStorage.getItem(`im_date_${id}`); if (s) return s; } catch {}
   return fmtDateBR(createdAt) || "Sem data";
 }
@@ -238,7 +239,7 @@ function AppMain({ onLogout, username }) {
             return { ...e, instagram_url: igUrl || null, instagram_profile: igProfile || null };
           });
           setIgProfiles(profilesMap);
-          setImersao(restored.map(e => ({ ...e, active: e.active !== false, created_date: getImEventDate(e.id, e.created_at) })));
+          setImersao(restored.map(e => ({ ...e, active: e.active !== false, created_date: getImEventDate(e.id, e.created_at, e.event_date) })));
           const previews = {};
           restored.forEach(e => {
             if (e.instagram_url && e.instagram_profile) {
@@ -421,7 +422,7 @@ function AppMain({ onLogout, username }) {
   async function addImersao() {
     const c = imText.trim();
     if (!c) return;
-    const res = await apiFetch(`${API}/api/imersao`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: imTitle.trim() || "Caso sem nome", content: c, source: "manual" }) });
+    const res = await apiFetch(`${API}/api/imersao`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: imTitle.trim() || "Caso sem nome", content: c, source: "manual", event_date: imEventDate || null }) });
     const entry = await res.json();
     if (entry?.id) {
       const dateBR = isoToBR(imEventDate);

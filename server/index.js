@@ -698,33 +698,43 @@ app.patch('/api/agent-config', (req, res) => {
 
 app.get('/api/imersao', async (req, res) => {
   try {
-    // Tenta com todas as colunas novas
+    // Tenta com todas as colunas novas (inclui event_date)
     let { data, error } = await supabase
       .from('imersao_cases')
-      .select('id, title, content, source, active, instagram_url, instagram_profile, instagram_analyzed_at, created_at')
+      .select('id, title, content, source, active, instagram_url, instagram_profile, instagram_analyzed_at, event_date, created_at')
       .eq('username', req.user.username)
       .order('created_at', { ascending: false });
 
     if (error) {
-      // Fallback 1: sem instagram_profile e instagram_analyzed_at (colunas ainda não migradas)
-      const r2 = await supabase
+      // Fallback 1: sem event_date (coluna ainda não migrada)
+      const r1 = await supabase
         .from('imersao_cases')
-        .select('id, title, content, source, active, instagram_url, created_at')
+        .select('id, title, content, source, active, instagram_url, instagram_profile, instagram_analyzed_at, created_at')
         .eq('username', req.user.username)
         .order('created_at', { ascending: false });
 
-      if (r2.error) {
-        // Fallback 2: sem instagram_url também
-        const r3 = await supabase
+      if (!r1.error) {
+        data = (r1.data || []).map(e => ({ ...e, event_date: null }));
+      } else {
+        // Fallback 2: sem instagram_profile/instagram_analyzed_at
+        const r2 = await supabase
           .from('imersao_cases')
-          .select('id, title, content, source, active, created_at')
+          .select('id, title, content, source, active, instagram_url, created_at')
           .eq('username', req.user.username)
           .order('created_at', { ascending: false });
-        if (r3.error) throw r3.error;
-        data = (r3.data || []).map(e => ({ ...e, instagram_url: null, instagram_profile: null, instagram_analyzed_at: null }));
-      } else {
-        // Tem instagram_url mas não tem as colunas novas — OK, usa localStorage no frontend
-        data = (r2.data || []).map(e => ({ ...e, instagram_profile: null, instagram_analyzed_at: null }));
+
+        if (r2.error) {
+          // Fallback 3: só o básico
+          const r3 = await supabase
+            .from('imersao_cases')
+            .select('id, title, content, source, active, created_at')
+            .eq('username', req.user.username)
+            .order('created_at', { ascending: false });
+          if (r3.error) throw r3.error;
+          data = (r3.data || []).map(e => ({ ...e, instagram_url: null, instagram_profile: null, instagram_analyzed_at: null, event_date: null }));
+        } else {
+          data = (r2.data || []).map(e => ({ ...e, instagram_profile: null, instagram_analyzed_at: null, event_date: null }));
+        }
       }
     }
 
@@ -735,16 +745,22 @@ app.get('/api/imersao', async (req, res) => {
 });
 
 app.post('/api/imersao', async (req, res) => {
-  const { title, content, source = 'manual' } = req.body;
+  const { title, content, source = 'manual', event_date = null } = req.body;
   if (!content) return res.status(400).json({ error: 'Conteúdo obrigatório.' });
 
   try {
-    const { data: entry, error: entryErr } = await supabase
+    const baseRow = { title: title || 'Caso sem nome', content, source, username: req.user.username };
+    let { data: entry, error: entryErr } = await supabase
       .from('imersao_cases')
-      .insert({ title: title || 'Caso sem nome', content, source, username: req.user.username })
+      .insert({ ...baseRow, event_date })
       .select()
       .single();
-    if (entryErr) throw entryErr;
+    if (entryErr) {
+      // Fallback: coluna event_date ainda não migrada — insere sem ela
+      const r = await supabase.from('imersao_cases').insert(baseRow).select().single();
+      if (r.error) throw r.error;
+      entry = r.data;
+    }
 
     // Responde imediatamente — embeddings são gerados em segundo plano
     res.json(entry);
