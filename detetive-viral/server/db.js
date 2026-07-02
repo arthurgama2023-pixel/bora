@@ -79,6 +79,38 @@ async function initDb() {
   `);
   // Índice para o job diário buscar rápido os nichos ativos.
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_user_profiles_niche ON user_profiles (niche_key);`);
+
+  // Logs de atividade — rastreia logins, requisições, custos, refreshes.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS activity_log (
+      id              BIGSERIAL PRIMARY KEY,
+      timestamp       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      event_type      TEXT NOT NULL,
+      user_id         UUID,
+      endpoint        TEXT,
+      method          TEXT,
+      status_code     INTEGER,
+      response_time_ms INTEGER,
+      apify_cost      DECIMAL(10,4),
+      details         JSONB,
+      error_message   TEXT
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_activity_log_timestamp ON activity_log (timestamp DESC);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_activity_log_user ON activity_log (user_id);`);
+
+  // Status dos refreshes — controla quando cada nicho foi atualizado.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS refresh_status (
+      niche_key       TEXT PRIMARY KEY,
+      nicho           TEXT,
+      last_refresh    TIMESTAMPTZ,
+      next_refresh    TIMESTAMPTZ,
+      videos_count    INTEGER,
+      status          TEXT,
+      error_message   TEXT
+    );
+  `);
 }
 
 // Lê uma entrada do cache. Retorna { data, ageMin } se existir e dentro do TTL.

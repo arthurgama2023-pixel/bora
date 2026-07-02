@@ -10,6 +10,7 @@ import { useVideos } from '@/context/VideosContext';
 import { useAuth } from '@/context/AuthContext';
 import { linkProfile, getUserProfile, type LinkedProfile } from '@/lib/api';
 import { supabase } from '@/lib/supabaseClient';
+import AdminDashboard from '@/components/AdminDashboard';
 
 interface UserProfile {
   name: string;
@@ -32,6 +33,7 @@ export default function Home() {
   const [showOffer, setShowOffer] = useState(false); // true = mostra a tela de planos/oferta
   const [showAuth, setShowAuth] = useState(false); // true = mostra login/registro
   const [authTab, setAuthTab] = useState<'entrar' | 'registrar'>('entrar');
+  const [showAdmin, setShowAdmin] = useState(false); // admin dashboard
   const STORAGE_KEY = 'detetiveviral_profile';
   const { setVideos, setVideosViral, setAiAnalysis, setFrequency } = useVideos();
   const { user, session } = useAuth();
@@ -75,6 +77,7 @@ export default function Home() {
   };
 
   // Ao abrir: 1) ?u=usuario (atalho dev) 2) sessão salva (sobrevive a reload/F5)
+  // + hotkey Ctrl+Shift+A pra admin dashboard (localhost only)
   useEffect(() => {
     const u = new URLSearchParams(window.location.search).get('u');
     if (u) {
@@ -85,6 +88,15 @@ export default function Home() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) setUserProfile(JSON.parse(saved));
     } catch {}
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.code === 'KeyA') {
+        e.preventDefault();
+        setShowAdmin(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // Persiste SEMPRE que o perfil muda (qualquer origem: ?u=, wizard ou restauração)
@@ -186,6 +198,10 @@ export default function Home() {
 
   return (
     <main className="min-h-screen">
+      {showAdmin && (
+        <AdminDashboard onClose={() => setShowAdmin(false)} />
+      )}
+
       {userProfile ? (
         <Dashboard
           profile={userProfile}

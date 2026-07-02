@@ -36,6 +36,47 @@ const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 horas (perfil + hashtags)
 const CLASSIFY_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias (nicho/hashtags mudam pouco)
 
 // ══════════════════════════════════════════════════════════════════════════════
+// LOGGING E MONITORAMENTO — painel de admin em /admin/dashboard (localhost)
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function logActivity(eventType, data = {}) {
+  try {
+    await pool.query(
+      `INSERT INTO activity_log (event_type, user_id, endpoint, method, status_code, response_time_ms, apify_cost, details, error_message)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [eventType, data.userId || null, data.endpoint || null, data.method || null,
+       data.statusCode || null, data.responseTimeMs || null, data.apifyCost || null,
+       data.details ? JSON.stringify(data.details) : null, data.errorMessage || null]
+    );
+  } catch (e) {
+    console.warn('[Log] Falha ao registrar:', e.message);
+  }
+}
+
+// Middleware pra logar requisições importantes
+function logRequest(eventType) {
+  return (req, res, next) => {
+    const start = Date.now();
+    const originalJson = res.json.bind(res);
+
+    res.json = function(data) {
+      const responseTime = Date.now() - start;
+      logActivity(eventType, {
+        userId: req.userId || null,
+        endpoint: req.path,
+        method: req.method,
+        statusCode: res.statusCode,
+        responseTimeMs: responseTime,
+        details: { path: req.path, query: req.query }
+      }).catch(() => {});
+
+      return originalJson.call(this, data);
+    };
+    next();
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // FUNÇÕES AUXILIARES
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -2236,6 +2277,94 @@ app.post('/api/resolve-link', async (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════════
 // GERAR ROTEIRO: analisa vídeo com Gemini + gera roteiro com Claude
 // ══════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
+// ADMIN — Painel de Monitoramento (localhost only)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Proteção: só permite localhost
+function localhostOnly(req, res, next) {
+  const ip = req.ip || req.connection.remoteAddress;
+  if (!ip.includes('127.0.0.1') && !ip.includes('::1') && !ip.includes('localhost')) {
+    return res.status(403).json({ error: 'Apenas localhost' });
+  }
+  next();
+}
+
+// Dashboard — resumo geral
+app.get('/api/admin/dashboard', localhostOnly, async (req, res) => {
+  try {
+    // Últimos logins (últimas 24h)
+    const logins = await pool.query(`
+      SELECT COUNT(*)::int total, COUNT(DISTINCT user_id)::int unique_users
+      FROM activity_log
+      WHERE event_type = 'login' AND timestamp > NOW() - INTERVAL '24 hours'
+    `);
+
+    // Requisições hoje
+    const reqs = await pool.query(`
+      SELECT COUNT(*)::int total,
+             COUNT(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 END)::int success,
+             COUNT(CASE WHEN status_code >= 400 THEN 1 END)::int errors,
+             COALESCE(SUM(apify_cost), 0)::decimal custo_apify
+      FROM activity_log
+      WHERE timestamp > NOW() - INTERVAL '24 hours'
+    `);
+
+    // Status dos refreshes
+    const refreshes = await pool.query(`
+      SELECT niche_key, nicho, last_refresh, next_refresh, videos_count, status
+      FROM refresh_status
+      ORDER BY last_refresh DESC NULLS LAST
+    `);
+
+    // Usuários únicos últimas 24h
+    const users = await pool.query(`
+      SELECT COUNT(DISTINCT user_id)::int total
+      FROM activity_log
+      WHERE timestamp > NOW() - INTERVAL '24 hours' AND user_id IS NOT NULL
+    `);
+
+    res.json({
+      timestamp: new Date(),
+      logins: logins.rows[0] || { total: 0, unique_users: 0 },
+      requisicoes: reqs.rows[0] || { total: 0, success: 0, errors: 0, custo_apify: 0 },
+      usuarios_24h: users.rows[0]?.total || 0,
+      refreshes: refreshes.rows
+    });
+  } catch (e) {
+    console.error('[Admin] Erro:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Activity Log — histórico detalhado
+app.get('/api/admin/activity', localhostOnly, async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit || '100', 10);
+    const offset = parseInt(req.query.offset || '0', 10);
+
+    const { rows } = await pool.query(`
+      SELECT id, timestamp, event_type, user_id, endpoint, method, status_code,
+             response_time_ms, apify_cost, error_message
+      FROM activity_log
+      ORDER BY timestamp DESC
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]);
+
+    const count = await pool.query(`SELECT COUNT(*)::int total FROM activity_log`);
+
+    res.json({
+      logs: rows,
+      total: count.rows[0].total,
+      limit,
+      offset
+    });
+  } catch (e) {
+    console.error('[Admin] Erro:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/roteiro', async (req, res) => {
   // Se o cliente desconectar (modal fechado, StrictMode remontando em dev) antes
   // de terminar, aborta a análise do Gemini em andamento — evita pagar por uma
