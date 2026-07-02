@@ -14,7 +14,7 @@ app.use(express.json());
 const { ApifyClient } = require('apify-client');
 
 // Influencers
-const { getInfluencerVideos } = require('./get-influencer-videos');
+const { getInfluencerVideos, nicheKey } = require('./get-influencer-videos');
 const { addInfluencer } = require('./add-influencer');
 const { updateFavoritesFromPool, getReferenceUsernames } = require('./favorites');
 
@@ -1579,6 +1579,66 @@ function getNicheVideos(apify, cls, force = false) {
   return promise;
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// AUTENTICAÇÃO — verifica o token de login (Supabase Auth) e injeta req.userId.
+// Em vez de gerenciar o JWT secret localmente, validamos o access_token direto na
+// Supabase Auth API (/auth/v1/user). Só as rotas de conta usam isso (login-time),
+// então a chamada extra de rede é irrelevante.
+// ══════════════════════════════════════════════════════════════════════════════
+async function requireUser(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (!token) return res.status(401).json({ error: 'Não autenticado.' });
+
+    const { SUPABASE_URL, SUPABASE_ANON_KEY } = process.env;
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      return res.status(500).json({ error: 'Supabase não configurado no servidor.' });
+    }
+
+    const r = await axios.get(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
+      timeout: 8000,
+    });
+    if (!r.data?.id) return res.status(401).json({ error: 'Sessão inválida.' });
+
+    req.userId = r.data.id;
+    req.userEmail = r.data.email || null;
+    next();
+  } catch (err) {
+    const status = err.response?.status;
+    console.warn('[Auth] token rejeitado:', status || err.message);
+    return res.status(status === 401 || status === 403 ? 401 : 500)
+      .json({ error: 'Sessão inválida ou expirada.' });
+  }
+}
+
+// Garante nicho/hashtags de um @ reusando o cache (classify 7d / profileRaw 12h);
+// só raspa no Apify se nada estiver em cache. Mesmo pipeline do
+// /api/videos/from-user-profile, isolado para reuso pelo vínculo de conta.
+async function classifyUsername(apify, cleanUsername) {
+  const classifyHit = await getCached('classify', cleanUsername, CLASSIFY_TTL_MS);
+  if (classifyHit) return { cls: classifyHit.data, profile: null };
+
+  let userProfile;
+  const rawHit = await getCached('profileRaw', cleanUsername);
+  if (rawHit) {
+    userProfile = rawHit.data;
+  } else {
+    const run = await apify.actor('apify/instagram-profile-scraper').call(
+      { usernames: [cleanUsername], loginCookies: getInstagramLoginCookies() },
+      { timeout: 60000 }
+    );
+    const { items } = await apify.dataset(run.defaultDatasetId).listItems({ limit: 1 });
+    if (!items || items.length === 0) return { cls: null, profile: null };
+    userProfile = items[0];
+    await setCached('profileRaw', cleanUsername, userProfile);
+  }
+  const cls = await classifyProfileWithAI(userProfile);
+  await setCached('classify', cleanUsername, cls);
+  return { cls, profile: userProfile };
+}
+
 // Buscar vídeos virais baseado no perfil REAL do usuário (com análise completa)
 app.post('/api/videos/from-user-profile', async (req, res) => {
   try {
@@ -1674,6 +1734,175 @@ app.post('/api/videos/from-user-profile', async (req, res) => {
       error: 'Não foi possível buscar vídeos baseado no perfil.',
       details: error.message,
     });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CONTA ↔ @ VINCULADO — o login passa a LEMBRAR o Instagram do usuário.
+// Antes o @ vivia só no localStorage do navegador (sumia em outro device / limpeza
+// de cache). Agora fica em user_profiles, ligado ao user_id do Supabase Auth.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Vincula (ou troca) o @ à conta logada. Classifica o nicho para o job diário
+// saber qual nicho atualizar. Idempotente (upsert por user_id).
+app.post('/api/user/link-profile', requireUser, async (req, res) => {
+  try {
+    const cleanUsername = extractInstagramUsername(req.body?.instagram_username);
+    if (!cleanUsername) return res.status(400).json({ error: 'Username do Instagram inválido.' });
+
+    const apify = new ApifyClient({ token: process.env.APIFY_API_KEY });
+    const { cls, profile } = await classifyUsername(apify, cleanUsername);
+    if (!cls) return res.status(404).json({ error: `Perfil @${cleanUsername} não encontrado.` });
+
+    // Dados leves do perfil pro Dashboard: usa o que acabou de raspar, senão o profileRaw em cache.
+    const raw = profile || (await getCached('profileRaw', cleanUsername))?.data || {};
+    const nicheK = nicheKey(cls.nicho || '');
+
+    await pool.query(
+      `INSERT INTO user_profiles
+         (user_id, instagram_handle, nicho, niche_key, hashtags, name, profile_pic, followers, updated_at, last_seen_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8, NOW(), NOW())
+       ON CONFLICT (user_id) DO UPDATE SET
+         instagram_handle = EXCLUDED.instagram_handle,
+         nicho = EXCLUDED.nicho, niche_key = EXCLUDED.niche_key, hashtags = EXCLUDED.hashtags,
+         name = EXCLUDED.name, profile_pic = EXCLUDED.profile_pic, followers = EXCLUDED.followers,
+         updated_at = NOW()`,
+      [req.userId, cleanUsername, cls.nicho || null, nicheK || null,
+       JSON.stringify(cls.hashtags || []),
+       raw.fullName || null, raw.profilePicUrl || raw.profilePicUrlHD || null, raw.followersCount || null]
+    );
+
+    console.log(`[link-profile] 🔗 user ${req.userId.slice(0, 8)}… → @${cleanUsername} (${cls.nicho})`);
+    res.json({ ok: true, instagram: cleanUsername, nicho: cls.nicho, hashtags: cls.hashtags });
+  } catch (err) {
+    console.error('[link-profile] Erro:', err.message);
+    res.status(500).json({ error: 'Não foi possível vincular o perfil.', details: err.message });
+  }
+});
+
+// Retorna o @ vinculado à conta logada (fonte da verdade cross-device).
+app.get('/api/user/profile', requireUser, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT instagram_handle, nicho, niche_key, hashtags, name, profile_pic, followers
+       FROM user_profiles WHERE user_id = $1`, [req.userId]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Nenhum perfil vinculado.' });
+
+    // Marca a visita (usado depois pelo badge "novos desde a última visita").
+    pool.query(`UPDATE user_profiles SET last_seen_at = NOW() WHERE user_id = $1`, [req.userId])
+      .catch(() => {});
+
+    const r = rows[0];
+    res.json({
+      instagram: r.instagram_handle,
+      nicho: r.nicho,
+      niche_key: r.niche_key,
+      hashtags: r.hashtags,
+      name: r.name,
+      profilePic: r.profile_pic,
+      followers: r.followers,
+    });
+  } catch (err) {
+    console.error('[user/profile] Erro:', err.message);
+    res.status(500).json({ error: 'Erro ao buscar perfil.', details: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// REFRESH DIÁRIO (24h) — JOB AGENDADO — o coração da escalabilidade.
+//
+// Problema: sem isso, cada user loga → raspa Apify. 100 users no mesmo nicho = 100
+// buscas = ~R$250/dia. Com Fase 2: 1 busca/nicho/dia = R$2,50/dia (reduz 100x).
+//
+// Solução: GitHub Actions cron diário bate em POST /api/cron/refresh-niches →
+// busca nichos ativos de user_profiles → reprocessa CADA UM 1x → sobrescreve cache.
+// Login depois só lê o cache já fresco (R$0). Resultado: "bater de frente com
+// vídeo novo de 24h em 24h" sem multiplicar custo.
+// ══════════════════════════════════════════════════════════════════════════════
+
+app.post('/api/cron/refresh-niches', async (req, res) => {
+  const cronSecret = req.headers['x-cron-secret'] || '';
+  if (!cronSecret || cronSecret !== process.env.CRON_SECRET) {
+    return res.status(401).json({ error: 'CRON_SECRET inválido.' });
+  }
+
+  if (process.env.REFRESH_ENABLED !== 'true') {
+    return res.status(403).json({ error: 'Refresh desabilitado (REFRESH_ENABLED=false).' });
+  }
+
+  try {
+    console.log('[Cron] 🔄 Refresh de nichos iniciado...');
+    const apify = new ApifyClient({ token: process.env.APIFY_API_KEY });
+
+    // 1. Pega os nichos ativos (que têm pelo menos 1 user)
+    const { rows: nichos } = await pool.query(
+      `SELECT DISTINCT niche_key, nicho, array_agg(DISTINCT hashtag) as hashtags
+       FROM (
+         SELECT niche_key, nicho, jsonb_array_elements(hashtags)::TEXT as hashtag
+         FROM user_profiles WHERE niche_key IS NOT NULL
+       ) t
+       GROUP BY niche_key, nicho
+       ORDER BY niche_key`
+    );
+
+    if (nichos.length === 0) {
+      console.log('[Cron] ⚠️  Nenhum nicho ativo.');
+      return res.json({ ok: true, refreshed: 0, message: 'Nenhum nicho ativo.' });
+    }
+
+    const maxNiches = parseInt(process.env.REFRESH_MAX_NICHES || '10', 10);
+    const toProcess = nichos.slice(0, maxNiches);
+    console.log(`[Cron] 📊 ${nichos.length} nichos totais, processando ${toProcess.length}...`);
+
+    const results = [];
+    for (const row of toProcess) {
+      const { niche_key, nicho, hashtags } = row;
+      const hashtagsArray = (hashtags || []).filter(Boolean);
+
+      try {
+        console.log(`[Cron] 🔄 Nicho: ${niche_key} (${nicho}), hashtags: ${hashtagsArray.join(', ')}`);
+
+        // 2. Reprocessa o nicho (force=true = ignora cache, busca fresco no Apify)
+        const cls = { nicho, hashtags: hashtagsArray, confianca: 'Alta' };
+        const data = await computeNicheVideos(apify, cls, true); // force=true
+
+        // 3. Sobrescreve o cache
+        const cacheKey = hashtagsArray.sort().join(',');
+        await setCached('nicheVideos', cacheKey, data);
+
+        // 4. Invalida o cache de PERFIL do nicho (pra não servir vídeo antigo)
+        //    Usuários do nicho vão re-raspar o perfil na próxima busca, e vão
+        //    pegar o nicheVideos novo que acabamos de gravar. Custa um SELECT
+        //    a mais (profileRaw ainda tá em cache, barato), mas garante
+        //    que o perfil fica sincronizado com os vídeos novos.
+        const { rows: affectedProfiles } = await pool.query(
+          `DELETE FROM cache_entries
+           WHERE bucket = 'profiles'
+           AND key IN (
+             SELECT instagram_handle FROM user_profiles WHERE niche_key = $1
+           )`,
+          [niche_key]
+        );
+
+        console.log(`[Cron] ✅ ${niche_key}: cache nicheVideos sobrescrito, ${affectedProfiles.length} perfis invalidados.`);
+        results.push({
+          niche_key,
+          nicho,
+          videos: data.autoridade?.length + data.viralizacao?.length || 0,
+          profilesInvalidated: affectedProfiles.length,
+        });
+      } catch (err) {
+        console.error(`[Cron] ❌ ${niche_key} falhou:`, err.message);
+        results.push({ niche_key, nicho, error: err.message });
+      }
+    }
+
+    console.log(`[Cron] ✅ Refresh concluído. ${results.filter(r => !r.error).length}/${results.length} nichos.`);
+    res.json({ ok: true, refreshed: results.length, results });
+  } catch (err) {
+    console.error('[Cron] Erro fatal:', err.message);
+    res.status(500).json({ error: 'Erro ao executar refresh.', details: err.message });
   }
 });
 

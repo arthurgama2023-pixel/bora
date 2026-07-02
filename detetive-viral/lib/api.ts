@@ -24,3 +24,38 @@ export function proxiedImage(url?: string | null): string | null {
   if (!/cdninstagram\.com|fbcdn\.net/.test(url)) return url; // não é do IG → usa direto
   return `${API_URL}/api/instagram/image?url=${encodeURIComponent(url)}`;
 }
+
+// ── CONTA ↔ @ VINCULADO ─────────────────────────────────────────────────────
+// O backend persiste o @ ligado ao user_id (fonte da verdade cross-device).
+// Todas as chamadas mandam o access_token do Supabase no header Authorization.
+
+export interface LinkedProfile {
+  instagram: string;
+  nicho: string | null;
+  niche_key?: string | null;
+  hashtags?: string[] | null;
+  name?: string | null;
+  profilePic?: string | null;
+  followers?: number | null;
+}
+
+// Vincula/atualiza o @ da conta logada. Retorna o perfil salvo ou lança erro.
+export async function linkProfile(instagram: string, token: string): Promise<LinkedProfile> {
+  const res = await fetch(`${API_URL}/api/user/link-profile`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ instagram_username: instagram }),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Falha ao vincular perfil');
+  return res.json();
+}
+
+// Lê o @ vinculado à conta. Retorna null se ainda não vinculou (404).
+export async function getUserProfile(token: string): Promise<LinkedProfile | null> {
+  const res = await fetch(`${API_URL}/api/user/profile`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error('Falha ao buscar perfil vinculado');
+  return res.json();
+}

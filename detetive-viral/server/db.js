@@ -45,7 +45,7 @@ function sanitizeJsonString(s) {
     .replace(/\\ud[c-f][0-9a-f]{2}/gi, ''); // low surrogate órfão
 }
 
-// Cria a tabela na primeira execução (idempotente)
+// Cria as tabelas na primeira execução (idempotente)
 async function initDb() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS cache_entries (
@@ -56,6 +56,29 @@ async function initDb() {
       PRIMARY KEY (bucket, key)
     );
   `);
+
+  // Vínculo conta ↔ @ do Instagram. user_id = auth.users.id do Supabase.
+  // É a ponte que faltava: o login passa a LEMBRAR o @ (antes vivia só no
+  // localStorage do navegador). Também guarda nicho/hashtags para o job diário
+  // saber quais nichos atualizar, e um cache leve do perfil para o Dashboard
+  // renderizar sem re-scrape.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_profiles (
+      user_id          UUID  PRIMARY KEY,
+      instagram_handle TEXT  NOT NULL,
+      nicho            TEXT,
+      niche_key        TEXT,
+      hashtags         JSONB,
+      name             TEXT,
+      profile_pic      TEXT,
+      followers        INTEGER,
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at     TIMESTAMPTZ
+    );
+  `);
+  // Índice para o job diário buscar rápido os nichos ativos.
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_user_profiles_niche ON user_profiles (niche_key);`);
 }
 
 // Lê uma entrada do cache. Retorna { data, ageMin } se existir e dentro do TTL.

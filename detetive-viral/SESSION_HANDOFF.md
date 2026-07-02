@@ -1,8 +1,43 @@
 # HANDOFF — Radar de Tendências (estado do projeto)
 
-**ÚLTIMA SESSÃO:** 2026-06-24. Status: **Escalabilidade Fase 1 FEITA** — cache migrado do arquivo de 17MB para Postgres. Plano de escala definido (beta grátis, 50-500 users, stack gerenciada simples).
+**ÚLTIMA SESSÃO:** 2026-07-02. Status: **Auth Fase 1 FEITA** — login agora LEMBRA o @ do usuário (tabela `user_profiles` no Supabase, ligada ao `user_id`). Antes o @ vivia só no localStorage. Base pronta pro job diário de 24h.
 
 > Leia também `ARQUITETURA_COMPLETA_TRENDS.md` (detalhe técnico do pipeline).
+
+## Sessão 2026-07-02 — Vínculo conta ↔ @ (Auth Fase 1) ✅
+
+**Objetivo do produto (definido com o user):** usuário loga → app lembra o @ dele → mostra vídeos do nicho → um **job diário (24h)** reprocessa cada nicho ativo → no próximo login o user "bate de frente" com vídeos novos. **Custo é por NICHO, não por user** (100 users no mesmo nicho = 1 refresh/dia). O login NUNCA dispara Apify — só lê o cache que o job deixou fresco.
+
+**Plano completo (3 fases):** [1] Vínculo login↔@ ✅FEITO → [2] Job diário `POST /api/cron/refresh-niches` agendado por **GitHub Actions cron** (decisão do user; Render free dorme, então nada de node-cron in-process) → [3] Badge "🔥 X novos desde a última visita" (usa `last_seen_at` vs `refreshed_at`).
+
+**O que ficou pronto nesta sessão (Fase 1):**
+- **DB:** tabela `user_profiles(user_id PK, instagram_handle, nicho, niche_key, hashtags jsonb, name, profile_pic, followers, created_at, updated_at, last_seen_at)` + índice em `niche_key`. Criada via `initDb()` em `server/db.js` (idempotente). **Verificada no Supabase real.**
+- **Backend (`server/index.js`):** middleware `requireUser` valida o access_token do Supabase via `GET {SUPABASE_URL}/auth/v1/user` (sem gerenciar JWT secret). Helper `classifyUsername` (reusa cache classify/profileRaw, só raspa se preciso). Endpoints `POST /api/user/link-profile` (upsert por user_id, classifica nicho pro job) e `GET /api/user/profile` (fonte da verdade cross-device, carimba `last_seen_at`).
+- **`.env` do server:** adicionados `SUPABASE_URL` e `SUPABASE_ANON_KEY` (copiados do `.env.local` do front). ⚠️ Precisam ir pro Render na publicação.
+- **Front:** `lib/api.ts` ganhou `linkProfile()`/`getUserProfile()`. `app/page.tsx`: `commitProfile()` centraliza set+localStorage+vínculo; effect carrega o @ do banco ao logar (cross-device, só se não houver perfil local); `handleAuthenticated` recupera o @ vinculado antes de cair no wizard; wizard/troca-de-@ vinculam no banco.
+- **Verificado e2e SEM gasto Apify:** 401 sem token / token falso; com token real do Supabase → link @bauruoficiall (nicho "Gastronomia", niche_key "gastronomia") → GET retorna; upsert trocando p/ @marcello.cabraal manteve 1 linha (niche_key "marketing"). Linhas de teste removidas. Front compila no Turbopack (HTTP 200, sem erro). `tsc --noEmit` limpo.
+
+## Sessão 2026-07-02 — Job diário por nicho (Auth Fase 2) ✅
+
+**Objetivo:** a cada 24h, servidor atualiza CADA nicho 1x. 100 users no mesmo nicho = 1 gasto Apify (em vez de 100).
+
+**O que ficou pronto:**
+- **Endpoint:** `POST /api/cron/refresh-niches` (protegido por header `x-cron-secret`)
+  - Busca nichos ativos de `user_profiles` (`SELECT DISTINCT niche_key`)
+  - Para cada nicho: `computeNicheVideos(force=true)` → raspa Apify fresco
+  - Sobrescreve cache `nicheVideos` (usuários no login leem esse cache = R$0)
+  - Invalida cache `profiles` do nicho (força re-raspar perfil, mas aproveita profileRaw + classify em cache — barato)
+  - Respeita kill-switch `REFRESH_ENABLED` + teto `REFRESH_MAX_NICHES`
+- **GitHub Actions workflow:** `.github/workflows/refresh-niches.yml` — cron diário `'0 2 * * *'` (2AM UTC)
+  - Bate no endpoint com o `CRON_SECRET` via header
+  - Permite rodar manual (workflow_dispatch) pra debug
+- **Env vars** (adicionadas ao `server/.env`):
+  - `CRON_SECRET=seu-segredo-aleatorio-aqui` (manda no header, protege o endpoint)
+  - `REFRESH_ENABLED=true` (kill-switch, pra desligar sem deploy)
+  - `REFRESH_MAX_NICHES=10` (teto de nichos por rodada, evita surpresa de gasto)
+- **Verificação:** endpoint testa 401 sem secret / com secret errado / 200 com secret certo. Fluxo funcional **SEM precisar de Apify** (testa com 0 nichos ativos).
+
+**PRÓXIMO (Fase 3):** badge "🔥 X novos desde a última visita" (compara `last_seen_at` do user com `refreshed_at` do nicho). Baixa prioridade — Fase 1+2 já entregam o produto core.
 
 ## PLANO DE ESCALABILIDADE (decidido 2026-06-24)
 **Objetivo:** validar com beta grátis | **Escala:** 50-500 users | **Deploy:** gerenciado simples (Vercel front + Render/Railway back + Supabase Postgres na publicação).

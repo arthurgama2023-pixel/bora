@@ -1,4 +1,4 @@
-export const API = import.meta.env.DEV ? "http://localhost:3000" : "";
+export const API = import.meta.env.DEV ? "http://localhost:3010" : "";
 
 export const TOKEN_KEY = "bora_token";
 
