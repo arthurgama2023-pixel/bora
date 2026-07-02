@@ -1377,6 +1377,7 @@ REGRAS IMPORTANTES:
    - RUIM long-tail (quase ninguém usa): iaparaaumentarfaturamento, sistemasdeiaempresariais
    - RUIM mega-genérica (traz conteúdo fora do tema): motivacao, amor, viral, fyp, foryou, reels, skate, vida, sucesso, feliz, brasil, love
 4. Cada hashtag deve ser UMA ÚNICA PALAVRA, SEM espaços e SEM acentos.
+5. RESTAURANTE / bar / hamburgueria / negócio de COMER FORA: EVITE hashtags dominadas por RECEITA CASEIRA (culinaria, foodie, receita, receitas, comidacaseira, alimentacao, confeitaria) — elas trazem tutorial de bolo/torta pra fazer em casa, não conteúdo de restaurante. Prefira: restaurante, gastronomia, ondecomer, e o TIPO de cozinha quando claro (hamburgueria, pizzaria, churrascaria, japones) e/ou a CIDADE.
 
 Responda APENAS JSON válido:
 {"nicho":"nicho profissional central","hashtags":["6 hashtags SEM #, palavra única, específicas do nicho MAS populares"],"confianca":"Alta|Média|Baixa"}`;
@@ -1430,15 +1431,29 @@ async function searchViralHashtags(apify, hashtags, perTag = 70) {
   return items || [];
 }
 
+// Detecta nicho de "comer FORA" (restaurante/bar/hamburgueria...) — nesses casos
+// receita caseira/tutorial é RUÍDO (o dono do restaurante quer ideias de restaurante,
+// não conteúdo pra fazer em casa). É o que enchia o resultado do @bauruoficiall de bolo/sushi.
+function isEatingOutNiche(niche) {
+  return /restaurante|gastronom|steakhouse|churrascaria|hamburgu|pizzaria|lanchonete|foodservice|\bbar\b|cafeteria|bistr|comer fora|delivery/i
+    .test(niche || '');
+}
+
 // Filtro de relevância por IA: mantém só reels do nicho E em português (1 chamada em lote)
 async function filterRelevanceAI(niche, candidates) {
   if (!candidates.length) return new Set();
   const lista = candidates.map(c => `${c.i}: ${(c.caption || '').replace(/\n/g, ' ').slice(0, 140)}`).join('\n');
+
+  // Regra extra só p/ nichos de "comer fora": separa RESTAURANTE de RECEITA caseira.
+  const regraRestaurante = isEatingOutNiche(niche) ? `
+(c) O alvo é um NEGÓCIO DE COMER FORA (restaurante/bar/hamburgueria/etc). MANTENHA conteúdo de restaurante: pratos servidos no estabelecimento, experiência no local, "onde comer", indicação de lugar, bastidores/marketing de restaurante, review gastronômico. DESCARTE RECEITA CASEIRA e TUTORIAL de cozinha — sinais: "aprenda a fazer", "ingredientes", "modo de preparo", "receita", "anota aí", confeitaria/bolo/torta pra fazer em casa. Isso é conteúdo pra fazer EM CASA e NÃO serve de referência pra um restaurante.` : '';
+
   const prompt = `Nicho-alvo: "${niche}".
 
-Abaixo há reels candidatos no formato "número: legenda". Devolva APENAS os números dos reels que atendam AOS DOIS critérios:
-(a) sejam GENUINAMENTE sobre o nicho-alvo — descarte spam que só usa a hashtag por alcance (ex: moda, touros, futebol, receita, religião, dança que NÃO têm relação com o nicho);
-(b) estejam em PORTUGUÊS — descarte espanhol e inglês.
+Você está curando reels VIRAIS que sirvam de REFERÊNCIA para o dono de um negócio desse nicho.
+Abaixo há reels candidatos no formato "número: legenda". Devolva APENAS os números que atendam a TODOS os critérios:
+(a) sejam GENUINAMENTE sobre o nicho-alvo — descarte quem só usou a hashtag por alcance (ex: moda, touros, futebol, religião, dança, humor genérico SEM relação com o nicho);
+(b) estejam em PORTUGUÊS — descarte espanhol e inglês.${regraRestaurante}
 
 REELS:
 ${lista}
