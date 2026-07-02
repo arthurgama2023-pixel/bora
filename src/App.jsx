@@ -459,7 +459,7 @@ function AppMain({ onLogout, username }) {
   async function createNewImDate() {
     if (!newImDate) return;
     try {
-      const res = await apiFetch(`${API}\api\imersao`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: `Imersão — ${isoToBR(newImDate)}`, content: "", source: "marker", event_date: newImDate }) });
+      const res = await apiFetch(`${API}/api/imersao`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: `Imersão — ${isoToBR(newImDate)}`, content: "", source: "marker", event_date: newImDate }) });
       const entry = await res.json();
       if (entry?.id) {
         const dateBR = isoToBR(newImDate);
