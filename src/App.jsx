@@ -131,6 +131,8 @@ function AppMain({ onLogout, username }) {
   const [imEventOpen, setImEventOpen] = useState(false);
   const [imEventOpenDates, setImEventOpenDates] = useState(new Set()); // controla quais datas estão abertas
   const [imEventDate, setImEventDate] = useState(() => new Date().toISOString().slice(0, 10)); // data escolhida ao adicionar (input date, YYYY-MM-DD)
+  const [showNewImModal, setShowNewImModal] = useState(false); // modal para criar nova Imersão
+  const [newImDate, setNewImDate] = useState(() => new Date().toISOString().slice(0, 10)); // data da nova Imersão
   const imFileRef = useRef(null);
 
   // Per-case expand & Instagram
@@ -438,6 +440,20 @@ function AppMain({ onLogout, username }) {
 
   function toggleImersao(id) { setImersao(im => im.map(e => e.id === id ? { ...e, active: !e.active } : e)); }
   function toggleAllImersao(on) { setImersao(im => im.map(e => ({ ...e, active: on }))); }
+
+  async function createNewImDate() {
+    if (!newImDate) return;
+    const res = await apiFetch(`${API}\api\imersao`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: `Imersão ${isoToBR(newImDate)}`, content: "", source: "marker", event_date: newImDate }) });
+    const entry = await res.json();
+    if (entry?.id) {
+      const dateBR = isoToBR(newImDate);
+      const entryWithDate = { ...entry, active: true, created_date: dateBR };
+      setImersao(im => [entryWithDate, ...im]);
+      setImEventDate(newImDate);
+      setShowNewImModal(false);
+      setNewImDate(new Date().toISOString().slice(0, 10));
+    }
+  }
 
   // Move um mentorado para outra Imersão (event_date), persistindo no banco
   async function moveImersaoToDate(caseId, isoDate) {
@@ -1008,21 +1024,8 @@ function AppMain({ onLogout, username }) {
                     <span>Salvar na Imersão de:</span>
                     <input className="im-date-input" type="date" value={imEventDate} onChange={e => setImEventDate(e.target.value)} />
                   </label>
-                  {Array.from(new Set(imersao.map(e => e.created_date).filter(Boolean))).length > 0 && (
-                    <div className="im-date-chips">
-                      {Array.from(new Set(imersao.map(e => e.created_date).filter(Boolean))).map(d => {
-                        const [dd, mm, yy] = d.split("/");
-                        const iso = yy && mm && dd ? `${yy}-${mm}-${dd}` : null;
-                        if (!iso) return null;
-                        return (
-                          <button key={d} type="button" className={"im-date-chip" + (imEventDate === iso ? " active" : "")} onClick={() => setImEventDate(iso)}>
-                            {d}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
                   <button className="im-add-btn" disabled={!imText.trim()} onClick={addImersao}>+ Adicionar caso</button>
+                  <button className="im-add-btn im-new-im-btn" onClick={() => setShowNewImModal(true)}>+ Nova Imersão</button>
                 </div>
               )}
 
@@ -1221,6 +1224,29 @@ function AppMain({ onLogout, username }) {
         </div>
         {dragging && <div className="dropzone"><div className="dropcard"><Clip big /><p>Solte aqui</p></div></div>}
       </main>}
+      {/* ── Nova Imersão Modal ── */}
+      {showNewImModal && (
+        <div className="modal-overlay" onClick={() => setShowNewImModal(false)}>
+          <div className="modal-box" onClick={ev => ev.stopPropagation()} style={{ maxWidth: "400px" }}>
+            <div className="modal-head">
+              <div className="modal-head-title">
+                <span>Criar Nova Imersão</span>
+              </div>
+              <button className="modal-close" onClick={() => setShowNewImModal(false)}>×</button>
+            </div>
+            <div className="modal-body" style={{ gap: "12px", padding: "20px" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--ink)" }}>Data da Imersão:</span>
+                <input type="date" value={newImDate} onChange={e => setNewImDate(e.target.value)} style={{ padding: "8px 10px", border: "1px solid var(--line)", borderRadius: "8px", fontFamily: "inherit", fontSize: "13px" }} />
+              </label>
+              <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+                <button onClick={() => setShowNewImModal(false)} style={{ flex: 1, padding: "9px 14px", border: "1px solid var(--line)", background: "white", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontFamily: "inherit" }}>Cancelar</button>
+                <button onClick={createNewImDate} style={{ flex: 1, padding: "9px 14px", background: "var(--accent)", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: "700", fontFamily: "inherit" }}>Criar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* ── Reuniões Modal ── */}
       {reunioesModal && (() => {
         const e = reunioesModal;
@@ -1514,6 +1540,8 @@ const CSS = `
 .im-add-textarea:focus{border-color:var(--accent);}
 .im-add-btn{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
 .im-add-btn:disabled{background:#e7ddd0;color:#b6ab9b;cursor:not-allowed;}
+.im-new-im-btn{background:transparent;color:var(--accent);border:1px solid var(--accent);margin-top:8px;}
+.im-new-im-btn:hover{background:var(--accent-soft);}
 .im-date-label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:600;color:var(--muted);}
 .im-date-input{border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-family:inherit;font-size:12.5px;color:var(--ink);outline:none;}
 .im-date-input:focus{border-color:var(--accent);}
