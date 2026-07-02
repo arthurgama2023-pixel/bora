@@ -9,10 +9,10 @@ function resolveApiUrl(): string {
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
     if (host === 'localhost' || host === '127.0.0.1') {
-      return 'http://localhost:3003';
+      return 'http://localhost:9000'; // backend admin está rodando na 9000
     }
   }
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
 }
 
 export const API_URL = resolveApiUrl();

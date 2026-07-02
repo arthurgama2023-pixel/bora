@@ -1703,6 +1703,7 @@ app.post('/api/videos/from-user-profile', async (req, res) => {
       const hit = await getCached('profiles', cleanUsername);
       if (hit) {
         console.log(`[Videos from Profile] ⚡ CACHE HIT @${cleanUsername} (${hit.ageMin} min atrás) — custo R$0`);
+        logActivity('search', { endpoint: '/api/videos/from-user-profile', method: 'POST', statusCode: 200, apifyCost: 0, details: { instagram: cleanUsername, cached: true } });
         return res.json({ ...hit.data, cached: true, cacheAgeMin: hit.ageMin });
       }
     }
@@ -1768,6 +1769,13 @@ app.post('/api/videos/from-user-profile', async (req, res) => {
     // 💾 Guarda no cache por perfil (próximas aberturas do MESMO @ em 12h = grátis)
     await setCached('profiles', cleanUsername, result);
 
+    // Log: custo estimado — nicho em cache = R$0; busca fresca (raspou Apify) ≈ R$2,55
+    logActivity('search', {
+      endpoint: '/api/videos/from-user-profile', method: 'POST', statusCode: 200,
+      apifyCost: nicheCached ? 0 : 2.55,
+      details: { instagram: cleanUsername, nicho: detectedNiche, nicheCached, videos: autoridade.length + viralizacao.length }
+    });
+
     res.json({ ...result, nicheCached, nicheAgeMin });
   } catch (error) {
     console.error('[Videos from Profile] Erro:', error.message);
@@ -1814,6 +1822,10 @@ app.post('/api/user/link-profile', requireUser, async (req, res) => {
     );
 
     console.log(`[link-profile] 🔗 user ${req.userId.slice(0, 8)}… → @${cleanUsername} (${cls.nicho})`);
+    logActivity('link_profile', {
+      userId: req.userId, endpoint: '/api/user/link-profile', method: 'POST', statusCode: 200,
+      details: { instagram: cleanUsername, nicho: cls.nicho, niche_key: nicheK }
+    });
     res.json({ ok: true, instagram: cleanUsername, nicho: cls.nicho, hashtags: cls.hashtags });
   } catch (err) {
     console.error('[link-profile] Erro:', err.message);
@@ -1833,6 +1845,12 @@ app.get('/api/user/profile', requireUser, async (req, res) => {
     // Marca a visita (usado depois pelo badge "novos desde a última visita").
     pool.query(`UPDATE user_profiles SET last_seen_at = NOW() WHERE user_id = $1`, [req.userId])
       .catch(() => {});
+
+    // Recuperar o @ vinculado ao logar = proxy de "login/sessão".
+    logActivity('login', {
+      userId: req.userId, endpoint: '/api/user/profile', method: 'GET', statusCode: 200,
+      details: { instagram: rows[0].instagram_handle }
+    });
 
     const r = rows[0];
     res.json({
@@ -1926,15 +1944,36 @@ app.post('/api/cron/refresh-niches', async (req, res) => {
           [niche_key]
         );
 
+        const videosCount = (data.autoridade?.length || 0) + (data.viralizacao?.length || 0);
         console.log(`[Cron] ✅ ${niche_key}: cache nicheVideos sobrescrito, ${affectedProfiles.length} perfis invalidados.`);
-        results.push({
-          niche_key,
-          nicho,
-          videos: data.autoridade?.length + data.viralizacao?.length || 0,
-          profilesInvalidated: affectedProfiles.length,
+
+        // Atualiza o status do refresh (aparece no painel de admin)
+        await pool.query(
+          `INSERT INTO refresh_status (niche_key, nicho, last_refresh, next_refresh, videos_count, status)
+           VALUES ($1, $2, NOW(), NOW() + INTERVAL '24 hours', $3, 'success')
+           ON CONFLICT (niche_key) DO UPDATE SET
+             nicho=EXCLUDED.nicho, last_refresh=NOW(), next_refresh=NOW() + INTERVAL '24 hours',
+             videos_count=EXCLUDED.videos_count, status='success', error_message=NULL`,
+          [niche_key, nicho, videosCount]
+        );
+        logActivity('refresh', {
+          endpoint: '/api/cron/refresh-niches', method: 'POST', statusCode: 200, apifyCost: 2.55,
+          details: { niche_key, nicho, videos: videosCount }
         });
+
+        results.push({ niche_key, nicho, videos: videosCount, profilesInvalidated: affectedProfiles.length });
       } catch (err) {
         console.error(`[Cron] ❌ ${niche_key} falhou:`, err.message);
+        await pool.query(
+          `INSERT INTO refresh_status (niche_key, nicho, last_refresh, videos_count, status, error_message)
+           VALUES ($1, $2, NOW(), 0, 'error', $3)
+           ON CONFLICT (niche_key) DO UPDATE SET status='error', error_message=EXCLUDED.error_message, last_refresh=NOW()`,
+          [niche_key, nicho, err.message]
+        );
+        logActivity('refresh', {
+          endpoint: '/api/cron/refresh-niches', method: 'POST', statusCode: 500,
+          errorMessage: err.message, details: { niche_key, nicho }
+        });
         results.push({ niche_key, nicho, error: err.message });
       }
     }
