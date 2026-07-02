@@ -1093,10 +1093,32 @@ function AppMain({ onLogout, username }) {
                                           ))}
                                         </div>
                                       ) : null}
-                                      <div className="ig-input-wrapper">
-                                        <InstagramIcon size={16} />
-                                        <input type="text" placeholder="@usuario" className="ig-input-quick" onKeyDown={ev => { if (ev.key === 'Enter') { addInstagram(e.id, ev.currentTarget.value); ev.currentTarget.value = ''; } }} />
-                                      </div>
+                                      {igInputOpen.has(e.id) ? (
+                                        <div className="ig-input-wrapper">
+                                          <input
+                                            type="text"
+                                            placeholder="@usuario"
+                                            className="ig-input-quick"
+                                            autoFocus
+                                            onKeyDown={ev => {
+                                              if (ev.key === 'Enter') {
+                                                addInstagram(e.id, ev.currentTarget.value);
+                                                ev.currentTarget.value = '';
+                                                setIgInputOpen(p => { const n = new Set(p); n.delete(e.id); return n; });
+                                              }
+                                            }}
+                                            onBlur={() => setIgInputOpen(p => { const n = new Set(p); n.delete(e.id); return n; })}
+                                          />
+                                        </div>
+                                      ) : (
+                                        <button
+                                          className="ig-icon-btn"
+                                          onClick={() => setIgInputOpen(p => { const n = new Set(p); n.add(e.id); return n; })}
+                                          title="Adicionar Instagram"
+                                        >
+                                          <InstagramIcon size={16} />
+                                        </button>
+                                      )}
                                     </div>
                                   )}
                                 </div>
@@ -1503,6 +1525,8 @@ const CSS = `
 .ig-avatar{width:24px;height:24px;border-radius:50%;object-fit:cover;}
 .ig-remove{background:none;border:none;color:var(--muted);cursor:pointer;font-weight:700;padding:0 2px;font-family:inherit;font-size:14px;}
 .ig-remove:hover{color:var(--accent);}
+.ig-icon-btn{background:none;border:none;color:var(--muted);cursor:pointer;padding:2px 4px;display:flex;align-items:center;justify-content:center;transition:.15s;}
+.ig-icon-btn:hover{color:var(--accent);}
 .ig-input-wrapper{display:flex;align-items:center;gap:4px;padding:0 4px;}
 .ig-input-quick{flex:1;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:12px;color:var(--ink);outline:none;}
 .ig-input-quick:focus{border-color:var(--accent);}
