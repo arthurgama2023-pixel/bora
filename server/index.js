@@ -724,8 +724,9 @@ app.get('/api/imersao', async (req, res) => {
 });
 
 app.post('/api/imersao', async (req, res) => {
-  const { title, content, source = 'manual', event_date = null } = req.body;
-  if (!content) return res.status(400).json({ error: 'Conteúdo obrigatório.' });
+  const { title, content = '', source = 'manual', event_date = null } = req.body;
+  // Conteúdo é obrigatório apenas para casos normais (não para marcadores de data)
+  if (!content && source !== 'marker') return res.status(400).json({ error: 'Conteúdo obrigatório.' });
 
   try {
     const baseRow = { title: title || 'Caso sem nome', content, source, username: req.user.username };
@@ -743,6 +744,9 @@ app.post('/api/imersao', async (req, res) => {
 
     // Responde imediatamente — embeddings são gerados em segundo plano
     res.json(entry);
+
+    // Pula indexação para marcadores vazios (apenas atualizações de datas)
+    if (!content || source === 'marker') return;
 
     // Auto-sync Obsidian
     syncSingleToObsidian('imersao', title, content).catch(console.error);
@@ -953,38 +957,41 @@ app.post('/api/instagram/preview', async (req, res) => {
 });
 
 app.patch('/api/imersao/:id', async (req, res) => {
-  const { instagram_url, instagram_profile, title, content } = req.body;
-  const updates = {};
-  if (instagram_url !== undefined) updates.instagram_url = instagram_url;
-  if (instagram_profile !== undefined) updates.instagram_profile = instagram_profile;
-  if (title !== undefined) updates.title = title;
-  if (content !== undefined) updates.content = content;
-  if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'Nada para atualizar.' });
+  const { instagram_url, instagram_profile, title, content, event_date } = req.body;
+  // Campos garantidos (colunas existem sempre)
+  const safe = {};
+  if (title !== undefined) safe.title = title;
+  if (content !== undefined) safe.content = content;
+  if (event_date !== undefined) safe.event_date = event_date;
+  // Campos opcionais (colunas instagram_* podem não existir neste projeto)
+  const optional = {};
+  if (instagram_url !== undefined) optional.instagram_url = instagram_url;
+  if (instagram_profile !== undefined) optional.instagram_profile = instagram_profile;
+
+  if (Object.keys(safe).length === 0 && Object.keys(optional).length === 0) {
+    return res.status(400).json({ error: 'Nada para atualizar.' });
+  }
   try {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('imersao_cases')
-      .update(updates)
+      .update({ ...safe, ...optional })
       .eq('id', req.params.id)
       .select()
       .single();
 
-    if (error) {
-      // Colunas novas podem não existir ainda — tenta só com campos seguros
-      const safeUpdates = {};
-      if (instagram_url !== undefined) safeUpdates.instagram_url = instagram_url;
-      if (title !== undefined) safeUpdates.title = title;
-      if (content !== undefined) safeUpdates.content = content;
-      if (Object.keys(safeUpdates).length === 0) return res.status(500).json({ error: error.message });
-
-      const { data: data2, error: error2 } = await supabase
+    if (error && Object.keys(optional).length > 0) {
+      // colunas instagram_* não existem — atualiza só os campos seguros
+      if (Object.keys(safe).length === 0) return res.status(500).json({ error: error.message });
+      const r = await supabase
         .from('imersao_cases')
-        .update(safeUpdates)
+        .update(safe)
         .eq('id', req.params.id)
         .select()
         .single();
-      if (error2) throw error2;
-      return res.json(data2);
+      if (r.error) throw r.error;
+      return res.json(r.data);
     }
+    if (error) throw error;
 
     res.json(data);
   } catch (e) {
