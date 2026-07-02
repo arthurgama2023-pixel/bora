@@ -439,6 +439,18 @@ function AppMain({ onLogout, username }) {
   function toggleImersao(id) { setImersao(im => im.map(e => e.id === id ? { ...e, active: !e.active } : e)); }
   function toggleAllImersao(on) { setImersao(im => im.map(e => ({ ...e, active: on }))); }
 
+  // Move um mentorado para outra Imersão (event_date), persistindo no banco
+  async function moveImersaoToDate(caseId, isoDate) {
+    if (!isoDate) return;
+    const dateBR = isoToBR(isoDate);
+    try { localStorage.setItem(`im_date_${caseId}`, dateBR); } catch {}
+    setImersao(im => im.map(e => e.id === caseId ? { ...e, created_date: dateBR } : e));
+    setExpandedImId(null);
+    try {
+      await apiFetch(`${API}/api/imersao/${caseId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event_date: isoDate }) });
+    } catch { /* otimista — estado local já atualizado */ }
+  }
+
   async function handleImersaoFiles(fileList) {
     setImNotice(""); setImProcessing(false);
     for (const file of Array.from(fileList || [])) {
@@ -558,6 +570,15 @@ function AppMain({ onLogout, username }) {
       await apiFetch(`${API}/api/imersao/${caseId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instagram_url: next[0].url, instagram_profile: next[0].profile || null }) });
     } catch { /* optimistic */ }
   }
+
+  // Wrappers pra compatibilidade com novo layout
+  function addInstagram(caseId, input) {
+    const val = (input || "").trim();
+    if (!val) return;
+    const url = val.startsWith("http") ? val : `https://www.instagram.com/${val}/`;
+    saveInstagramUrl(caseId, url, null);
+  }
+  function removeInstagram(caseId, idx) { removeIgProfile(caseId, idx); }
 
   function removeIgProfile(caseId, idx) {
     const next = (igProfiles[caseId] || []).filter((_, i) => i !== idx);
@@ -1041,18 +1062,46 @@ function AppMain({ onLogout, username }) {
                         </button>
                         {imEventOpenDates.has(date) && (
                           <div className="im-event-expand">
-                            {items.map(e => (
-                              <div
-                                key={e.id}
-                                className="sources-item"
-                                style={{ cursor: "pointer" }}
-                                onClick={() => setExpandedImId(expandedImId === e.id ? null : e.id)}
-                              >
-                                <span className="sources-item-icon"><LayersIcon small /></span>
-                                <span className="sources-item-title">{e.title}</span>
-                                <input type="checkbox" checked={e.active !== false} onChange={() => toggleImersao(e.id)} />
-                              </div>
-                            ))}
+                            {items.map(e => {
+                              const expanded = expandedImId === e.id;
+                              return (
+                                <div key={e.id} className={"im-item-wrap" + (expanded ? " im-item-wrap--selected" : "")}>
+                                  <div className="sources-item">
+                                    <span className="sources-item-icon"><LayersIcon small /></span>
+                                    <span
+                                      className="sources-item-title"
+                                      style={{ cursor: "pointer" }}
+                                      onClick={() => setExpandedImId(expanded ? null : e.id)}
+                                    >
+                                      {e.title}
+                                    </span>
+                                    <input type="checkbox" checked={e.active !== false} onChange={() => toggleImersao(e.id)} />
+                                  </div>
+
+                                  {expanded && (
+                                    <div className="im-meet-row">
+                                      <button className="im-meet-btn" onClick={() => setReunioesModal(e)} title="Ver reuniões">
+                                        <MeetIcon />
+                                      </button>
+                                      {igProfiles[e.id] && igProfiles[e.id].length > 0 ? (
+                                        <div className="ig-quick-list">
+                                          {igProfiles[e.id].map((prof, idx) => (
+                                            <div key={idx} className="ig-quick-item">
+                                              {prof.profile && <img src={prof.profile} alt="IG" className="ig-avatar" />}
+                                              <button className="ig-remove" onClick={() => removeInstagram(e.id, idx)} title="Remover">×</button>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                      <div className="ig-input-wrapper">
+                                        <InstagramIcon size={16} />
+                                        <input type="text" placeholder="@usuario" className="ig-input-quick" onKeyDown={ev => { if (ev.key === 'Enter') { addInstagram(e.id, ev.currentTarget.value); ev.currentTarget.value = ''; } }} />
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -1449,7 +1498,14 @@ const CSS = `
 .im-date-chips{display:flex;flex-wrap:wrap;gap:5px;}
 .im-date-chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:3px 10px;font-size:11.5px;font-weight:600;color:var(--muted);cursor:pointer;font-family:inherit;transition:.15s;}
 .im-date-chip:hover{border-color:var(--accent);color:var(--accent);}
-.im-date-chip.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+.ig-quick-list{display:flex;gap:4px;flex-wrap:wrap;}
+.ig-quick-item{display:flex;align-items:center;gap:3px;}
+.ig-avatar{width:24px;height:24px;border-radius:50%;object-fit:cover;}
+.ig-remove{background:none;border:none;color:var(--muted);cursor:pointer;font-weight:700;padding:0 2px;font-family:inherit;font-size:14px;}
+.ig-remove:hover{color:var(--accent);}
+.ig-input-wrapper{display:flex;align-items:center;gap:4px;padding:0 4px;}
+.ig-input-quick{flex:1;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:12px;color:var(--ink);outline:none;}
+.ig-input-quick:focus{border-color:var(--accent);}
 
 .im-expand{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:3px 0 6px 0;display:flex;flex-direction:column;gap:8px;}
 .ig-row{display:flex;flex-direction:column;align-items:center;gap:8px;}
