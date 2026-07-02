@@ -133,6 +133,7 @@ function AppMain({ onLogout, username }) {
   const [imEventDate, setImEventDate] = useState(() => new Date().toISOString().slice(0, 10)); // data escolhida ao adicionar (input date, YYYY-MM-DD)
   const [showNewImModal, setShowNewImModal] = useState(false); // modal para criar nova Imersão
   const [newImDate, setNewImDate] = useState(() => new Date().toISOString().slice(0, 10)); // data da nova Imersão
+  const [imCreatingDate, setImCreatingDate] = useState(false); // trava anti-duplicação ao criar Imersão
   const imFileRef = useRef(null);
 
   // Per-case expand & Instagram
@@ -457,12 +458,26 @@ function AppMain({ onLogout, username }) {
   function toggleAllImersao(on) { setImersao(im => im.map(e => ({ ...e, active: on }))); }
 
   async function createNewImDate() {
-    if (!newImDate) return;
+    if (!newImDate || imCreatingDate) return;
+    const dateBR = isoToBR(newImDate);
+    // Evita duplicar: se já existe uma Imersão nessa data, apenas seleciona
+    const jaExiste = imersao.some(e => {
+      const evt = e.event_date ? String(e.event_date).slice(0, 10) : null;
+      return evt === newImDate || e.created_date === dateBR;
+    });
+    if (jaExiste) {
+      setImEventDate(newImDate);
+      setShowNewImModal(false);
+      setNewImDate(new Date().toISOString().slice(0, 10));
+      setImNotice("Essa Imersão já existe.");
+      setTimeout(() => setImNotice(""), 2500);
+      return;
+    }
+    setImCreatingDate(true);
     try {
       const res = await apiFetch(`${API}/api/imersao`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: `Imersão — ${isoToBR(newImDate)}`, content: "", source: "marker", event_date: newImDate }) });
       const entry = await res.json();
       if (entry?.id) {
-        const dateBR = isoToBR(newImDate);
         const entryWithDate = { ...entry, active: true, created_date: dateBR, event_date: newImDate };
         setImersao(im => [entryWithDate, ...im]);
         setImEventDate(newImDate);
@@ -477,6 +492,8 @@ function AppMain({ onLogout, username }) {
     } catch (err) {
       setImNotice("Erro ao conectar ao servidor");
       setTimeout(() => setImNotice(""), 3000);
+    } finally {
+      setImCreatingDate(false);
     }
   }
 
@@ -1087,7 +1104,10 @@ function AppMain({ onLogout, username }) {
                   });
                   return Object.entries(byDate)
                     .sort(([dateA], [dateB]) => new Date(dateB.split("/").reverse().join("-")) - new Date(dateA.split("/").reverse().join("-")))
-                    .map(([date, items]) => (
+                    .map(([date, items]) => {
+                      // Markers (source='marker') apenas criam o grupo da data — não aparecem como itens
+                      const visibleItems = items.filter(e => e.source !== 'marker');
+                      return (
                       <div key={date} className="im-event-wrap">
                         <button
                           className="know-btn know-btn-active im-event-btn"
@@ -1099,11 +1119,14 @@ function AppMain({ onLogout, username }) {
                         >
                           <LayersIcon small />
                           <span>Imersão — {date}</span>
-                          <span className="know-count">{items.length}</span>
+                          <span className="know-count">{visibleItems.length}</span>
                         </button>
                         {imEventOpenDates.has(date) && (
                           <div className="im-event-expand">
-                            {items.map(e => {
+                            {visibleItems.length === 0 && (
+                              <div className="im-event-empty">Nenhum caso ainda. Adicione um mentorado a esta Imersão.</div>
+                            )}
+                            {visibleItems.map(e => {
                               const expanded = expandedImId === e.id;
                               return (
                                 <div key={e.id} className={"im-item-wrap" + (expanded ? " im-item-wrap--selected" : "")}>
@@ -1168,7 +1191,8 @@ function AppMain({ onLogout, username }) {
                           </div>
                         )}
                       </div>
-                    ));
+                      );
+                    });
                 })()}
               </div>
             </>)}
@@ -1279,7 +1303,7 @@ function AppMain({ onLogout, username }) {
               </label>
               <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
                 <button onClick={() => setShowNewImModal(false)} style={{ flex: 1, padding: "9px 14px", border: "1px solid var(--line)", background: "white", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontFamily: "inherit" }}>Cancelar</button>
-                <button onClick={createNewImDate} style={{ flex: 1, padding: "9px 14px", background: "var(--accent)", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: "700", fontFamily: "inherit" }}>Criar</button>
+                <button onClick={createNewImDate} disabled={imCreatingDate} style={{ flex: 1, padding: "9px 14px", background: imCreatingDate ? "#e7ddd0" : "var(--accent)", color: imCreatingDate ? "#b6ab9b" : "white", border: "none", borderRadius: "8px", cursor: imCreatingDate ? "not-allowed" : "pointer", fontSize: "13px", fontWeight: "700", fontFamily: "inherit" }}>{imCreatingDate ? "Criando…" : "Criar"}</button>
               </div>
             </div>
           </div>
@@ -1580,6 +1604,7 @@ const CSS = `
 .im-add-btn:disabled{background:#e7ddd0;color:#b6ab9b;cursor:not-allowed;}
 .im-new-im-btn{background:transparent;color:var(--accent);border:1px solid var(--accent);margin-top:8px;}
 .im-new-im-btn:hover{background:var(--accent-soft);}
+.im-event-empty{font-size:12px;color:var(--muted);font-style:italic;padding:8px 10px;}
 .im-date-label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:600;color:var(--muted);}
 .im-date-input{border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-family:inherit;font-size:12.5px;color:var(--ink);outline:none;}
 .im-date-input:focus{border-color:var(--accent);}
