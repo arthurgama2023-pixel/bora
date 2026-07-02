@@ -458,15 +458,25 @@ function AppMain({ onLogout, username }) {
 
   async function createNewImDate() {
     if (!newImDate) return;
-    const res = await apiFetch(`${API}\api\imersao`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: `Imersão ${isoToBR(newImDate)}`, content: "", source: "marker", event_date: newImDate }) });
-    const entry = await res.json();
-    if (entry?.id) {
-      const dateBR = isoToBR(newImDate);
-      const entryWithDate = { ...entry, active: true, created_date: dateBR };
-      setImersao(im => [entryWithDate, ...im]);
-      setImEventDate(newImDate);
-      setShowNewImModal(false);
-      setNewImDate(new Date().toISOString().slice(0, 10));
+    try {
+      const res = await apiFetch(`${API}\api\imersao`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: `Imersão — ${isoToBR(newImDate)}`, content: "", source: "marker", event_date: newImDate }) });
+      const entry = await res.json();
+      if (entry?.id) {
+        const dateBR = isoToBR(newImDate);
+        const entryWithDate = { ...entry, active: true, created_date: dateBR, event_date: newImDate };
+        setImersao(im => [entryWithDate, ...im]);
+        setImEventDate(newImDate);
+        setShowNewImModal(false);
+        setNewImDate(new Date().toISOString().slice(0, 10));
+        setImNotice("success");
+        setTimeout(() => setImNotice(""), 2500);
+      } else {
+        setImNotice("Erro ao criar Imersão");
+        setTimeout(() => setImNotice(""), 3000);
+      }
+    } catch (err) {
+      setImNotice("Erro ao conectar ao servidor");
+      setTimeout(() => setImNotice(""), 3000);
     }
   }
 
