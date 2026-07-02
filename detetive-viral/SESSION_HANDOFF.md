@@ -1,6 +1,20 @@
 # HANDOFF — Radar de Tendências (estado do projeto)
 
-**ÚLTIMA SESSÃO:** 2026-07-02. Status: **Auth Fase 1 FEITA** — login agora LEMBRA o @ do usuário (tabela `user_profiles` no Supabase, ligada ao `user_id`). Antes o @ vivia só no localStorage. Base pronta pro job diário de 24h.
+**ÚLTIMA SESSÃO:** 2026-07-02. Status: **Fase 1+2 + Painel Admin + Fix de qualidade DEPLOYADOS no Render.** Login lembra o @ (tabela `user_profiles`), refresh diário por nicho, painel `/admin`, e correção do bug "restaurante trazia receita caseira".
+
+## DEPLOY RENDER (mapeado 2026-07-02) — IMPORTANTE
+- Repo: `github.com/arthurgama2023-pixel/detector-de-tendencias` (= remote `origin`, branch `main`). **CD Grupo/agente-bora é OUTRO repo (`bora`) — mexer aqui NÃO afeta o CD Grupo.**
+- **Front:** serviço `detector-de-tendencias-1` (srv-d8rdsbnlk1mc73bq26o0), rootDir `detetive-viral`, URL https://detector-de-tendencias-1.onrender.com
+- **Backend:** serviço `detector-de-tendencias` (srv-d8rdo0cm0tmc73c2lfo0), builda pelo **Dockerfile da RAIZ** (que faz `COPY detetive-viral/server/`), URL https://detector-de-tendencias.onrender.com — é pra ONDE o front aponta (`NEXT_PUBLIC_API_URL`).
+- Ambos com autoDeploy on push. Env vars do backend (adicionadas via API Render, método **PUT** `/env-vars/{key}`): SUPABASE_URL, SUPABASE_ANON_KEY, CRON_SECRET, REFRESH_ENABLED, REFRESH_MAX_NICHES. `CRON_SECRET` atual = `0c7900...bede`.
+- **FALTA (ação do user):** criar secrets no GitHub (Settings→Secrets→Actions) `CRON_SECRET` e `BACKEND_URL=https://detector-de-tendencias.onrender.com` pra o workflow `.github/workflows/refresh-niches.yml` rodar o refresh diário.
+- Render API key do user (workspace): rnd_… (usar com cuidado). Env var API só aceita **PUT** por chave (POST/PATCH dão 405).
+
+## FIX DE QUALIDADE (2026-07-02) — restaurante vs receita caseira
+Bug: @bauruoficiall (restaurante de cardápio genérico) trazia bolo/torta/sushi caseiro. Causa: perfil genérico → hashtags mega-amplas (`culinaria`,`foodie`,`alimentacao`) que no IG são dominadas por RECEITA caseira; o filtro aceitava ("receita é gastronomia").
+- **Fix 1** `filterRelevanceAI` + `isEatingOutNiche()`: em nicho de "comer fora", REJEITA receita/tutorial caseiro, mantém só conteúdo de restaurante.
+- **Fix 2** `classifyProfileWithAI`: p/ restaurante, evita hashtags de receita, prefere `restaurante`/`ondecomer`/tipo-de-cozinha/cidade.
+- Validado: busca fresca do bauru virou nicho "Cadeia de Restaurantes no RJ", hashtags `restaurante,gastronomia,ondecomer,restaurantesrj,comidaboa,churrascaria` → resultado só de rodízios/buffets/restaurantes do RJ. Custo ~R$2,55.
 
 > Leia também `ARQUITETURA_COMPLETA_TRENDS.md` (detalhe técnico do pipeline).
 
