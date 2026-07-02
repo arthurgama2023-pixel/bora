@@ -170,6 +170,21 @@ function AppMain({ onLogout, username }) {
     }
   }, [agentNames]);
 
+  useEffect(() => {
+    if (imersao.length > 0) {
+      const dates = Array.from(new Set(imersao.map(e => e.event_date || e.created_date).filter(Boolean)));
+      if (dates.length > 0) {
+        const sorted = dates.sort((a, b) => {
+          const dateA = a.includes("-") ? a : (a.split("/").reverse().join("-"));
+          const dateB = b.includes("-") ? b : (b.split("/").reverse().join("-"));
+          return new Date(dateB) - new Date(dateA);
+        });
+        const firstDate = sorted[0].includes("-") ? sorted[0] : (sorted[0].split("/").reverse().join("-"));
+        setImEventDate(firstDate);
+      }
+    }
+  }, [imersao.length]);
+
   async function loadConversations() {
     try {
       console.log(`[LOAD] Carregando TODAS as conversas (compartilhadas entre agentes)`);
@@ -1022,7 +1037,20 @@ function AppMain({ onLogout, username }) {
                   <textarea className="im-add-textarea" placeholder="Cole a transcrição da reunião aqui…" value={imText} onChange={e => setImText(e.target.value)} />
                   <label className="im-date-label">
                     <span>Salvar na Imersão de:</span>
-                    <input className="im-date-input" type="date" value={imEventDate} onChange={e => setImEventDate(e.target.value)} />
+                    <select className="im-date-input im-date-select" value={imEventDate} onChange={e => setImEventDate(e.target.value)}>
+                      {Array.from(new Set(imersao.map(e => e.event_date || e.created_date).filter(Boolean)))
+                        .sort((a, b) => {
+                          const dateA = a.includes("-") ? a : (a.split("/").reverse().join("-"));
+                          const dateB = b.includes("-") ? b : (b.split("/").reverse().join("-"));
+                          return new Date(dateB) - new Date(dateA);
+                        })
+                        .map(d => {
+                          const iso = d.includes("-") ? d : (d.split("/").reverse().join("-"));
+                          const display = d.includes("-") ? isoToBR(d) : d;
+                          return <option key={iso} value={iso}>{display}</option>;
+                        })
+                      }
+                    </select>
                   </label>
                   <button className="im-add-btn" disabled={!imText.trim()} onClick={addImersao}>+ Adicionar caso</button>
                   <button className="im-add-btn im-new-im-btn" onClick={() => setShowNewImModal(true)}>+ Nova Imersão</button>
@@ -1545,6 +1573,9 @@ const CSS = `
 .im-date-label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:600;color:var(--muted);}
 .im-date-input{border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-family:inherit;font-size:12.5px;color:var(--ink);outline:none;}
 .im-date-input:focus{border-color:var(--accent);}
+.im-date-select{padding:6px 9px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:12.5px;color:var(--ink);outline:none;background:white;cursor:pointer;}
+.im-date-select:focus{border-color:var(--accent);}
+.im-date-select option{padding:8px;}
 .im-date-chips{display:flex;flex-wrap:wrap;gap:5px;}
 .im-date-chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:3px 10px;font-size:11.5px;font-weight:600;color:var(--muted);cursor:pointer;font-family:inherit;transition:.15s;}
 .im-date-chip:hover{border-color:var(--accent);color:var(--accent);}
