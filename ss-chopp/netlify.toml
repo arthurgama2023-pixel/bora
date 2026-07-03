@@ -1,13 +1,12 @@
 [build]
   command = "npm run build"
-  functions = "netlify/functions"
-  publish = ".next"
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+  publish = "out"
 
 [dev]
   command = "npm run dev"
   port = 3000
+
+[[redirects]]
+  from = "/*"
+  to = "/404.html"
+  status = 404
