@@ -9,6 +9,58 @@ const WHATSAPP_NUMBER = "5521993765465";
 
 type DeliveryMethod = "entrega" | "retirada";
 
+function validateCPF(cpf: string): boolean {
+  const cleaned = cpf.replace(/\D/g, "");
+  if (cleaned.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(cleaned)) return false;
+
+  let sum = 0;
+  for (let i = 0; i < 9; i++) {
+    sum += parseInt(cleaned[i]) * (10 - i);
+  }
+  let digit1 = 11 - (sum % 11);
+  digit1 = digit1 > 9 ? 0 : digit1;
+
+  sum = 0;
+  for (let i = 0; i < 10; i++) {
+    sum += parseInt(cleaned[i]) * (11 - i);
+  }
+  let digit2 = 11 - (sum % 11);
+  digit2 = digit2 > 9 ? 0 : digit2;
+
+  return cleaned[9] === String(digit1) && cleaned[10] === String(digit2);
+}
+
+function validateCNPJ(cnpj: string): boolean {
+  const cleaned = cnpj.replace(/\D/g, "");
+  if (cleaned.length !== 14) return false;
+  if (/^(\d)\1{13}$/.test(cleaned)) return false;
+
+  let sum = 0;
+  let multiplier = 5;
+  for (let i = 0; i < 12; i++) {
+    sum += parseInt(cleaned[i]) * multiplier;
+    multiplier = multiplier === 2 ? 9 : multiplier - 1;
+  }
+  let digit1 = 11 - (sum % 11);
+  digit1 = digit1 > 9 ? 0 : digit1;
+
+  sum = 0;
+  multiplier = 6;
+  for (let i = 0; i < 13; i++) {
+    sum += parseInt(cleaned[i]) * multiplier;
+    multiplier = multiplier === 2 ? 9 : multiplier - 1;
+  }
+  let digit2 = 11 - (sum % 11);
+  digit2 = digit2 > 9 ? 0 : digit2;
+
+  return cleaned[12] === String(digit1) && cleaned[13] === String(digit2);
+}
+
+function isValidCPFOrCNPJ(value: string): boolean {
+  return validateCPF(value) || validateCNPJ(value);
+}
+
 export default function CarrinhoPage() {
   const { items, updateQuantity, removeItem, subtotal, deliveryFee, total, minimumOrder, meetsMinimum, clearCart } =
     useCart();
@@ -54,34 +106,48 @@ export default function CarrinhoPage() {
   const addressComplete = address.rua && address.numero && address.bairro && address.cpfCnpj;
   const canFinish = meetsMinimum && (deliveryMethod === "retirada" || addressComplete);
 
+  const isCPFValid = !address.cpfCnpj || isValidCPFOrCNPJ(address.cpfCnpj);
+
   function handleSendToWhatsApp() {
     const lines = items.map((item) => {
       const product = getProductById(item.productId);
       if (!product) return "";
       const lineTotal = product.price * item.quantity;
-      return `• ${product.name} (${item.quantity}x) - ${formatPrice(lineTotal)}`;
+      return `    ${product.emoji} ${product.name}\n       ${item.quantity}x = ${formatPrice(lineTotal)}`;
     });
 
-    const deliveryLabel = deliveryMethod === "entrega" ? "Entrega" : "Retirada na loja";
+    const deliveryLabel = deliveryMethod === "entrega" ? "🚚 Entrega" : "🏪 Retirada na loja";
     const addressLines =
       deliveryMethod === "entrega"
         ? [
-            `Endereço: ${address.rua}, ${address.numero} - ${address.bairro}${address.complemento ? ` (${address.complemento})` : ""}`,
-            `CPF/CNPJ: ${address.cpfCnpj}`,
+            "",
+            "📍 *ENDEREÇO DE ENTREGA*",
+            `Rua: ${address.rua}, ${address.numero}`,
+            `Bairro: ${address.bairro}${address.complemento ? `\nComplemento: ${address.complemento}` : ""}`,
           ]
         : [];
 
     const summary = [
-      "Pedido - SS-Chopp Distribuidora",
+      "╔════════════════════════════════╗",
+      "║  🍺 PEDIDO SS-CHOPP DISTRIBUIDORA  ║",
+      "╚════════════════════════════════╝",
       "",
+      "📦 *ITENS DO PEDIDO*",
       ...lines,
       "",
-      `Subtotal: ${formatPrice(subtotal)}`,
-      `Taxa de entrega: ${formatPrice(finalDeliveryFee)}`,
-      `Total: ${formatPrice(finalTotal)}`,
+      "─────────────────────────────────",
+      `💰 Subtotal: ${formatPrice(subtotal)}`,
+      `🚛 Taxa de entrega: ${formatPrice(finalDeliveryFee)}`,
       "",
-      `Modalidade: ${deliveryLabel}`,
+      `✅ *TOTAL: ${formatPrice(finalTotal)}*`,
+      "─────────────────────────────────",
+      "",
+      `${deliveryLabel}`,
       ...addressLines,
+      "",
+      `👤 CPF/CNPJ: ${address.cpfCnpj}`,
+      "",
+      "💬 Confirme o pedido por favor!",
     ].join("\n");
 
     const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(summary)}`;
@@ -199,12 +265,25 @@ export default function CarrinhoPage() {
               onChange={(e) => setAddress({ ...address, complemento: e.target.value })}
               className="col-span-2 rounded-md border border-gray-300 px-3 py-2 text-sm"
             />
-            <input
-              placeholder="CPF ou CNPJ"
-              value={address.cpfCnpj}
-              onChange={(e) => setAddress({ ...address, cpfCnpj: e.target.value })}
-              className="col-span-2 rounded-md border border-gray-300 px-3 py-2 text-sm"
-            />
+            <div className="col-span-2 flex gap-2 items-center">
+              <input
+                placeholder="CPF ou CNPJ"
+                value={address.cpfCnpj}
+                onChange={(e) => setAddress({ ...address, cpfCnpj: e.target.value })}
+                className={`flex-1 rounded-md border px-3 py-2 text-sm ${
+                  address.cpfCnpj
+                    ? isCPFValid
+                      ? "border-green-500 bg-green-50"
+                      : "border-red-500 bg-red-50"
+                    : "border-gray-300"
+                }`}
+              />
+              {address.cpfCnpj && (
+                <span className="text-lg">
+                  {isCPFValid ? "✅" : "❌"}
+                </span>
+              )}
+            </div>
           </div>
         )}
       </div>
