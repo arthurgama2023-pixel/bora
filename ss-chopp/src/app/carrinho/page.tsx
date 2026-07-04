@@ -66,7 +66,7 @@ export default function CarrinhoPage() {
     useCart();
   const [sent, setSent] = useState(false);
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("entrega");
-  const [address, setAddress] = useState({ rua: "", numero: "", bairro: "", complemento: "", cpfCnpj: "" });
+  const [address, setAddress] = useState({ nome: "", rua: "", numero: "", bairro: "", complemento: "", cpfCnpj: "" });
 
   if (sent) {
     return (
@@ -104,7 +104,8 @@ export default function CarrinhoPage() {
   const finalDeliveryFee = deliveryMethod === "entrega" ? deliveryFee : 0;
   const finalTotal = subtotal + finalDeliveryFee;
   const addressComplete = address.rua && address.numero && address.bairro && address.cpfCnpj;
-  const canFinish = meetsMinimum && (deliveryMethod === "retirada" || addressComplete);
+  const canFinish =
+    meetsMinimum && !!address.nome && (deliveryMethod === "retirada" || addressComplete);
 
   const isCPFValid = !address.cpfCnpj || isValidCPFOrCNPJ(address.cpfCnpj);
 
@@ -145,7 +146,8 @@ export default function CarrinhoPage() {
       `${deliveryLabel}`,
       ...addressLines,
       "",
-      `👤 CPF/CNPJ: ${address.cpfCnpj}`,
+      `👤 Nome: ${address.nome}`,
+      `🪪 CPF/CNPJ: ${address.cpfCnpj}`,
       "",
       "💬 Confirme o pedido por favor!",
     ].join("\n");
@@ -220,6 +222,16 @@ export default function CarrinhoPage() {
           Pedido mínimo de {formatPrice(minimumOrder)}. Faltam {formatPrice(minimumOrder - subtotal)} para finalizar.
         </p>
       )}
+
+      <div className="mt-6 rounded-xl border border-brand-black/10 bg-white p-4 shadow-sm">
+        <h2 className="mb-3 font-bold text-brand-black">Seus dados</h2>
+        <input
+          placeholder="Nome completo"
+          value={address.nome}
+          onChange={(e) => setAddress({ ...address, nome: e.target.value })}
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+        />
+      </div>
 
       <div className="mt-6 rounded-xl border border-brand-black/10 bg-white p-4 shadow-sm">
         <h2 className="mb-3 font-bold text-brand-black">Entrega ou retirada?</h2>
