@@ -1,0 +1,267 @@
+import { normalizeBrPhone } from "@/lib/phone";
+import { getWhatsAppConfig, type WhatsAppConfig } from "./config";
+
+// Evolution API (self-hosted, WhatsApp Web via QR code / código de pareamento — não é a
+// API oficial da Meta). Documentação: https://doc.evolution-api.com (formatos da v2).
+
+interface EvolutionMessageKey {
+  remoteJid: string;
+  fromMe: boolean;
+  id: string;
+}
+
+interface EvolutionWebhookPayload {
+  event?: string;
+  instance?: string;
+  data?: {
+    key?: EvolutionMessageKey;
+    pushName?: string;
+    message?: {
+      conversation?: string;
+      extendedTextMessage?: { text?: string };
+    };
+  };
+}
+
+export type ConnectionState = "open" | "connecting" | "close" | "unknown";
+
+export interface WhatsAppStatus {
+  configured: boolean;
+  state: ConnectionState;
+  qrBase64?: string; // data URI do QR code (fluxo sem número)
+  pairingCode?: string; // código digitado no celular (fluxo com número)
+  number?: string; // número conectado (quando state === "open")
+  webhookUrl?: string;
+  publicUrlWarning?: boolean; // APP_URL é localhost → webhook de entrada não alcançável
+}
+
+export interface IncomingMessage {
+  externalId: string; // número do remetente
+  pushName?: string;
+  text?: string;
+}
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function phoneFromJid(jid: string): string {
+  return jid.split("@")[0];
+}
+
+export class WhatsAppEvolutionChannel {
+  // ---- Mensagens ----
+
+  parseWebhook(raw: unknown): IncomingMessage | null {
+    const payload = raw as EvolutionWebhookPayload;
+    const data = payload?.data;
+    const key = data?.key;
+    if (!data || !key || key.fromMe) return null; // ignora eco das próprias mensagens
+
+    const externalId = phoneFromJid(key.remoteJid);
+    const text = data.message?.conversation ?? data.message?.extendedTextMessage?.text;
+    if (text) return { externalId, pushName: data.pushName, text };
+    return null;
+  }
+
+  async sendMessage(companyId: string, externalId: string, text: string): Promise<void> {
+    // O núcleo gera **negrito** (markdown do chat web); o WhatsApp usa *negrito*.
+    const whatsappText = text.replace(/\*\*(.+?)\*\*/g, "*$1*");
+    const cfg = await getWhatsAppConfig(companyId);
+    if (!cfg) {
+      console.warn("[whatsapp] Evolution não configurada — mensagem não enviada:", whatsappText);
+      return;
+    }
+    const res = await this.api(cfg, "POST", `/message/sendText/${cfg.instance}`, {
+      number: externalId,
+      text: whatsappText,
+    });
+    if (!res?.ok) {
+      console.error("[whatsapp] falha ao enviar:", res?.status, await res?.text().catch(() => ""));
+    }
+  }
+
+  // ---- Gerenciamento de instância (aba Conectar) ----
+
+  private async api(
+    cfg: WhatsAppConfig,
+    method: string,
+    path: string,
+    body?: unknown,
+  ): Promise<Response | null> {
+    try {
+      return await fetch(`${cfg.apiUrl}${path}`, {
+        method,
+        headers: { "content-type": "application/json", apikey: cfg.apiKey },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      });
+    } catch (err) {
+      console.error("[whatsapp] erro de rede:", path, err);
+      return null;
+    }
+  }
+
+  private webhookUrl(cfg: WhatsAppConfig, appUrl: string): string {
+    return `${appUrl.replace(/\/$/, "")}/api/webhooks/whatsapp?token=${cfg.webhookToken}`;
+  }
+
+  /** Estado + QR + número. Não cria nada — só lê. */
+  async status(companyId: string, appUrl: string): Promise<WhatsAppStatus> {
+    const cfg = await getWhatsAppConfig(companyId);
+    if (!cfg) return { configured: false, state: "unknown" };
+
+    const base: WhatsAppStatus = {
+      configured: true,
+      state: "unknown",
+      webhookUrl: this.webhookUrl(cfg, appUrl),
+      publicUrlWarning: /localhost|127\.0\.0\.1/.test(appUrl),
+    };
+
+    const stateRes = await this.api(cfg, "GET", `/instance/connectionState/${cfg.instance}`);
+    if (!stateRes || stateRes.status === 404) return base; // instância ainda não existe
+    if (!stateRes.ok) return base;
+
+    const data = (await stateRes.json().catch(() => null)) as
+      | { instance?: { state?: string } }
+      | null;
+    const raw = data?.instance?.state;
+    base.state =
+      raw === "open" ? "open" : raw === "connecting" ? "connecting" : raw === "close" ? "close" : "unknown";
+
+    if (base.state === "open") base.number = await this.connectedNumber(cfg);
+    return base;
+  }
+
+  private async connectedNumber(cfg: WhatsAppConfig): Promise<string | undefined> {
+    const res = await this.api(cfg, "GET", `/instance/fetchInstances?instanceName=${cfg.instance}`);
+    if (!res?.ok) return undefined;
+    const data = (await res.json().catch(() => null)) as unknown;
+    const list = Array.isArray(data) ? data : [data];
+    for (const item of list) {
+      const rec = item as Record<string, unknown>;
+      const inst = (rec.instance as Record<string, unknown>) ?? rec;
+      const jid = (inst.ownerJid ?? inst.owner ?? inst.wuid) as string | undefined;
+      if (jid) return phoneFromJid(jid);
+    }
+    return undefined;
+  }
+
+  private async readState(cfg: WhatsAppConfig): Promise<string> {
+    const res = await this.api(cfg, "GET", `/instance/connectionState/${cfg.instance}`);
+    if (!res) return "unknown";
+    if (res.status === 404) return "missing";
+    if (!res.ok) return "unknown";
+    const data = (await res.json().catch(() => null)) as
+      | { instance?: { state?: string }; state?: string }
+      | null;
+    return data?.instance?.state ?? data?.state ?? "close";
+  }
+
+  private async waitFor(
+    cfg: WhatsAppConfig,
+    cond: (s: string) => boolean,
+    tries = 12,
+    gap = 600,
+  ): Promise<boolean> {
+    for (let i = 0; i < tries; i++) {
+      if (cond(await this.readState(cfg))) return true;
+      await wait(gap);
+    }
+    return false;
+  }
+
+  /**
+   * Conecta o número do agente. Com `number`, usa CÓDIGO DE PAREAMENTO (digitado no
+   * celular em Aparelhos conectados → Conectar com número). Sem `number`, cai no QR.
+   *
+   * Para o pareamento ser válido, a instância precisa ser recriada do zero com o número
+   * e estar pronta ANTES de pedir o código — daí as esperas entre delete e create.
+   */
+  async connect(companyId: string, appUrl: string, number?: string): Promise<WhatsAppStatus> {
+    const cfg = await getWhatsAppConfig(companyId);
+    if (!cfg) return { configured: false, state: "unknown" };
+
+    const webhookUrl = this.webhookUrl(cfg, appUrl);
+    const publicUrlWarning = /localhost|127\.0\.0\.1/.test(appUrl);
+    const num = number ? normalizeBrPhone(number) : null;
+
+    if ((await this.readState(cfg)) === "open") return this.status(companyId, appUrl);
+
+    if (num) {
+      // Recria a instância do zero com o número (fluxo de pairing code).
+      await this.api(cfg, "DELETE", `/instance/logout/${cfg.instance}`);
+      await this.api(cfg, "DELETE", `/instance/delete/${cfg.instance}`);
+      await this.waitFor(cfg, (s) => s === "missing" || s === "unknown");
+
+      const createRes = await this.api(cfg, "POST", "/instance/create", {
+        instanceName: cfg.instance,
+        integration: "WHATSAPP-BAILEYS",
+        number: num,
+        qrcode: false,
+      });
+      if (!createRes?.ok && createRes?.status !== 403 && createRes?.status !== 409) {
+        return { configured: true, state: "unknown", webhookUrl, publicUrlWarning };
+      }
+      await this.waitFor(cfg, (s) => s === "close" || s === "connecting" || s === "open");
+    } else if ((await this.readState(cfg)) === "missing") {
+      await this.api(cfg, "POST", "/instance/create", {
+        instanceName: cfg.instance,
+        integration: "WHATSAPP-BAILEYS",
+        qrcode: true,
+      });
+      await this.waitFor(cfg, (s) => s === "close" || s === "connecting" || s === "open");
+    }
+
+    // Garante o webhook apontando de volta para o app.
+    await this.api(cfg, "POST", `/webhook/set/${cfg.instance}`, {
+      webhook: { enabled: true, url: webhookUrl, events: ["MESSAGES_UPSERT"] },
+    });
+
+    // Pede código de pareamento (com número) ou QR (sem número). Pode demorar a materializar.
+    let pairingCode: string | undefined;
+    let qrBase64: string | undefined;
+    for (let i = 0; i < 6; i++) {
+      const path = `/instance/connect/${cfg.instance}${num ? `?number=${num}` : ""}`;
+      const res = await this.api(cfg, "GET", path);
+      const data = (res?.ok ? await res.json().catch(() => null) : null) as
+        | { pairingCode?: string; base64?: string; qrcode?: { base64?: string } }
+        | null;
+      pairingCode = data?.pairingCode ?? undefined;
+      const b64 = data?.base64 ?? data?.qrcode?.base64;
+      if (b64) qrBase64 = b64.startsWith("data:") ? b64 : `data:image/png;base64,${b64}`;
+      if ((num && pairingCode) || (!num && qrBase64)) break;
+      await wait(1500);
+    }
+
+    const status = await this.status(companyId, appUrl);
+    if (status.state === "open") return status;
+    return {
+      ...status,
+      pairingCode: pairingCode ? pairingCode.replace(/(.{4})(.{4})/, "$1-$2") : undefined,
+      qrBase64,
+    };
+  }
+
+  /** Desconecta o WhatsApp (logout da instância). */
+  async disconnect(companyId: string): Promise<void> {
+    const cfg = await getWhatsAppConfig(companyId);
+    if (!cfg) return;
+    await this.api(cfg, "DELETE", `/instance/logout/${cfg.instance}`);
+  }
+}
+
+let channel: WhatsAppEvolutionChannel | null = null;
+export function getWhatsAppChannel(): WhatsAppEvolutionChannel {
+  return channel ?? (channel = new WhatsAppEvolutionChannel());
+}
+
+/** Allowlist: se houver números definidos, o agente só responde a eles. */
+export async function isWhatsAppNumberAllowed(companyId: string, externalId: string): Promise<boolean> {
+  const { getAllowedNumbersRaw } = await import("./config");
+  const raw = (await getAllowedNumbersRaw(companyId)).trim();
+  if (!raw) return true;
+  const allowed = raw
+    .split(",")
+    .map((n) => n.trim())
+    .filter(Boolean)
+    .map(normalizeBrPhone);
+  return allowed.length === 0 || allowed.includes(normalizeBrPhone(externalId));
+}

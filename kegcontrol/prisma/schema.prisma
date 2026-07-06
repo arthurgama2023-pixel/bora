@@ -1,0 +1,257 @@
+// KegControl — modelo de dados
+// Dev: SQLite · Produção: PostgreSQL (trocar provider + DATABASE_URL)
+// SQLite não suporta enums nativos: campos de enum são String validados por Zod
+// (src/lib/enums.ts). Na migração para PostgreSQL podem virar enums nativos.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── SaaS: toda entidade pertence a uma empresa ────────────────────────────
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  document  String? // CNPJ
+  createdAt DateTime @default(now())
+
+  users         User[]
+  customers     Customer[]
+  kegTypes      KegType[]
+  stockBalances StockBalance[]
+  movements     Movement[]
+  auditLogs     AuditLog[]
+  agentConfig   AgentConfig?
+  agentMessages AgentMessage[]
+  campaignRules CampaignRule[]
+  dispatches    Dispatch[]
+  settings      Setting[]
+}
+
+// Configurações chave/valor por empresa (ex.: credenciais do WhatsApp/Evolution).
+// Valores sensíveis (apiKey) são guardados criptografados (AES-256-GCM).
+model Setting {
+  id        String   @id @default(cuid())
+  companyId String
+  key       String
+  value     String
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, key])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  companyId    String
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String // ADMIN | MANAGER | STOCKIST
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company   Company    @relation(fields: [companyId], references: [id])
+  movements Movement[]
+  auditLogs AuditLog[]
+}
+
+model Customer {
+  id          String   @id @default(cuid())
+  companyId   String
+  name        String
+  companyName String?
+  document    String? // CPF/CNPJ
+  phone       String?
+  whatsapp    String?
+  email       String?
+  address     String?
+  city        String?
+  state       String?
+  contactName String? // responsável
+  notes       String?
+  status      String   @default("ACTIVE") // ACTIVE | INACTIVE | BLOCKED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company       Company        @relation(fields: [companyId], references: [id])
+  stockBalances StockBalance[]
+  movements     Movement[]
+
+  @@index([companyId, name])
+  @@index([companyId, status])
+}
+
+model KegType {
+  id             String   @id @default(cuid())
+  companyId      String
+  name           String // ex.: Barril 50L
+  capacityLiters Int
+  code           String // ex.: BRL-50
+  assetValue     Float    @default(0) // valor patrimonial unitário
+  notes          String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  company       Company        @relation(fields: [companyId], references: [id])
+  stockBalances StockBalance[]
+  movementItems MovementItem[]
+
+  @@unique([companyId, code])
+}
+
+// Saldo por "bucket": (tipo, local, condição, status) → quantidade.
+// customerId null = depósito da distribuidora.
+model StockBalance {
+  id         String  @id @default(cuid())
+  companyId  String
+  kegTypeId  String
+  customerId String?
+  condition  String // FULL | EMPTY
+  status     String // AVAILABLE | RESERVED | MAINTENANCE | LOST | WITH_CUSTOMER
+  quantity   Int     @default(0)
+
+  company  Company   @relation(fields: [companyId], references: [id])
+  kegType  KegType   @relation(fields: [kegTypeId], references: [id])
+  customer Customer? @relation(fields: [customerId], references: [id])
+
+  @@unique([companyId, kegTypeId, customerId, condition, status])
+  @@index([companyId, customerId])
+}
+
+// Movimentação: cabeçalho imutável (sem update/delete; correção = novo movimento
+// ADJUSTMENT com correctsId apontando para o original).
+model Movement {
+  id          String   @id @default(cuid())
+  companyId   String
+  number      Int // sequencial por empresa (MOV-000123)
+  type        String // DELIVERY | PICKUP | SWAP | PURCHASE | SALE | ADJUSTMENT | LOSS | MAINTENANCE
+  occurredAt  DateTime @default(now())
+  customerId  String?
+  userId      String
+  origin      String?
+  destination String?
+  notes       String?
+  correctsId  String?
+  createdAt   DateTime @default(now())
+
+  company    Company        @relation(fields: [companyId], references: [id])
+  customer   Customer?      @relation(fields: [customerId], references: [id])
+  user       User           @relation(fields: [userId], references: [id])
+  corrects   Movement?      @relation("Correction", fields: [correctsId], references: [id])
+  correctedBy Movement[]    @relation("Correction")
+  items      MovementItem[]
+
+  @@unique([companyId, number])
+  @@index([companyId, occurredAt])
+  @@index([companyId, customerId])
+}
+
+// Item: partida dobrada — move quantity do bucket origem para o destino.
+// EXTERNAL não é bucket (compra cria patrimônio, venda remove).
+model MovementItem {
+  id           String @id @default(cuid())
+  movementId   String
+  kegTypeId    String
+  quantity     Int
+  condition    String // condição na ORIGEM: FULL | EMPTY
+  toCondition  String? // condição no DESTINO quando muda (envase, retorno vazio); null = igual à origem
+  fromLocation String // WAREHOUSE | CUSTOMER | MAINTENANCE | LOST | EXTERNAL
+  toLocation   String // WAREHOUSE | CUSTOMER | MAINTENANCE | LOST | EXTERNAL
+  fromStatus   String? // status do bucket de origem (ex.: AVAILABLE, RESERVED)
+  toStatus     String? // status do bucket de destino
+
+  movement Movement @relation(fields: [movementId], references: [id])
+  kegType  KegType  @relation(fields: [kegTypeId], references: [id])
+
+  @@index([movementId])
+}
+
+// ─── Central IA: agente, CRM e disparos (módulo à parte, aditivo) ──────────
+
+// Configuração do Agente IA — personalidade editável (system prompt).
+model AgentConfig {
+  id          String   @id @default(cuid())
+  companyId   String   @unique
+  name        String   @default("Bora") // nome do agente no atendimento
+  personality String // system prompt editável na UI
+  greeting    String? // primeira mensagem sugerida
+  active      Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+}
+
+// Histórico de conversas de treino do agente (e futuramente do WhatsApp).
+model AgentMessage {
+  id         String   @id @default(cuid())
+  companyId  String
+  sessionId  String // agrupa uma conversa
+  role       String // user | assistant
+  content    String
+  customerId String? // cliente em contexto, se identificado
+  channel    String   @default("PLAYGROUND") // PLAYGROUND | WHATSAPP (futuro)
+  createdAt  DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, sessionId])
+}
+
+// Regras de disparo automático (CRM): quem recebe, quando e qual mensagem.
+model CampaignRule {
+  id            String   @id @default(cuid())
+  companyId     String
+  name          String
+  trigger       String // INACTIVE_CUSTOMER | KEGS_HELD | REACTIVATION
+  thresholdDays Int      @default(30)
+  template      String // mensagem com variáveis {cliente} {dias} {barris}
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company    Company    @relation(fields: [companyId], references: [id])
+  dispatches Dispatch[]
+}
+
+// Disparos gerados pelas regras. No MVP são SIMULATED (fila de treino);
+// quando o WhatsApp for conectado, passam a PENDING → SENT.
+model Dispatch {
+  id         String   @id @default(cuid())
+  companyId  String
+  ruleId     String?
+  customerId String
+  channel    String   @default("WHATSAPP")
+  message    String
+  status     String   @default("SIMULATED") // SIMULATED | PENDING | SENT | FAILED
+  createdAt  DateTime @default(now())
+
+  company Company       @relation(fields: [companyId], references: [id])
+  rule    CampaignRule? @relation(fields: [ruleId], references: [id])
+
+  @@index([companyId, createdAt])
+}
+
+// Auditoria append-only: toda mutação registra quem/quando/o quê.
+model AuditLog {
+  id        String   @id @default(cuid())
+  companyId String
+  userId    String?
+  action    String // CREATE | UPDATE | LOGIN | MOVEMENT | ...
+  entity    String // Customer | KegType | User | Movement | ...
+  entityId  String?
+  changes   String? // JSON diff {campo: {de, para}}
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id])
+  user    User?   @relation(fields: [userId], references: [id])
+
+  @@index([companyId, createdAt])
+}

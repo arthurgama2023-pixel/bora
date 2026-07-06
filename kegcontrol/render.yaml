@@ -1,0 +1,33 @@
+# Blueprint do Render para o KegControl (SS-Chopp).
+# Web Service (Next.js). O banco é o Supabase (Postgres) — não usamos Postgres
+# gerenciado do Render; a DATABASE_URL aponta para o Supabase.
+# Deploy: Render → New → Blueprint → apontar para o repositório (branch main).
+services:
+  - type: web
+    name: kegcontrol
+    runtime: node
+    plan: free
+    # Monorepo: o app vive em kegcontrol/ dentro do repo bora.
+    rootDir: kegcontrol
+    # build roda `prisma generate && next build` (o client Prisma é gitignored).
+    # As tabelas já existem no Supabase — não é preciso db push no build.
+    buildCommand: npm ci && npm run build
+    startCommand: npx next start -p $PORT
+    healthCheckPath: /login
+    envVars:
+      - key: DATABASE_URL
+        sync: false # string de conexão do Supabase (pooler, schema=kegcontrol)
+      - key: AUTH_SECRET
+        sync: false # MESMO valor do local — a apiKey do WhatsApp é criptografada com ele
+      - key: GEMINI_API_KEY
+        sync: false # IA de resposta do agente (Gemini). Sem ela, cai no modo simulado
+      - key: APP_URL
+        sync: false # URL pública deste serviço (preencher após o 1º deploy)
+      - key: EVOLUTION_API_URL
+        sync: false # WhatsApp via Evolution API (self-hosted)
+      - key: EVOLUTION_API_KEY
+        sync: false # apikey global da Evolution
+      - key: WHATSAPP_ALLOWED_NUMBERS
+        sync: false # números (vírgula) que o agente responde; vazio = atende todos
+      - key: NODE_VERSION
+        value: "22"

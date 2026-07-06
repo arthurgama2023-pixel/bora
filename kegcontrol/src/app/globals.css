@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Identidade SS-Chopp: dourado sobre preto */
+:root {
+  --background: #f7f7f5;
+  --foreground: #171410;
+  --card: #ffffff;
+  --card-foreground: #171410;
+  --muted: #eeede8;
+  --muted-foreground: #6b675e;
+  --border: #e2e0d8;
+  --brand: #e8b90c;
+  --brand-strong: #c79c00;
+  --brand-foreground: #171000;
+  --sidebar: #121110;
+  --sidebar-foreground: #d8d5cd;
+  --success: #15803d;
+  --danger: #b91c1c;
+  --warning: #a16207;
+  --info: #1d4ed8;
+}
+
+.dark {
+  --background: #0c0b0a;
+  --foreground: #ece9e2;
+  --card: #161412;
+  --card-foreground: #ece9e2;
+  --muted: #211f1b;
+  --muted-foreground: #9c968a;
+  --border: #2b2823;
+  --brand: #f2c400;
+  --brand-strong: #ffd633;
+  --brand-foreground: #171000;
+  --sidebar: #0a0908;
+  --sidebar-foreground: #cfccc4;
+  --success: #4ade80;
+  --danger: #f87171;
+  --warning: #facc15;
+  --info: #60a5fa;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+}
