@@ -18,10 +18,23 @@ export async function POST(req: NextRequest) {
 
   const channel = getWhatsAppChannel();
   const raw = await req.json().catch(() => null);
+
+  // Evento de conexão: se a instância caiu, cutuca a reconexão na hora (sem esperar
+  // o keep-alive periódico). Reconexão usa as credenciais já pareadas — sem novo QR.
+  const event = (raw as { event?: string })?.event;
+  if (event === "connection.update" || event === "CONNECTION_UPDATE") {
+    const state = (raw as { data?: { state?: string } })?.data?.state;
+    if (state && state !== "open") {
+      channel.reconcile(companyId, process.env.APP_URL ?? "").catch((e) =>
+        console.error("[whatsapp] reconcile falhou:", e),
+      );
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   const incoming = raw ? channel.parseWebhook(raw) : null;
 
-  // Evolution dispara webhooks para vários eventos — ignoramos tudo que não for
-  // uma mensagem de texto nova de um usuário.
+  // Ignoramos tudo que não for uma mensagem de texto nova de um usuário.
   if (!incoming?.text) return NextResponse.json({ ok: true });
 
   // Allowlist: fora da lista, ignora sem gastar chamada de IA.

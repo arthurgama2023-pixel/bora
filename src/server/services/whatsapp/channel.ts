@@ -43,6 +43,10 @@ export interface IncomingMessage {
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Eventos que a instância envia ao nosso webhook. MESSAGES_UPSERT = mensagens novas;
+// CONNECTION_UPDATE = mudanças de estado (para detectarmos quedas/reconexões).
+const WEBHOOK_EVENTS = ["MESSAGES_UPSERT", "CONNECTION_UPDATE"];
+
 function phoneFromJid(jid: string): string {
   return jid.split("@")[0];
 }
@@ -212,7 +216,7 @@ export class WhatsAppEvolutionChannel {
 
     // Garante o webhook apontando de volta para o app.
     await this.api(cfg, "POST", `/webhook/set/${cfg.instance}`, {
-      webhook: { enabled: true, url: webhookUrl, events: ["MESSAGES_UPSERT"] },
+      webhook: { enabled: true, url: webhookUrl, events: WEBHOOK_EVENTS },
     });
 
     // Pede código de pareamento (com número) ou QR (sem número). Pode demorar a materializar.
@@ -245,6 +249,38 @@ export class WhatsAppEvolutionChannel {
     const cfg = await getWhatsAppConfig(companyId);
     if (!cfg) return;
     await this.api(cfg, "DELETE", `/instance/logout/${cfg.instance}`);
+  }
+
+  /**
+   * Conciliação idempotente — chamada periodicamente (keep-alive) e após eventos de
+   * conexão. Reafirma o webhook (para nunca "desapontar" após redeploy/mudança) e, se a
+   * instância caiu mas as credenciais do número ainda existem no servidor, cutuca a
+   * reconexão (o Evolution reconecta sozinho, sem novo pareamento). Não recria instância
+   * inexistente (isso exigiria o número + novo pareamento pelo usuário).
+   */
+  async reconcile(
+    companyId: string,
+    appUrl: string,
+  ): Promise<{ state: string; rewired: boolean; reconnected: boolean }> {
+    const cfg = await getWhatsAppConfig(companyId);
+    if (!cfg) return { state: "unconfigured", rewired: false, reconnected: false };
+
+    const state = await this.readState(cfg);
+    if (state === "missing") return { state, rewired: false, reconnected: false };
+
+    // Reafirma o webhook (idempotente) para garantir URL + eventos corretos.
+    const setRes = await this.api(cfg, "POST", `/webhook/set/${cfg.instance}`, {
+      webhook: { enabled: true, url: this.webhookUrl(cfg, appUrl), events: WEBHOOK_EVENTS },
+    });
+    const rewired = Boolean(setRes?.ok);
+
+    // Caiu mas ainda existe → cutuca a reconexão sem exigir novo pareamento.
+    let reconnected = false;
+    if (state === "close" || state === "connecting") {
+      const res = await this.api(cfg, "GET", `/instance/connect/${cfg.instance}`);
+      reconnected = Boolean(res?.ok);
+    }
+    return { state, rewired, reconnected };
   }
 }
 

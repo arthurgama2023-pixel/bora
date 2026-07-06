@@ -93,3 +93,12 @@ export async function findCompanyByWebhookToken(token: string): Promise<string |
   });
   return row?.companyId ?? null;
 }
+
+/** Empresas que já têm WhatsApp configurado (para a rotina de conciliação/keep-alive). */
+export async function listWhatsAppCompanyIds(): Promise<string[]> {
+  const rows = await prisma.setting.findMany({
+    where: { key: KEYS.token },
+    select: { companyId: true },
+  });
+  return [...new Set(rows.map((r) => r.companyId))];
+}
