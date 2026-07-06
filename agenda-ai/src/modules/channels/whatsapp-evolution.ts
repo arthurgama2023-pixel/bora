@@ -1,3 +1,4 @@
+import { normalizeBrPhone } from "@/modules/shared/phone";
 import { getWhatsAppConfig, type WhatsAppConfig } from "./config";
 import type { Channel, IncomingMessage } from "./types";
 
@@ -185,11 +186,6 @@ export class WhatsAppEvolutionChannel implements Channel {
     return false;
   }
 
-  private normalizeNumber(input: string): string {
-    const digits = input.replace(/\D/g, "");
-    return digits.startsWith("55") ? digits : `55${digits}`;
-  }
-
   /**
    * Conecta o número do agente. Com `number`, usa CÓDIGO DE PAREAMENTO (digitado no
    * celular em Aparelhos conectados → Conectar com número). Sem `number`, cai no QR.
@@ -204,7 +200,7 @@ export class WhatsAppEvolutionChannel implements Channel {
 
     const webhookUrl = this.webhookUrl(cfg, appUrl);
     const publicUrlWarning = /localhost|127\.0\.0\.1/.test(appUrl);
-    const num = number ? this.normalizeNumber(number) : null;
+    const num = number ? normalizeBrPhone(number) : null;
 
     if ((await this.readState(cfg)) === "open") return this.status(appUrl);
 

@@ -18,6 +18,7 @@ const KEYS = {
   key: "whatsapp.apiKey", // valor criptografado
   instance: "whatsapp.instance",
   token: "whatsapp.webhookToken",
+  allowed: "whatsapp.allowedNumbers", // números que o agente atende (vírgula); vazio = todos
 } as const;
 
 async function readSetting(key: string): Promise<string | null> {
@@ -57,4 +58,16 @@ export async function saveWhatsAppServer(input: {
   await writeSetting(KEYS.url, input.apiUrl.trim().replace(/\/$/, ""));
   if (input.apiKey) await writeSetting(KEYS.key, encrypt(input.apiKey.trim()));
   if (input.instance) await writeSetting(KEYS.instance, input.instance.trim());
+}
+
+/** Lista de números que o agente atende (banco > env). String crua, separada por vírgula. */
+export async function getAllowedNumbersRaw(): Promise<string> {
+  const fromDb = await readSetting(KEYS.allowed);
+  if (fromDb !== null) return fromDb;
+  return env.WHATSAPP_ALLOWED_NUMBERS ?? "";
+}
+
+/** Salva a allowlist definida no painel (string vazia = atende todos). */
+export async function saveAllowedNumbers(value: string): Promise<void> {
+  await writeSetting(KEYS.allowed, value.trim());
 }

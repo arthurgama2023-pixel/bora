@@ -4,6 +4,7 @@ import { env } from "@/lib/env";
 import { createLinkToken } from "@/lib/link";
 import { rateLimit } from "@/lib/ratelimit";
 import { getWhatsAppChannel } from "@/modules/channels";
+import { isWhatsAppNumberAllowed } from "@/modules/channels/allowlist";
 import { getWhatsAppConfig } from "@/modules/channels/config";
 import { handleMessage } from "@/modules/conversation/service";
 import { getTranscriptionProvider } from "@/modules/transcription";
@@ -29,6 +30,11 @@ export async function POST(req: NextRequest) {
   // Evolution dispara webhooks para vários eventos (conexão, status, etc.) — ignoramos
   // silenciosamente tudo que não for uma mensagem nova de texto/áudio de um usuário.
   if (!incoming) return NextResponse.json({ ok: true });
+
+  // Allowlist: fora da lista, ignora sem criar usuário nem gastar chamada de IA.
+  if (!(await isWhatsAppNumberAllowed(incoming.externalId))) {
+    return NextResponse.json({ ok: true });
+  }
 
   if (!rateLimit(`whatsapp:${incoming.externalId}`, 30, 60 * 60 * 1000)) {
     await channel.sendMessage(incoming.externalId, "Você atingiu o limite de mensagens por hora. Tente mais tarde.");

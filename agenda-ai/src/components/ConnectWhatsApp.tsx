@@ -33,6 +33,37 @@ export function ConnectWhatsApp({
   const [apiKey, setApiKey] = useState("");
   const [instance, setInstance] = useState(instanceName);
 
+  // allowlist (quem o agente atende)
+  const [allowedNumbers, setAllowedNumbers] = useState("");
+  const [savingAllowed, setSavingAllowed] = useState(false);
+  const [allowedSaved, setAllowedSaved] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/whatsapp/allowed")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setAllowedNumbers(d.allowedNumbers ?? ""))
+      .catch(() => {});
+  }, []);
+
+  async function saveAllowed(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingAllowed(true);
+    setAllowedSaved(false);
+    try {
+      const res = await fetch("/api/whatsapp/allowed", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ allowedNumbers }),
+      });
+      if (res.ok) {
+        setAllowedSaved(true);
+        setTimeout(() => setAllowedSaved(false), 2500);
+      }
+    } finally {
+      setSavingAllowed(false);
+    }
+  }
+
   const refresh = useCallback(async () => {
     const res = await fetch("/api/whatsapp/status");
     if (!res.ok) return null;
@@ -257,6 +288,42 @@ export function ConnectWhatsApp({
               )}
             </div>
           )}
+        </section>
+      )}
+
+      {/* Quem o agente atende (allowlist) */}
+      {configured && (
+        <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+          <div className="mb-3 flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-100 text-sm">🔒</span>
+            <h2 className="text-sm font-semibold">Quem o agente atende</h2>
+          </div>
+          <form onSubmit={saveAllowed} className="space-y-2">
+            <label className="block">
+              <span className="text-xs font-medium text-zinc-600">Números permitidos</span>
+              <input
+                value={allowedNumbers}
+                onChange={(e) => setAllowedNumbers(e.target.value)}
+                placeholder="21980828309  (vários: separe por vírgula)"
+                inputMode="tel"
+                className="mt-1 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm outline-none focus:border-zinc-400 focus:bg-white"
+              />
+              <span className="mt-1 block text-[11px] text-zinc-400">
+                O agente só responde a estes números. Deixe <strong>vazio</strong> para atender qualquer um.
+                Com ou sem o 55 na frente — tanto faz.
+              </span>
+            </label>
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={savingAllowed}
+                className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:opacity-60"
+              >
+                {savingAllowed ? "Salvando…" : "Salvar"}
+              </button>
+              {allowedSaved && <span className="text-xs font-medium text-emerald-600">✓ Salvo</span>}
+            </div>
+          </form>
         </section>
       )}
     </div>

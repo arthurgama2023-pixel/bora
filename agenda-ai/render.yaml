@@ -9,9 +9,9 @@ services:
     # Monorepo: o app vive em agenda-ai/ dentro do repo bora. Remova esta linha
     # se você criar um repositório dedicado só para o agenda-ai.
     rootDir: agenda-ai
-    buildCommand: npm ci && npm run build
-    # $PORT é injetado pelo Render; prisma db push sincroniza o schema no release
-    preDeployCommand: npm run render:release
+    # build:render roda o build normal + prisma db push (cria/atualiza as tabelas
+    # via conexão interna — preDeployCommand isolado não é confiável em todo setup)
+    buildCommand: npm ci && npm run build:render
     startCommand: npx next start -p $PORT
     healthCheckPath: /login
     envVars:
@@ -45,6 +45,8 @@ services:
         sync: false
       - key: WHATSAPP_WEBHOOK_TOKEN
         generateValue: true # segredo do ?token= do webhook
+      - key: WHATSAPP_ALLOWED_NUMBERS
+        sync: false # números (vírgula) que o agente responde; vazio = atende todos
       - key: NODE_VERSION
         value: "22"
 

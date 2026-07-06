@@ -105,7 +105,24 @@ Mande no WhatsApp do número conectado:
 - "Marca reunião com o financeiro amanhã às 10h"
 - "Tenho algo hoje?"
 - "Cancela o dentista"
-- Um **áudio** dizendo o compromisso (precisa da `GROQ_API_KEY`)
+- Um **áudio** dizendo o compromisso — transcrito automaticamente pelo Gemini (a mesma
+  chave da IA; sem precisar de chave do Groq). Se `GROQ_API_KEY` estiver definida, o Groq
+  Whisper é usado no lugar (mais barato/rápido para transcrição pura).
+
+## Restringir quem o agente atende
+
+Por padrão o agente responde qualquer número. Para restringir a uma lista fechada
+(ex.: só você), há duas formas — **use a mais fácil, o painel**:
+
+- **No painel** (recomendado): aba **Conectar WhatsApp** → cartão **"Quem o agente atende"**
+  → digite o número e salve. Fica guardado no banco, sem redeploy.
+- **Por env var**: `WHATSAPP_ALLOWED_NUMBERS=21980828309` (o painel tem prioridade sobre ela).
+
+Aceita vários números separados por vírgula (`21980828309,11988887777`), com ou
+sem o DDI 55 — a checagem normaliza os dois lados. Mensagens de números fora da
+lista são **ignoradas silenciosamente**: nenhuma resposta é enviada, nenhum
+usuário é criado no banco e nenhuma chamada de IA é feita — o número nem sabe
+que o agente existe. Deixe vazio para atender todo mundo.
 
 ## Como o usuário conecta o Google Calendar dele
 
