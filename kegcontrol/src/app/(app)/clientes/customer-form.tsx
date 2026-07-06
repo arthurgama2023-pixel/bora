@@ -1,5 +1,6 @@
 "use client";
 
+import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
@@ -29,13 +30,42 @@ export type CustomerFormData = {
   status?: string;
 };
 
-export function CustomerForm({ initial }: { initial?: CustomerFormData }) {
+export function CustomerForm({
+  initial,
+  canDelete = false,
+}: {
+  initial?: CustomerFormData;
+  canDelete?: boolean;
+}) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [type, setType] = useState<CustomerType>(
     (initial?.type as CustomerType) ?? "COMERCIO",
   );
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  async function handleDelete() {
+    if (!initial?.id) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const res = await fetch(`/api/v1/customers/${initial.id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.ok) {
+        setDeleteError(json.error ?? "Erro ao excluir");
+        setDeleting(false);
+        return;
+      }
+      router.push("/clientes");
+      router.refresh();
+    } catch {
+      setDeleteError("Erro de conexão");
+      setDeleting(false);
+    }
+  }
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -154,14 +184,68 @@ export function CustomerForm({ initial }: { initial?: CustomerFormData }) {
             {error}
           </p>
         )}
-        <div className="mt-6 flex gap-2">
-          <Button type="submit" disabled={loading}>
-            {loading ? "Salvando…" : initial?.id ? "Salvar alterações" : "Cadastrar cliente"}
-          </Button>
-          <Button type="button" variant="outline" onClick={() => router.back()}>
-            Cancelar
-          </Button>
+        <div className="mt-6 flex items-center justify-between gap-2">
+          <div className="flex gap-2">
+            <Button type="submit" disabled={loading}>
+              {loading ? "Salvando…" : initial?.id ? "Salvar alterações" : "Cadastrar cliente"}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => router.back()}>
+              Cancelar
+            </Button>
+          </div>
+
+          {initial?.id && canDelete && !confirmingDelete && (
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(true)}
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-danger"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Excluir cliente
+            </button>
+          )}
         </div>
+
+        {initial?.id && canDelete && confirmingDelete && (
+          <div className="mt-4 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3">
+            <p className="text-sm font-medium text-danger">
+              Excluir este cliente permanentemente?
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Essa ação não pode ser desfeita. Só é possível excluir clientes sem
+              movimentações ou barris em poder deles — caso contrário, marque como
+              Bloqueado ou Inativo.
+            </p>
+            {deleteError && (
+              <p className="mt-2 rounded-md bg-danger/15 px-3 py-2 text-xs text-danger">
+                {deleteError}
+              </p>
+            )}
+            <div className="mt-3 flex gap-2">
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                disabled={deleting}
+                onClick={handleDelete}
+              >
+                {deleting ? "Excluindo…" : "Sim, excluir"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={deleting}
+                onClick={() => {
+                  setConfirmingDelete(false);
+                  setDeleteError("");
+                }}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
     </form>
   );
