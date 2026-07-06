@@ -3,12 +3,20 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
-import { CUSTOMER_STATUSES, CUSTOMER_STATUS_LABELS } from "@/lib/enums";
+import {
+  CUSTOMER_STATUSES,
+  CUSTOMER_STATUS_LABELS,
+  CUSTOMER_TYPES,
+  CUSTOMER_TYPE_LABELS,
+  type CustomerType,
+} from "@/lib/enums";
+import { cn } from "@/lib/utils";
 
 export type CustomerFormData = {
   id?: string;
   name?: string;
   companyName?: string | null;
+  type?: string;
   document?: string | null;
   phone?: string | null;
   whatsapp?: string | null;
@@ -25,6 +33,9 @@ export function CustomerForm({ initial }: { initial?: CustomerFormData }) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [type, setType] = useState<CustomerType>(
+    (initial?.type as CustomerType) ?? "COMERCIO",
+  );
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -35,6 +46,7 @@ export function CustomerForm({ initial }: { initial?: CustomerFormData }) {
       [...fd.entries()].map(([k, v]) => [k, String(v).trim() || null]),
     );
     payload.status = payload.status ?? "ACTIVE";
+    payload.type = type;
     if (!payload.name) {
       setError("Nome é obrigatório");
       setLoading(false);
@@ -66,6 +78,29 @@ export function CustomerForm({ initial }: { initial?: CustomerFormData }) {
   return (
     <form onSubmit={submit}>
       <Card className="p-6">
+        <div className="mb-6">
+          <span className="mb-2 block text-xs font-medium text-muted-foreground">
+            Tipo de cliente *
+          </span>
+          <div className="inline-flex rounded-lg border border-border bg-muted/40 p-1">
+            {CUSTOMER_TYPES.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setType(t)}
+                className={cn(
+                  "rounded-md px-4 py-2 text-sm font-medium transition-colors",
+                  type === t
+                    ? "bg-brand text-brand-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {CUSTOMER_TYPE_LABELS[t]}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <Field label="Nome *">
             <Input name="name" defaultValue={initial?.name ?? ""} required />

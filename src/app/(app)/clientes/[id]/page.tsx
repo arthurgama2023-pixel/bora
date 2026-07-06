@@ -14,8 +14,10 @@ import {
 import { getSession } from "@/lib/auth";
 import {
   CUSTOMER_STATUS_LABELS,
+  CUSTOMER_TYPE_LABELS,
   MOVEMENT_TYPE_LABELS,
   type CustomerStatus,
+  type CustomerType,
   type MovementType,
 } from "@/lib/enums";
 import { cn, formatCpfCnpj, formatDateTime, movementCode } from "@/lib/utils";
@@ -28,6 +30,12 @@ const STATUS_TONES: Record<CustomerStatus, "success" | "neutral" | "danger"> = {
   ACTIVE: "success",
   INACTIVE: "neutral",
   BLOCKED: "danger",
+};
+
+const TYPE_TONES: Record<CustomerType, "brand" | "info" | "warning"> = {
+  COMERCIO: "brand",
+  DELIVERY: "info",
+  EVENTOS: "warning",
 };
 
 export default async function CustomerDetailPage({
@@ -72,6 +80,11 @@ export default async function CustomerDetailPage({
         <Card className="p-5">
           <h2 className="mb-4 font-semibold">Dados do cliente</h2>
           <dl className="space-y-2.5 text-sm">
+            <Info label="Tipo">
+              <Badge tone={TYPE_TONES[c.type as CustomerType] ?? "neutral"}>
+                {CUSTOMER_TYPE_LABELS[c.type as CustomerType] ?? c.type}
+              </Badge>
+            </Info>
             <Info label="Status">
               <Badge tone={STATUS_TONES[c.status as CustomerStatus] ?? "neutral"}>
                 {CUSTOMER_STATUS_LABELS[c.status as CustomerStatus] ?? c.status}

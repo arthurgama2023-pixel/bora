@@ -9,12 +9,13 @@ type CustomerData = z.infer<typeof customerSchema>;
 
 export async function listCustomers(
   companyId: string,
-  opts: { q?: string; status?: string } = {},
+  opts: { q?: string; status?: string; type?: string } = {},
 ) {
   return prisma.customer.findMany({
     where: {
       companyId,
       ...(opts.status ? { status: opts.status } : {}),
+      ...(opts.type ? { type: opts.type } : {}),
       ...(opts.q
         ? {
             OR: [

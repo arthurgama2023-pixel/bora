@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
     return listCustomers(session.companyId, {
       q: sp.get("q") ?? undefined,
       status: sp.get("status") ?? undefined,
+      type: sp.get("type") ?? undefined,
     });
   });
 }

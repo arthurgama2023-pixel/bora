@@ -2,7 +2,12 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Input, Select } from "@/components/ui";
-import { CUSTOMER_STATUSES, CUSTOMER_STATUS_LABELS } from "@/lib/enums";
+import {
+  CUSTOMER_STATUSES,
+  CUSTOMER_STATUS_LABELS,
+  CUSTOMER_TYPES,
+  CUSTOMER_TYPE_LABELS,
+} from "@/lib/enums";
 
 export function CustomerFilters() {
   const router = useRouter();
@@ -33,6 +38,18 @@ export function CustomerFilters() {
         {CUSTOMER_STATUSES.map((s) => (
           <option key={s} value={s}>
             {CUSTOMER_STATUS_LABELS[s]}
+          </option>
+        ))}
+      </Select>
+      <Select
+        defaultValue={sp.get("type") ?? ""}
+        onChange={(e) => setParam("type", e.target.value)}
+        className="w-44"
+      >
+        <option value="">Todos os tipos</option>
+        {CUSTOMER_TYPES.map((t) => (
+          <option key={t} value={t}>
+            {CUSTOMER_TYPE_LABELS[t]}
           </option>
         ))}
       </Select>

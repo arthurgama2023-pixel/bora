@@ -16,6 +16,14 @@ export const CUSTOMER_STATUS_LABELS: Record<CustomerStatus, string> = {
   BLOCKED: "Bloqueado",
 };
 
+export const CUSTOMER_TYPES = ["COMERCIO", "DELIVERY", "EVENTOS"] as const;
+export type CustomerType = (typeof CUSTOMER_TYPES)[number];
+export const CUSTOMER_TYPE_LABELS: Record<CustomerType, string> = {
+  COMERCIO: "Comércio",
+  DELIVERY: "Delivery",
+  EVENTOS: "Festas e Eventos",
+};
+
 export const CONDITIONS = ["FULL", "EMPTY"] as const;
 export type Condition = (typeof CONDITIONS)[number];
 export const CONDITION_LABELS: Record<Condition, string> = {
