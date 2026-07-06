@@ -3,6 +3,7 @@ import { handle } from "@/lib/api";
 import { assertRole, requireSession } from "@/lib/auth";
 import { customerSchema } from "@/lib/validation";
 import {
+  deleteCustomer,
   getCustomer,
   getCustomerBalance,
   updateCustomer,
@@ -29,5 +30,15 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
     const { id } = await ctx.params;
     const data = customerSchema.partial().parse(await request.json());
     return updateCustomer(session, id, data);
+  });
+}
+
+export async function DELETE(_: NextRequest, ctx: Ctx) {
+  return handle(async () => {
+    const session = await requireSession();
+    assertRole(session, ["ADMIN"]);
+    const { id } = await ctx.params;
+    await deleteCustomer(session, id);
+    return { ok: true };
   });
 }

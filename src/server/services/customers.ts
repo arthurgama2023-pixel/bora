@@ -86,6 +86,36 @@ export async function createCustomer(session: Session, data: CustomerData) {
   return customer;
 }
 
+// Exclusão definitiva. Só permitida se o cliente não tiver histórico (movimentações
+// ou saldo de barris) — preserva a integridade do extrato/auditoria. Com histórico,
+// oriente o usuário a bloquear/inativar em vez de excluir.
+export async function deleteCustomer(session: Session, id: string) {
+  const customer = await getCustomer(session.companyId, id);
+
+  const [movementCount, balanceCount] = await Promise.all([
+    prisma.movement.count({ where: { companyId: session.companyId, customerId: id } }),
+    prisma.stockBalance.count({
+      where: { companyId: session.companyId, customerId: id, quantity: { gt: 0 } },
+    }),
+  ]);
+  if (movementCount > 0 || balanceCount > 0) {
+    throw new ApiError(
+      409,
+      "Este cliente tem movimentações ou barris em poder dele — não pode ser excluído. Marque como Bloqueado ou Inativo em vez disso.",
+    );
+  }
+
+  await prisma.customer.delete({ where: { id } });
+  await logAudit(prisma, {
+    companyId: session.companyId,
+    userId: session.userId,
+    action: "DELETE",
+    entity: "Customer",
+    entityId: id,
+    changes: { nome: { de: customer.name, para: null } },
+  });
+}
+
 export async function updateCustomer(
   session: Session,
   id: string,

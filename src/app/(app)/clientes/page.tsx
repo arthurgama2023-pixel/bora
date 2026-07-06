@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
@@ -75,11 +75,12 @@ export default async function CustomersPage({
               <Th>WhatsApp</Th>
               <Th>Responsável</Th>
               <Th>Status</Th>
+              {canEdit && <Th className="w-10" />}
             </tr>
           </thead>
           <tbody>
             {customers.map((c) => (
-              <tr key={c.id} className="hover:bg-muted/40">
+              <tr key={c.id} className="group hover:bg-muted/40">
                 <Td>
                   <Link
                     href={`/clientes/${c.id}`}
@@ -103,6 +104,17 @@ export default async function CustomersPage({
                     {CUSTOMER_STATUS_LABELS[c.status as CustomerStatus] ?? c.status}
                   </Badge>
                 </Td>
+                {canEdit && (
+                  <Td>
+                    <Link
+                      href={`/clientes/${c.id}/editar`}
+                      title="Editar cliente"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Link>
+                  </Td>
+                )}
               </tr>
             ))}
           </tbody>

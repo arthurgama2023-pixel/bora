@@ -20,7 +20,7 @@ export default async function EditCustomerPage({
   return (
     <>
       <PageHeader title={`Editar — ${customer.name}`} />
-      <CustomerForm initial={customer} />
+      <CustomerForm initial={customer} canDelete={session.role === "ADMIN"} />
     </>
   );
 }
