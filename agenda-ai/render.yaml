@@ -1,0 +1,55 @@
+# Blueprint do Render para o Agenda AI.
+# Cria um Web Service (Next.js) + um Postgres gerenciado.
+# Deploy: Render → New → Blueprint → apontar para este repositório.
+services:
+  - type: web
+    name: agenda-ai
+    runtime: node
+    plan: free
+    # Monorepo: o app vive em agenda-ai/ dentro do repo bora. Remova esta linha
+    # se você criar um repositório dedicado só para o agenda-ai.
+    rootDir: agenda-ai
+    buildCommand: npm ci && npm run build
+    # $PORT é injetado pelo Render; prisma db push sincroniza o schema no release
+    preDeployCommand: npm run render:release
+    startCommand: npx next start -p $PORT
+    healthCheckPath: /login
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: agenda-ai-db
+          property: connectionString
+      - key: AUTH_SECRET
+        generateValue: true # segredo forte gerado pelo Render
+      - key: APP_URL
+        sync: false # preencher com a URL pública após o 1º deploy
+      - key: GEMINI_API_KEY
+        sync: false # IA de resposta (em uso). Sem ela, cai no parser local PT-BR
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: AI_MODEL
+        value: claude-opus-4-8
+      - key: ANTHROPIC_API_KEY
+        sync: false # alternativa ao Gemini
+      - key: GROQ_API_KEY
+        sync: false # opcional — transcrição de voz (gsk_...)
+      - key: GOOGLE_CLIENT_ID
+        sync: false # opcional — login Google + Calendar real
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: EVOLUTION_API_URL
+        sync: false # WhatsApp (Evolution API self-hosted) — ver docs/WHATSAPP.md
+      - key: EVOLUTION_API_KEY
+        sync: false
+      - key: EVOLUTION_INSTANCE
+        sync: false
+      - key: WHATSAPP_WEBHOOK_TOKEN
+        generateValue: true # segredo do ?token= do webhook
+      - key: NODE_VERSION
+        value: "22"
+
+databases:
+  - name: agenda-ai-db
+    plan: free
+    databaseName: agenda_ai
+    postgresMajorVersion: "16"

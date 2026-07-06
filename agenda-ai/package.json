@@ -1,0 +1,37 @@
+{
+  "name": "agenda-ai",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3050",
+    "build": "node scripts/setup-db.mjs && prisma generate && next build",
+    "start": "next start -p 3050",
+    "db:push": "node scripts/setup-db.mjs && prisma db push",
+    "db:generate": "node scripts/setup-db.mjs && prisma generate",
+    "render:release": "node scripts/setup-db.mjs && prisma db push --skip-generate"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
+    "@prisma/adapter-better-sqlite3": "^7.8.0",
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "better-sqlite3": "^12.11.1",
+    "jose": "^6.2.3",
+    "next": "^16.2.10",
+    "pg": "^8.22.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.2",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^26.1.0",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "prisma": "^7.8.0",
+    "tailwindcss": "^4.3.2",
+    "typescript": "^6.0.3"
+  }
+}
