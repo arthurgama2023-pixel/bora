@@ -11,7 +11,9 @@ services:
     rootDir: kegcontrol
     # build roda `prisma generate && next build` (o client Prisma é gitignored).
     # As tabelas já existem no Supabase — não é preciso db push no build.
-    buildCommand: npm ci && npm run build
+    # npm install (não ci) porque o package-lock gerado no Windows omite alguns
+    # binários opcionais que o Linux do Render espera (@emnapi/*, oxide, etc.).
+    buildCommand: npm install --no-audit --no-fund && npm run build
     startCommand: npx next start -p $PORT
     healthCheckPath: /login
     envVars:
