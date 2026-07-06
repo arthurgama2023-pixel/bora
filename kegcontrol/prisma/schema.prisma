@@ -67,6 +67,7 @@ model Customer {
   companyId   String
   name        String
   companyName String?
+  type        String   @default("COMERCIO") // COMERCIO | DELIVERY | EVENTOS
   document    String? // CPF/CNPJ
   phone       String?
   whatsapp    String?

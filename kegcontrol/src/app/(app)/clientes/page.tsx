@@ -13,7 +13,9 @@ import {
 import { getSession } from "@/lib/auth";
 import {
   CUSTOMER_STATUS_LABELS,
+  CUSTOMER_TYPE_LABELS,
   type CustomerStatus,
+  type CustomerType,
 } from "@/lib/enums";
 import { formatCpfCnpj } from "@/lib/utils";
 import { listCustomers } from "@/server/services/customers";
@@ -28,15 +30,21 @@ const STATUS_TONES: Record<CustomerStatus, "success" | "neutral" | "danger"> = {
   BLOCKED: "danger",
 };
 
+const TYPE_TONES: Record<CustomerType, "brand" | "info" | "warning"> = {
+  COMERCIO: "brand",
+  DELIVERY: "info",
+  EVENTOS: "warning",
+};
+
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; type?: string }>;
 }) {
   const session = await getSession();
   if (!session) redirect("/login");
-  const { q, status } = await searchParams;
-  const customers = await listCustomers(session.companyId, { q, status });
+  const { q, status, type } = await searchParams;
+  const customers = await listCustomers(session.companyId, { q, status, type });
   const canEdit = session.role === "ADMIN" || session.role === "MANAGER";
 
   return (
@@ -60,6 +68,7 @@ export default async function CustomersPage({
           <thead>
             <tr>
               <Th>Nome</Th>
+              <Th>Tipo</Th>
               <Th>Empresa</Th>
               <Th>CPF/CNPJ</Th>
               <Th>Cidade</Th>
@@ -78,6 +87,11 @@ export default async function CustomersPage({
                   >
                     {c.name}
                   </Link>
+                </Td>
+                <Td>
+                  <Badge tone={TYPE_TONES[c.type as CustomerType] ?? "neutral"}>
+                    {CUSTOMER_TYPE_LABELS[c.type as CustomerType] ?? c.type}
+                  </Badge>
                 </Td>
                 <Td>{c.companyName ?? "—"}</Td>
                 <Td className="font-mono text-xs">{formatCpfCnpj(c.document)}</Td>

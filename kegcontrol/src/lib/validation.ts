@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   CONDITIONS,
   CUSTOMER_STATUSES,
+  CUSTOMER_TYPES,
   LOCATIONS,
   MOVEMENT_TYPES,
   ROLES,
@@ -16,6 +17,7 @@ export const loginSchema = z.object({
 export const customerSchema = z.object({
   name: z.string().trim().min(2, "Nome é obrigatório"),
   companyName: z.string().trim().optional().nullable(),
+  type: z.enum(CUSTOMER_TYPES).default("COMERCIO"),
   document: z
     .string()
     .trim()
