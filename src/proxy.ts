@@ -2,9 +2,17 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/session-token";
 
 const PUBLIC_PATHS = ["/login", "/api/v1/auth/login"];
+// Rotas de integração externa: sem cookie de sessão, autenticadas pelo próprio
+// token (webhook do Evolution via ?token=; keep-alive via KEEPALIVE_TOKEN opcional).
+const PUBLIC_PREFIXES = ["/api/webhooks/", "/api/whatsapp/keepalive"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) {
+    return NextResponse.next();
+  }
+
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   const session = token ? await verifySessionToken(token) : null;
 
