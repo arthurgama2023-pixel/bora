@@ -67,6 +67,12 @@ export const kegTypeSchema = z.object({
   active: z.boolean().default(true),
 });
 
+// Estoque disponível no depósito (cheios/vazios) informado no cadastro do tipo.
+export const kegStockSchema = z.object({
+  full: z.coerce.number().int().min(0),
+  empty: z.coerce.number().int().min(0),
+});
+
 // Ver comentário em customerUpdateSchema: .partial() não basta para campos
 // com .default() — redeclarados aqui como opcionais de verdade.
 export const kegTypeUpdateSchema = kegTypeSchema.partial().extend({
