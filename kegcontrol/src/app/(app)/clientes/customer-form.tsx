@@ -356,9 +356,11 @@ export function CustomerForm({
               Excluir este cliente permanentemente?
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Essa ação não pode ser desfeita. Só é possível excluir clientes sem
-              movimentações ou barris em poder deles — caso contrário, marque como
-              Bloqueado ou Inativo.
+              Essa ação não pode ser desfeita. O cliente é excluído mesmo que tenha
+              barris em poder dele, dívida ou movimentações — os barris deixam de ser
+              rastreados e as movimentações antigas ficam sem cliente vinculado (mas
+              continuam no extrato geral). Considere Bloquear ou Inativar se quiser
+              manter o rastro.
             </p>
             {deleteError && (
               <p className="mt-2 rounded-md bg-danger/15 px-3 py-2 text-xs text-danger">
