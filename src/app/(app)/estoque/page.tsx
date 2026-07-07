@@ -1,3 +1,4 @@
+import { Pencil } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { EmptyState, PageHeader, StatCard, Table, Td, Th } from "@/components/ui";
@@ -82,11 +83,12 @@ export default async function StockPage() {
               <Th className="text-right">Cheios</Th>
               <Th className="text-right">Vazios</Th>
               <Th className="text-right">Total</Th>
+              <Th className="w-10" />
             </tr>
           </thead>
           <tbody>
             {customersStock.map((r) => (
-              <tr key={r.customer.id} className="hover:bg-muted/40">
+              <tr key={r.customer.id} className="group hover:bg-muted/40">
                 <Td>
                   <Link
                     href={`/clientes/${r.customer.id}`}
@@ -98,6 +100,15 @@ export default async function StockPage() {
                 <Td className="text-right">{r.full}</Td>
                 <Td className="text-right">{r.empty}</Td>
                 <Td className="text-right font-bold">{r.total}</Td>
+                <Td>
+                  <Link
+                    href={`/movimentacoes/nova?tipo=ADJUSTMENT&cliente=${r.customer.id}`}
+                    title="Editar ou zerar o estoque deste cliente (por ajuste)"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Link>
+                </Td>
               </tr>
             ))}
           </tbody>

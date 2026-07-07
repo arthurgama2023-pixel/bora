@@ -81,16 +81,21 @@ export function MovementForm({
   kegTypes,
   customers,
   correctsId,
+  initialType,
+  initialCustomerId,
 }: {
   kegTypes: KegTypeOption[];
   customers: CustomerOption[];
   correctsId?: string;
+  initialType?: MovementType;
+  initialCustomerId?: string;
 }) {
   const router = useRouter();
-  const [type, setType] = useState<MovementType>(correctsId ? "ADJUSTMENT" : "DELIVERY");
-  const [customerId, setCustomerId] = useState("");
+  const startType = initialType ?? (correctsId ? "ADJUSTMENT" : "DELIVERY");
+  const [type, setType] = useState<MovementType>(startType);
+  const [customerId, setCustomerId] = useState(initialCustomerId ?? "");
   const [notes, setNotes] = useState("");
-  const [rows, setRows] = useState<Row[]>([defaultRow(correctsId ? "ADJUSTMENT" : "DELIVERY")]);
+  const [rows, setRows] = useState<Row[]>([defaultRow(startType)]);
   const [maintenanceDirection, setMaintenanceDirection] = useState<"IN" | "OUT">("OUT");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -378,6 +383,14 @@ export function MovementForm({
         <p className="mb-4 rounded-lg bg-warning/15 px-4 py-3 text-sm text-warning">
           Você está criando uma <strong>movimentação corretiva</strong>. A
           movimentação original permanece no histórico.
+        </p>
+      )}
+      {!correctsId && initialCustomerId && (
+        <p className="mb-4 rounded-lg bg-info/15 px-4 py-3 text-sm text-info">
+          Editando o estoque deste cliente por <strong>ajuste</strong>. O
+          estoque não é alterado direto — cada mudança vira uma movimentação,
+          mantendo o histórico. Para zerar um item, ajuste-o para a condição
+          de destino "Depósito" com a quantidade que ele tem.
         </p>
       )}
       <Card className="p-6">
