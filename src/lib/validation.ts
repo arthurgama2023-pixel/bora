@@ -53,6 +53,7 @@ export const customerPricesSchema = z.object({
     z.object({
       kegTypeId: z.string().min(1),
       price: z.coerce.number().min(0),
+      quantity: z.coerce.number().int().min(0).default(0),
     }),
   ),
 });

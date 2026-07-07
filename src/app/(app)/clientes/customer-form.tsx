@@ -37,6 +37,7 @@ type PriceRow = {
   code: string;
   capacityLiters: number;
   price: number;
+  quantity: number;
 };
 
 type StockRow = {
@@ -90,6 +91,7 @@ export function CustomerForm({
                 code: k.code,
                 capacityLiters: k.capacityLiters,
                 price: 0,
+                quantity: 0,
               })),
           );
         }
@@ -107,12 +109,21 @@ export function CustomerForm({
     setPrices((prev) => prev.map((p) => (p.kegTypeId === kegTypeId ? { ...p, price } : p)));
   }
 
+  function updatePriceQty(kegTypeId: string, value: string) {
+    const quantity = value === "" ? 0 : Math.max(0, Math.floor(Number(value) || 0));
+    setPrices((prev) => prev.map((p) => (p.kegTypeId === kegTypeId ? { ...p, quantity } : p)));
+  }
+
   async function savePrices(customerId: string) {
     await fetch(`/api/v1/customers/${customerId}/prices`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        prices: prices.map((p) => ({ kegTypeId: p.kegTypeId, price: p.price })),
+        prices: prices.map((p) => ({
+          kegTypeId: p.kegTypeId,
+          price: p.price,
+          quantity: p.quantity,
+        })),
       }),
     });
   }
@@ -384,8 +395,8 @@ export function CustomerForm({
       <Card className="mt-4 p-6">
         <h2 className="text-sm font-semibold">Preços por tipo de barril</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          Cada cliente pode pagar um valor diferente pelo mesmo tipo de barril.
-          Deixe em branco os tipos que não se aplicam a este cliente.
+          Preço que este cliente paga e a quantidade acordada de cada tipo.
+          Deixe em branco os tipos que não se aplicam a ele.
         </p>
         {!pricesLoaded ? (
           <p className="mt-4 text-sm text-muted-foreground">Carregando…</p>
@@ -394,28 +405,46 @@ export function CustomerForm({
             Nenhum tipo de barril cadastrado ainda.
           </p>
         ) : (
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {prices.map((p) => (
-              <div key={p.kegTypeId} className="space-y-1">
-                <span className="block text-xs font-medium text-muted-foreground">
+              <div
+                key={p.kegTypeId}
+                className="space-y-2 rounded-lg border border-border bg-muted/30 p-3"
+              >
+                <span className="block text-xs font-medium">
                   {p.name}{" "}
-                  <span className="text-muted-foreground/70">
+                  <span className="font-normal text-muted-foreground">
                     ({p.code} · {p.capacityLiters}L)
                   </span>
                 </span>
-                <div className="relative">
-                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                    R$
-                  </span>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    placeholder="0,00"
-                    className="pl-9"
-                    value={p.price > 0 ? p.price : ""}
-                    onChange={(e) => updatePrice(p.kegTypeId, e.target.value)}
-                  />
+                <div className="flex gap-2">
+                  <label className="flex-1">
+                    <span className="mb-1 block text-[11px] text-muted-foreground">Preço</span>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                        R$
+                      </span>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder="0,00"
+                        className="pl-9"
+                        value={p.price > 0 ? p.price : ""}
+                        onChange={(e) => updatePrice(p.kegTypeId, e.target.value)}
+                      />
+                    </div>
+                  </label>
+                  <label className="w-24">
+                    <span className="mb-1 block text-[11px] text-muted-foreground">Qtd</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      placeholder="0"
+                      value={p.quantity > 0 ? p.quantity : ""}
+                      onChange={(e) => updatePriceQty(p.kegTypeId, e.target.value)}
+                    />
+                  </label>
                 </div>
               </div>
             ))}

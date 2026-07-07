@@ -99,6 +99,7 @@ model CustomerPrice {
   customerId String
   kegTypeId  String
   price      Float
+  quantity   Int      @default(0) // quantidade acordada/de referência deste tipo
   updatedAt  DateTime @updatedAt
 
   customer Customer @relation(fields: [customerId], references: [id])

@@ -52,7 +52,7 @@ export default async function CustomerDetailPage({
     getCustomerBalance(session.companyId, id),
     getCustomerPrices(session.companyId, id),
   ]);
-  const pricedTypes = prices.filter((p) => p.price > 0);
+  const pricedTypes = prices.filter((p) => p.price > 0 || p.quantity > 0);
   const c = statement.customer;
   const canEdit = session.role === "ADMIN" || session.role === "MANAGER";
 
@@ -163,8 +163,13 @@ export default async function CustomerDetailPage({
                   {p.name} ({p.code})
                 </span>
                 <span className="font-semibold text-brand-strong">
-                  {formatCurrency(p.price)}
+                  {p.price > 0 ? formatCurrency(p.price) : "—"}
                 </span>
+                {p.quantity > 0 && (
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    · {p.quantity} un.
+                  </span>
+                )}
               </div>
             ))}
           </div>
