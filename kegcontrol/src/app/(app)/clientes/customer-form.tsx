@@ -39,6 +39,15 @@ type PriceRow = {
   price: number;
 };
 
+type StockRow = {
+  kegTypeId: string;
+  name: string;
+  code: string;
+  capacityLiters: number;
+  entrega: number; // cheios em poder do cliente
+  retirada: number; // vazios a retirar do cliente
+};
+
 export function CustomerForm({
   initial,
   canDelete = false,
@@ -108,6 +117,64 @@ export function CustomerForm({
     });
   }
 
+  // Estoque com o cliente (Entrega/Retirada/Saldo) — mesma ideia dos preços:
+  // lista pronta, pré-selecionada, sem precisar "adicionar" nada.
+  const [stock, setStock] = useState<StockRow[]>([]);
+  const [stockLoaded, setStockLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      if (initial?.id) {
+        const res = await fetch(`/api/v1/customers/${initial.id}/stock`);
+        const json = await res.json();
+        if (!cancelled && json.ok) setStock(json.data);
+      } else {
+        const res = await fetch("/api/v1/keg-types");
+        const json = await res.json();
+        if (!cancelled && json.ok) {
+          setStock(
+            (json.data as { id: string; name: string; code: string; capacityLiters: number; active: boolean }[])
+              .filter((k) => k.active)
+              .map((k) => ({
+                kegTypeId: k.id,
+                name: k.name,
+                code: k.code,
+                capacityLiters: k.capacityLiters,
+                entrega: 0,
+                retirada: 0,
+              })),
+          );
+        }
+      }
+      if (!cancelled) setStockLoaded(true);
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [initial?.id]);
+
+  function updateStock(kegTypeId: string, field: "entrega" | "retirada", value: string) {
+    const n = value === "" ? 0 : Math.max(0, Number(value) || 0);
+    setStock((prev) => prev.map((s) => (s.kegTypeId === kegTypeId ? { ...s, [field]: n } : s)));
+  }
+
+  async function saveStock(customerId: string) {
+    if (!stockLoaded) return;
+    await fetch(`/api/v1/customers/${customerId}/stock`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entries: stock.map((s) => ({
+          kegTypeId: s.kegTypeId,
+          entrega: s.entrega,
+          retirada: s.retirada,
+        })),
+      }),
+    });
+  }
+
   async function handleDelete() {
     if (!initial?.id) return;
     setDeleting(true);
@@ -158,6 +225,7 @@ export function CustomerForm({
         return;
       }
       await savePrices(json.data.id);
+      await saveStock(json.data.id);
       router.push(`/clientes/${json.data.id}`);
       router.refresh();
     } catch {
@@ -349,6 +417,65 @@ export function CustomerForm({
                     onChange={(e) => updatePrice(p.kegTypeId, e.target.value)}
                   />
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card className="mt-4 p-6">
+        <h2 className="text-sm font-semibold">Estoque com o cliente</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Entrega = cheios em poder do cliente · Retirada = vazios a retirar dele · Saldo =
+          total. Preencha o que ele já tem com ele hoje.
+        </p>
+        {!stockLoaded ? (
+          <p className="mt-4 text-sm text-muted-foreground">Carregando…</p>
+        ) : stock.length === 0 ? (
+          <p className="mt-4 text-sm text-muted-foreground">
+            Nenhum tipo de barril cadastrado ainda.
+          </p>
+        ) : (
+          <div className="mt-4 space-y-2">
+            {stock.map((s) => (
+              <div
+                key={s.kegTypeId}
+                className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/30 p-3"
+              >
+                <span className="min-w-40 text-sm font-medium">
+                  {s.name}{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    ({s.code} · {s.capacityLiters}L)
+                  </span>
+                </span>
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  Entrega
+                  <Input
+                    type="number"
+                    min={0}
+                    className="w-20"
+                    value={s.entrega > 0 ? s.entrega : ""}
+                    placeholder="0"
+                    onChange={(e) => updateStock(s.kegTypeId, "entrega", e.target.value)}
+                  />
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  Retirada
+                  <Input
+                    type="number"
+                    min={0}
+                    className="w-20"
+                    value={s.retirada > 0 ? s.retirada : ""}
+                    placeholder="0"
+                    onChange={(e) => updateStock(s.kegTypeId, "retirada", e.target.value)}
+                  />
+                </label>
+                <span className="ml-auto text-sm">
+                  <span className="text-xs text-muted-foreground">Saldo </span>
+                  <span className="font-bold text-brand-strong">
+                    {s.entrega + s.retirada}
+                  </span>
+                </span>
               </div>
             ))}
           </div>

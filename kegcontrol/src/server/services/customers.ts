@@ -2,9 +2,11 @@ import type { Session } from "@/lib/auth";
 import { ApiError } from "@/lib/errors";
 import { phoneMatchKey } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
+import type { MovementInput, MovementItemInput } from "@/lib/validation";
 import { customerSchema } from "@/lib/validation";
 import type { z } from "zod";
 import { diff, logAudit } from "./audit";
+import { createMovement } from "./movements";
 
 type CustomerData = z.infer<typeof customerSchema>;
 
@@ -172,6 +174,103 @@ export async function setCustomerPrices(
   });
 
   return getCustomerPrices(session.companyId, customerId);
+}
+
+// ─── Estoque com o cliente (Entrega / Retirada / Saldo) ────────────────────
+// Mesma ideia da tabela de preços: lista TODOS os tipos ativos, já com o saldo
+// atual deste cliente — pronto pro form mostrar uma linha por tipo, sem
+// precisar "adicionar" nada.
+export async function getCustomerStockByType(companyId: string, customerId: string) {
+  const [kegTypes, buckets] = await Promise.all([
+    prisma.kegType.findMany({
+      where: { companyId, active: true },
+      orderBy: { capacityLiters: "asc" },
+    }),
+    prisma.stockBalance.findMany({
+      where: { companyId, customerId, status: "WITH_CUSTOMER" },
+    }),
+  ]);
+  const byType = new Map<string, { full: number; empty: number }>();
+  for (const b of buckets) {
+    const row = byType.get(b.kegTypeId) ?? { full: 0, empty: 0 };
+    if (b.condition === "FULL") row.full += b.quantity;
+    else row.empty += b.quantity;
+    byType.set(b.kegTypeId, row);
+  }
+  return kegTypes.map((k) => {
+    const row = byType.get(k.id) ?? { full: 0, empty: 0 };
+    return {
+      kegTypeId: k.id,
+      name: k.name,
+      code: k.code,
+      capacityLiters: k.capacityLiters,
+      entrega: row.full, // "Entrega" = cheios em poder do cliente
+      retirada: row.empty, // "Retirada" = vazios a retirar do cliente
+      saldo: row.full + row.empty,
+    };
+  });
+}
+
+/**
+ * Ajusta o estoque em poder do cliente (Entrega/Retirada) por tipo de barril,
+ * conciliando a diferença com o saldo atual via movimentação de AJUSTE — o
+ * mesmo princípio do estoque do depósito: nunca edita o saldo direto, sempre
+ * abre uma movimentação (auditoria). Fluxo EXTERNO↔CLIENTE porque isso é
+ * registro de uma posição já existente (cadastro), não uma entrega feita
+ * pelo depósito — não mexe no seu estoque disponível.
+ */
+export async function setCustomerStockByType(
+  session: Session,
+  customerId: string,
+  entries: { kegTypeId: string; entrega: number; retirada: number }[],
+) {
+  const { companyId } = session;
+  await getCustomer(companyId, customerId); // valida existência/empresa
+
+  const current = await getCustomerStockByType(companyId, customerId);
+  const currentByType = new Map(current.map((c) => [c.kegTypeId, c]));
+
+  const items: MovementItemInput[] = [];
+  const reconcile = (kegTypeId: string, condition: "FULL" | "EMPTY", delta: number) => {
+    if (delta > 0) {
+      items.push({
+        kegTypeId,
+        quantity: delta,
+        condition,
+        toCondition: null,
+        fromLocation: "EXTERNAL",
+        toLocation: "CUSTOMER",
+        fromStatus: null,
+        toStatus: "WITH_CUSTOMER",
+      });
+    } else if (delta < 0) {
+      items.push({
+        kegTypeId,
+        quantity: -delta,
+        condition,
+        toCondition: null,
+        fromLocation: "CUSTOMER",
+        toLocation: "EXTERNAL",
+        fromStatus: "WITH_CUSTOMER",
+        toStatus: null,
+      });
+    }
+  };
+  for (const e of entries) {
+    const before = currentByType.get(e.kegTypeId) ?? { entrega: 0, retirada: 0 };
+    reconcile(e.kegTypeId, "FULL", e.entrega - before.entrega);
+    reconcile(e.kegTypeId, "EMPTY", e.retirada - before.retirada);
+  }
+
+  if (items.length > 0) {
+    await createMovement(session, {
+      type: "ADJUSTMENT",
+      customerId,
+      notes: "Ajuste de estoque no cadastro do cliente (Entrega/Retirada/Saldo)",
+      items,
+    } as MovementInput);
+  }
+  return getCustomerStockByType(companyId, customerId);
 }
 
 // Exclusão definitiva. Só permitida se o cliente não tiver histórico (movimentações

@@ -57,6 +57,18 @@ export const customerPricesSchema = z.object({
   ),
 });
 
+// Estoque em poder do cliente por tipo de barril: Entrega (cheios) / Retirada
+// (vazios) / Saldo (soma, calculado no client — não é campo enviado).
+export const customerStockSchema = z.object({
+  entries: z.array(
+    z.object({
+      kegTypeId: z.string().min(1),
+      entrega: z.coerce.number().int().min(0),
+      retirada: z.coerce.number().int().min(0),
+    }),
+  ),
+});
+
 export const kegTypeSchema = z.object({
   name: z.string().trim().min(2, "Nome é obrigatório"),
   capacityLiters: z.coerce.number().int().positive("Capacidade inválida"),
