@@ -86,6 +86,71 @@ export async function createCustomer(session: Session, data: CustomerData) {
   return customer;
 }
 
+// Preços por tipo de barril: lista TODOS os tipos ativos da empresa, já com o
+// preço deste cliente (0 quando ainda não foi definido) — pronto para o form
+// exibir uma linha por tipo, pré-selecionado, sem precisar "adicionar" nada.
+export async function getCustomerPrices(companyId: string, customerId: string) {
+  const [kegTypes, prices] = await Promise.all([
+    prisma.kegType.findMany({
+      where: { companyId, active: true },
+      orderBy: { capacityLiters: "asc" },
+    }),
+    prisma.customerPrice.findMany({ where: { companyId, customerId } }),
+  ]);
+  const byType = new Map(prices.map((p) => [p.kegTypeId, p.price]));
+  return kegTypes.map((k) => ({
+    kegTypeId: k.id,
+    name: k.name,
+    code: k.code,
+    capacityLiters: k.capacityLiters,
+    price: byType.get(k.id) ?? 0,
+  }));
+}
+
+// Substitui a tabela de preços do cliente. price <= 0 remove a entrada (volta
+// a "sem preço definido") em vez de gravar zero.
+export async function setCustomerPrices(
+  session: Session,
+  customerId: string,
+  prices: { kegTypeId: string; price: number }[],
+) {
+  await getCustomer(session.companyId, customerId); // valida existência/empresa
+
+  await prisma.$transaction(async (tx) => {
+    for (const p of prices) {
+      if (p.price > 0) {
+        await tx.customerPrice.upsert({
+          where: { customerId_kegTypeId: { customerId, kegTypeId: p.kegTypeId } },
+          update: { price: p.price },
+          create: {
+            companyId: session.companyId,
+            customerId,
+            kegTypeId: p.kegTypeId,
+            price: p.price,
+          },
+        });
+      } else {
+        await tx.customerPrice
+          .delete({
+            where: { customerId_kegTypeId: { customerId, kegTypeId: p.kegTypeId } },
+          })
+          .catch(() => {}); // não existia — ok
+      }
+    }
+  });
+
+  await logAudit(prisma, {
+    companyId: session.companyId,
+    userId: session.userId,
+    action: "UPDATE",
+    entity: "CustomerPrice",
+    entityId: customerId,
+    changes: { precos: { de: null, para: prices } },
+  });
+
+  return getCustomerPrices(session.companyId, customerId);
+}
+
 // Exclusão definitiva. Só permitida se o cliente não tiver histórico (movimentações
 // ou saldo de barris) — preserva a integridade do extrato/auditoria. Com histórico,
 // oriente o usuário a bloquear/inativar em vez de excluir.
@@ -105,6 +170,9 @@ export async function deleteCustomer(session: Session, id: string) {
     );
   }
 
+  // Preços não são histórico imutável (diferente de movimentações) — removidos
+  // junto, sem exigir confirmação extra.
+  await prisma.customerPrice.deleteMany({ where: { customerId: id } });
   await prisma.customer.delete({ where: { id } });
   await logAudit(prisma, {
     companyId: session.companyId,

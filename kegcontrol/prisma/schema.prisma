@@ -72,21 +72,40 @@ model Customer {
   phone       String?
   whatsapp    String?
   email       String?
-  address     String?
-  city        String?
-  state       String?
-  contactName String? // responsável
-  notes       String?
-  status      String   @default("ACTIVE") // ACTIVE | INACTIVE | BLOCKED
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  address      String?
+  neighborhood String? // bairro
+  city         String?
+  state        String?
+  contactName  String? // responsável
+  notes        String?
+  status       String   @default("ACTIVE") // ACTIVE | INACTIVE | BLOCKED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  company       Company        @relation(fields: [companyId], references: [id])
+  company       Company         @relation(fields: [companyId], references: [id])
   stockBalances StockBalance[]
   movements     Movement[]
+  prices        CustomerPrice[]
 
   @@index([companyId, name])
   @@index([companyId, status])
+}
+
+// Preço negociado por cliente e tipo de barril (cada cliente paga um valor
+// diferente pelo mesmo tipo — ex.: atacado x varejo, contrato antigo, etc.).
+model CustomerPrice {
+  id         String   @id @default(cuid())
+  companyId  String
+  customerId String
+  kegTypeId  String
+  price      Float
+  updatedAt  DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  kegType  KegType  @relation(fields: [kegTypeId], references: [id])
+
+  @@unique([customerId, kegTypeId])
+  @@index([companyId])
 }
 
 model KegType {
@@ -101,9 +120,10 @@ model KegType {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  company       Company        @relation(fields: [companyId], references: [id])
+  company       Company         @relation(fields: [companyId], references: [id])
   stockBalances StockBalance[]
   movementItems MovementItem[]
+  customerPrices CustomerPrice[]
 
   @@unique([companyId, code])
 }
