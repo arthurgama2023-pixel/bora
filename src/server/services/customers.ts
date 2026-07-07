@@ -279,36 +279,50 @@ export async function setCustomerStockByType(
   return getCustomerStockByType(companyId, customerId);
 }
 
-// Exclusão definitiva. Só permitida se o cliente não tiver histórico (movimentações
-// ou saldo de barris) — preserva a integridade do extrato/auditoria. Com histórico,
-// oriente o usuário a bloquear/inativar em vez de excluir.
+// Exclusão definitiva — força a exclusão mesmo com histórico (movimentações,
+// saldo de barris em poder do cliente ou preços). Como Movement é o registro
+// imutável de auditoria, as movimentações NÃO são apagadas: só perdem o
+// vínculo com o cliente (customerId → null), preservando o histórico da
+// operação. O saldo em poder do cliente (StockBalance) é removido de fato —
+// se o cliente sai do sistema, não há mais "em poder de quem" rastrear. Um
+// resumo do que existia é gravado na auditoria antes de apagar, para não
+// perder o rastro por completo.
 export async function deleteCustomer(session: Session, id: string) {
   const customer = await getCustomer(session.companyId, id);
 
-  const [movementCount, balanceCount] = await Promise.all([
+  const [movementCount, balance, prices] = await Promise.all([
     prisma.movement.count({ where: { companyId: session.companyId, customerId: id } }),
-    prisma.stockBalance.count({
-      where: { companyId: session.companyId, customerId: id, quantity: { gt: 0 } },
-    }),
+    getCustomerBalance(session.companyId, id),
+    prisma.customerPrice.count({ where: { customerId: id } }),
   ]);
-  if (movementCount > 0 || balanceCount > 0) {
-    throw new ApiError(
-      409,
-      "Este cliente tem movimentações ou barris em poder dele — não pode ser excluído. Marque como Bloqueado ou Inativo em vez disso.",
-    );
-  }
 
-  // Preços não são histórico imutável (diferente de movimentações) — removidos
-  // junto, sem exigir confirmação extra.
-  await prisma.customerPrice.deleteMany({ where: { customerId: id } });
-  await prisma.customer.delete({ where: { id } });
+  await prisma.$transaction([
+    prisma.customerPrice.deleteMany({ where: { customerId: id } }),
+    prisma.stockBalance.deleteMany({ where: { companyId: session.companyId, customerId: id } }),
+    prisma.movement.updateMany({
+      where: { companyId: session.companyId, customerId: id },
+      data: { customerId: null },
+    }),
+    prisma.customer.delete({ where: { id } }),
+  ]);
+
   await logAudit(prisma, {
     companyId: session.companyId,
     userId: session.userId,
     action: "DELETE",
     entity: "Customer",
     entityId: id,
-    changes: { nome: { de: customer.name, para: null } },
+    changes: {
+      nome: { de: customer.name, para: null },
+      resumoAoExcluir: {
+        de: {
+          movimentacoes: movementCount,
+          barrisEmPoderDoCliente: balance.totals.total,
+          precosCadastrados: prices,
+        },
+        para: null,
+      },
+    },
   });
 }
 
