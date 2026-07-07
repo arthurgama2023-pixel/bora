@@ -20,7 +20,7 @@ export const CUSTOMER_TYPES = ["COMERCIO", "DELIVERY", "EVENTOS"] as const;
 export type CustomerType = (typeof CUSTOMER_TYPES)[number];
 export const CUSTOMER_TYPE_LABELS: Record<CustomerType, string> = {
   COMERCIO: "Comércio",
-  DELIVERY: "Delivery",
+  DELIVERY: "Distribuidor",
   EVENTOS: "Festas e Eventos",
 };
 
