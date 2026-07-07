@@ -3,6 +3,7 @@ import {
   CONDITIONS,
   CUSTOMER_STATUSES,
   CUSTOMER_TYPES,
+  KEG_CATEGORIES,
   LOCATIONS,
   MOVEMENT_TYPES,
   ROLES,
@@ -36,6 +37,15 @@ export const customerSchema = z.object({
   status: z.enum(CUSTOMER_STATUSES).default("ACTIVE"),
 });
 
+// Atualização parcial (PATCH): campos com .default() precisam ser redeclarados
+// sem default aqui — .partial() sozinho NÃO impede o Zod de injetar o valor
+// padrão quando o campo não é enviado, o que resetaria silenciosamente
+// type/status a cada edição que não os incluísse.
+export const customerUpdateSchema = customerSchema.partial().extend({
+  type: z.enum(CUSTOMER_TYPES).optional(),
+  status: z.enum(CUSTOMER_STATUSES).optional(),
+});
+
 // Preços por tipo de barril que um cliente específico paga (lista completa —
 // entradas com price <= 0 são tratadas como "sem preço definido" e removidas).
 export const customerPricesSchema = z.object({
@@ -51,9 +61,18 @@ export const kegTypeSchema = z.object({
   name: z.string().trim().min(2, "Nome é obrigatório"),
   capacityLiters: z.coerce.number().int().positive("Capacidade inválida"),
   code: z.string().trim().min(1, "Código é obrigatório").toUpperCase(),
+  category: z.enum(KEG_CATEGORIES).default("BARRIL"),
   assetValue: z.coerce.number().min(0).default(0),
   notes: z.string().trim().optional().nullable(),
   active: z.boolean().default(true),
+});
+
+// Ver comentário em customerUpdateSchema: .partial() não basta para campos
+// com .default() — redeclarados aqui como opcionais de verdade.
+export const kegTypeUpdateSchema = kegTypeSchema.partial().extend({
+  category: z.enum(KEG_CATEGORIES).optional(),
+  assetValue: z.coerce.number().min(0).optional(),
+  active: z.boolean().optional(),
 });
 
 export const userSchema = z.object({
@@ -64,9 +83,11 @@ export const userSchema = z.object({
   active: z.boolean().default(true),
 });
 
-export const userUpdateSchema = userSchema
-  .partial()
-  .extend({ password: z.string().min(6).optional().or(z.literal("")) });
+// Ver comentário em customerUpdateSchema: active também tinha .default(true).
+export const userUpdateSchema = userSchema.partial().extend({
+  password: z.string().min(6).optional().or(z.literal("")),
+  active: z.boolean().optional(),
+});
 
 export const movementItemSchema = z
   .object({

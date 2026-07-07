@@ -24,6 +24,13 @@ export const CUSTOMER_TYPE_LABELS: Record<CustomerType, string> = {
   EVENTOS: "Festas e Eventos",
 };
 
+export const KEG_CATEGORIES = ["BARRIL", "CHOPEIRA"] as const;
+export type KegCategory = (typeof KEG_CATEGORIES)[number];
+export const KEG_CATEGORY_LABELS: Record<KegCategory, string> = {
+  BARRIL: "Barril",
+  CHOPEIRA: "Chopeira",
+};
+
 export const CONDITIONS = ["FULL", "EMPTY"] as const;
 export type Condition = (typeof CONDITIONS)[number];
 export const CONDITION_LABELS: Record<Condition, string> = {

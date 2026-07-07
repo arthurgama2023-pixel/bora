@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { handle } from "@/lib/api";
 import { assertRole, requireSession } from "@/lib/auth";
-import { customerSchema } from "@/lib/validation";
+import { customerUpdateSchema } from "@/lib/validation";
 import {
   deleteCustomer,
   getCustomer,
@@ -28,7 +28,7 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
     const session = await requireSession();
     assertRole(session, ["ADMIN", "MANAGER"]);
     const { id } = await ctx.params;
-    const data = customerSchema.partial().parse(await request.json());
+    const data = customerUpdateSchema.parse(await request.json());
     return updateCustomer(session, id, data);
   });
 }

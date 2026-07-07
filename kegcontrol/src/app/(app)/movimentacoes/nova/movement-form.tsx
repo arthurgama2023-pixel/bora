@@ -2,7 +2,7 @@
 
 import { Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Button,
   Card,
@@ -13,15 +13,18 @@ import {
 } from "@/components/ui";
 import {
   CONDITION_LABELS,
+  KEG_CATEGORY_LABELS,
   LOCATION_LABELS,
   MOVEMENT_TYPES,
   MOVEMENT_TYPE_LABELS,
   type Condition,
+  type KegCategory,
   type Location,
   type MovementType,
 } from "@/lib/enums";
+import { cn, formatCurrency } from "@/lib/utils";
 
-type KegTypeOption = { id: string; name: string; code: string };
+type KegTypeOption = { id: string; name: string; code: string; category?: string };
 type CustomerOption = { id: string; name: string; status: string };
 
 type Row = {
@@ -92,6 +95,32 @@ export function MovementForm({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Preço que o cliente selecionado paga de costume, por tipo de barril — só
+  // referência visual ao lado do item, não é gravado na movimentação.
+  const [customerPrices, setCustomerPrices] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!customerId) {
+      setCustomerPrices({});
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/v1/customers/${customerId}/prices`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled || !json.ok) return;
+        const map: Record<string, number> = {};
+        for (const p of json.data as { kegTypeId: string; price: number }[]) {
+          if (p.price > 0) map[p.kegTypeId] = p.price;
+        }
+        setCustomerPrices(map);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId]);
+
   const requiresCustomer = ["DELIVERY", "PICKUP", "SWAP"].includes(type);
   const showsCustomer = requiresCustomer || ["LOSS", "ADJUSTMENT"].includes(type);
 
@@ -99,6 +128,22 @@ export function MovementForm({
     setType(t);
     setRows([defaultRow(t)]);
     if (t === "MAINTENANCE") setMaintenanceDirection("OUT");
+  }
+
+  // Chip de item pré-selecionado (tipo já registrado em Barris/Chopeiras): se
+  // houver uma linha vazia na direção certa, preenche ela; senão cria uma nova.
+  function pickKegType(kegTypeId: string, direction: "OUT" | "IN" = "OUT") {
+    setRows((rs) => {
+      const idx = rs.findIndex(
+        (r) => r.kegTypeId === "" && (type !== "SWAP" || r.swapDirection === direction),
+      );
+      if (idx >= 0) {
+        const copy = [...rs];
+        copy[idx] = { ...copy[idx], kegTypeId };
+        return copy;
+      }
+      return [...rs, { ...defaultRow(type, direction), kegTypeId }];
+    });
   }
 
   function updateRow(idx: number, patch: Partial<Row>) {
@@ -201,6 +246,37 @@ export function MovementForm({
   const swapRows = (direction: "OUT" | "IN") =>
     rows.map((r, idx) => ({ r, idx })).filter(({ r }) => r.swapDirection === direction);
 
+  // Itens pré-selecionados — tudo que já está registrado em Barris/Chopeiras.
+  // Clicar já bota o item na movimentação, sem precisar procurar no dropdown.
+  function kegTypeChips(direction: "OUT" | "IN" = "OUT") {
+    if (kegTypes.length === 0) return null;
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {kegTypes.map((t) => {
+          const price = customerId ? customerPrices[t.id] : undefined;
+          const isChopeira = t.category === "CHOPEIRA";
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => pickKegType(t.id, direction)}
+              title={isChopeira ? KEG_CATEGORY_LABELS.CHOPEIRA : KEG_CATEGORY_LABELS.BARRIL}
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                isChopeira
+                  ? "border-info/40 bg-info/10 text-info hover:bg-info/20"
+                  : "border-brand/40 bg-brand/10 text-brand-strong hover:bg-brand/20",
+              )}
+            >
+              {t.name} <span className="opacity-70">({t.code})</span>
+              {price ? <span className="ml-1 opacity-80">· {formatCurrency(price)}</span> : null}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
   function renderRow(r: Row, idx: number) {
     return (
       <div
@@ -209,6 +285,11 @@ export function MovementForm({
       >
         {kegSelect(r, idx)}
         {qtyInput(r, idx)}
+        {customerId && r.kegTypeId && customerPrices[r.kegTypeId] > 0 && (
+          <span className="text-xs font-medium text-success">
+            cliente paga {formatCurrency(customerPrices[r.kegTypeId])}
+          </span>
+        )}
 
         {type === "PICKUP" && (
           <>
@@ -352,6 +433,7 @@ export function MovementForm({
                 <div className="mb-2 text-sm font-semibold text-success">
                   Entregar ao cliente (cheios)
                 </div>
+                <div className="mb-2">{kegTypeChips("OUT")}</div>
                 <div className="space-y-2">
                   {swapRows("OUT").map(({ r, idx }) => renderRow(r, idx))}
                 </div>
@@ -369,6 +451,7 @@ export function MovementForm({
                 <div className="mb-2 text-sm font-semibold text-info">
                   Retirar do cliente (retornam vazios)
                 </div>
+                <div className="mb-2">{kegTypeChips("IN")}</div>
                 <div className="space-y-2">
                   {swapRows("IN").map(({ r, idx }) => renderRow(r, idx))}
                 </div>
@@ -385,6 +468,12 @@ export function MovementForm({
             </>
           ) : (
             <>
+              <div className="mb-2">
+                <span className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                  Itens já registrados — clique para adicionar
+                </span>
+                {kegTypeChips("OUT")}
+              </div>
               <div className="space-y-2">{rows.map((r, idx) => renderRow(r, idx))}</div>
               <Button
                 type="button"
