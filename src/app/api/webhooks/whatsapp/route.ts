@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { chatWithAgent, type ChatTurn } from "@/server/services/agent";
+import { findCustomerByPhone } from "@/server/services/customers";
 import { getWhatsAppChannel, isWhatsAppNumberAllowed } from "@/server/services/whatsapp/channel";
 import { findCompanyByWebhookToken } from "@/server/services/whatsapp/config";
 
@@ -44,6 +45,10 @@ export async function POST(req: NextRequest) {
 
   const sessionId = `wa-${incoming.externalId}`;
 
+  // Reconhece o cliente pelo número (tolerando formatos) para o agente já saber
+  // com quem fala e conectar o contexto dele. null = número não cadastrado.
+  const customer = await findCustomerByPhone(companyId, incoming.externalId);
+
   // Reconstrói o histórico recente da conversa desse número para dar contexto ao agente.
   const previous = await prisma.agentMessage.findMany({
     where: { companyId, sessionId },
@@ -57,7 +62,13 @@ export async function POST(req: NextRequest) {
   ];
 
   try {
-    const { reply } = await chatWithAgent(companyId, sessionId, history);
+    const { reply } = await chatWithAgent(companyId, sessionId, history, {
+      channel: "WHATSAPP",
+      phone: incoming.externalId,
+      identifiedCustomer: customer
+        ? { id: customer.id, name: customer.name, status: customer.status, type: customer.type }
+        : null,
+    });
     await channel.sendMessage(companyId, incoming.externalId, reply);
   } catch (err) {
     console.error("[whatsapp]", err);

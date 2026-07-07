@@ -1,11 +1,34 @@
 import type { Session } from "@/lib/auth";
 import { ApiError } from "@/lib/errors";
+import { phoneMatchKey } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import { customerSchema } from "@/lib/validation";
 import type { z } from "zod";
 import { diff, logAudit } from "./audit";
 
 type CustomerData = z.infer<typeof customerSchema>;
+
+/**
+ * Encontra o cliente cujo WhatsApp/telefone corresponde ao número informado,
+ * tolerando diferenças de formato (DDI, 9º dígito, máscara) via phoneMatchKey.
+ * Usado para o agente reconhecer AUTOMATICAMENTE quem manda mensagem no WhatsApp.
+ */
+export async function findCustomerByPhone(companyId: string, rawPhone: string) {
+  const key = phoneMatchKey(rawPhone);
+  if (!key) return null;
+  const candidates = await prisma.customer.findMany({
+    where: {
+      companyId,
+      OR: [{ whatsapp: { not: null } }, { phone: { not: null } }],
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+  return (
+    candidates.find(
+      (c) => phoneMatchKey(c.whatsapp) === key || phoneMatchKey(c.phone) === key,
+    ) ?? null
+  );
+}
 
 export async function listCustomers(
   companyId: string,

@@ -1,9 +1,28 @@
 import { FunctionCallingConfigMode, GoogleGenAI, Type, type Content, type FunctionDeclaration, type Part } from "@google/genai";
+import {
+  CUSTOMER_STATUS_LABELS,
+  CUSTOMER_TYPE_LABELS,
+  MOVEMENT_TYPE_LABELS,
+  type CustomerStatus,
+  type CustomerType,
+  type MovementType,
+} from "@/lib/enums";
+import { phoneMatchKey } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
-import { getCustomerBalance } from "./customers";
+import { formatCurrency, formatDate } from "@/lib/utils";
+import { getCustomerBalance, getCustomerPrices } from "./customers";
 import { getCustomerInsights, SEGMENT_LABELS } from "./crm";
 import { getCustomerStatement } from "./reports";
 import { getStockSummary } from "./stock";
+
+// Cliente reconhecido pelo número de WhatsApp (ou null se o número não bate
+// com nenhum cadastro). Passado ao agente para ele "conectar os pontos".
+export type IdentifiedCustomer = {
+  id: string;
+  name: string;
+  status: string;
+  type: string;
+} | null;
 
 // ─── Configuração / personalidade ──────────────────────────────────────────
 
@@ -107,6 +126,20 @@ async function runTool(
   switch (name) {
     case "buscar_cliente": {
       const termo = String(input.termo ?? "");
+      // Se o termo parece um telefone, casa por chave canônica (tolera DDI/9º
+      // dígito/máscara) — buscar por "contains" falharia entre formatos diferentes.
+      const digits = termo.replace(/\D/g, "");
+      if (digits.length >= 8) {
+        const key = phoneMatchKey(termo);
+        const withPhone = await prisma.customer.findMany({
+          where: { companyId, OR: [{ whatsapp: { not: null } }, { phone: { not: null } }] },
+          select: { id: true, name: true, companyName: true, city: true, status: true, whatsapp: true, phone: true },
+        });
+        const matches = withPhone.filter(
+          (c) => phoneMatchKey(c.whatsapp) === key || phoneMatchKey(c.phone) === key,
+        );
+        if (matches.length) return JSON.stringify(matches.slice(0, 5));
+      }
       const customers = await prisma.customer.findMany({
         where: {
           companyId,
@@ -189,17 +222,102 @@ async function runTool(
   }
 }
 
+// ─── Identidade do interlocutor (quem manda mensagem) ──────────────────────
+
+// Monta um bloco de contexto com quem é o cliente e sua situação atual, para o
+// agente "conectar os pontos" já na primeira mensagem, sem pedir identificação.
+async function buildIdentityContext(
+  companyId: string,
+  customer: NonNullable<IdentifiedCustomer>,
+  phone: string,
+): Promise<string> {
+  const [balance, prices, lastMov] = await Promise.all([
+    getCustomerBalance(companyId, customer.id),
+    getCustomerPrices(companyId, customer.id),
+    prisma.movement.findFirst({
+      where: { companyId, customerId: customer.id },
+      orderBy: { occurredAt: "desc" },
+      select: { occurredAt: true, type: true },
+    }),
+  ]);
+
+  const kegs =
+    balance.rows
+      .map((r) => `${r.kegType.name}: ${r.full} cheio(s), ${r.empty} vazio(s)`)
+      .join("; ") || "nenhum barril no momento";
+  const priced = prices.filter((p) => p.price > 0);
+  const priceLines = priced.length
+    ? priced.map((p) => `${p.name} (${p.code}) = ${formatCurrency(p.price)}`).join("; ")
+    : "não cadastrados (não invente preços — diga que o comercial confirma)";
+  const lastMovTxt = lastMov
+    ? `${MOVEMENT_TYPE_LABELS[lastMov.type as MovementType] ?? lastMov.type} em ${formatDate(lastMov.occurredAt)}`
+    : "nenhuma movimentação registrada ainda";
+  const statusLabel = CUSTOMER_STATUS_LABELS[customer.status as CustomerStatus] ?? customer.status;
+  const typeLabel = CUSTOMER_TYPE_LABELS[customer.type as CustomerType] ?? customer.type;
+
+  return [
+    "CONTEXTO — CLIENTE IDENTIFICADO PELO NÚMERO DE WHATSAPP:",
+    `Você está conversando com um cliente JÁ CADASTRADO. Reconheça-o pelo nome e não peça para ele se identificar de novo.`,
+    `- Nome: ${customer.name}`,
+    `- customerId: ${customer.id} (USE este id nas ferramentas situacao_cliente, extrato_cliente — não chame buscar_cliente para ele)`,
+    `- WhatsApp: ${phone}`,
+    `- Status: ${statusLabel} · Tipo: ${typeLabel}`,
+    `- Barris em poder dele agora: ${kegs}`,
+    `- Total com ele: ${balance.totals.total} (${balance.totals.full} cheios, ${balance.totals.empty} vazios)`,
+    `- Última movimentação: ${lastMovTxt}`,
+    `- Preços que ESTE cliente paga: ${priceLines}`,
+    priced.length
+      ? `Você PODE informar a este cliente os preços listados acima — são os preços JÁ CADASTRADOS dele (isso tem prioridade sobre qualquer regra genérica de "não confirmar preços"). Para tipos SEM preço cadastrado, aí sim diga que o comercial confirma. Nunca invente valores.`
+      : "",
+    customer.status === "BLOCKED"
+      ? `- ATENÇÃO: cliente BLOQUEADO — não prometa entrega; oriente a procurar o financeiro.`
+      : "",
+    `Trate a conversa como continuação com ESTE cliente e conecte o histórico dele ao que ele pedir.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildUnknownContext(phone: string): string {
+  return [
+    "CONTEXTO — NÚMERO NÃO CADASTRADO:",
+    `O WhatsApp ${phone} não corresponde a nenhum cliente cadastrado.`,
+    "Pode ser um contato novo. Se a pessoa mencionar um nome ou empresa, use buscar_cliente para tentar localizar antes de assumir que é novo.",
+    "Se for realmente novo, seja acolhedor, colete nome e cidade, mas avise que o cadastro é finalizado pela equipe.",
+  ].join("\n");
+}
+
 // ─── Loop do agente (Gemini + tools) ───────────────────────────────────────
 
 export type ChatTurn = { role: "user" | "assistant"; content: string };
+
+export type ChatOptions = {
+  identifiedCustomer?: IdentifiedCustomer;
+  phone?: string; // número do WhatsApp do interlocutor (quando via WhatsApp)
+  channel?: string; // PLAYGROUND | WHATSAPP
+};
 
 export async function chatWithAgent(
   companyId: string,
   sessionId: string,
   history: ChatTurn[],
+  opts: ChatOptions = {},
 ): Promise<{ reply: string; toolsUsed: string[]; simulated: boolean }> {
   const config = await getAgentConfig(companyId);
   const userMessage = history.at(-1);
+  const channel = opts.channel ?? "PLAYGROUND";
+  const customerId = opts.identifiedCustomer?.id ?? null;
+
+  // Contexto de identidade (só quando veio de um canal com número, ex.: WhatsApp).
+  let contextBlock = "";
+  if (opts.phone) {
+    contextBlock = opts.identifiedCustomer
+      ? await buildIdentityContext(companyId, opts.identifiedCustomer, opts.phone)
+      : buildUnknownContext(opts.phone);
+  }
+  const systemInstruction = contextBlock
+    ? `${config.personality}\n\n---\n${contextBlock}`
+    : config.personality;
 
   if (userMessage) {
     await prisma.agentMessage.create({
@@ -208,6 +326,8 @@ export async function chatWithAgent(
         sessionId,
         role: "user",
         content: userMessage.content,
+        customerId,
+        channel,
       },
     });
   }
@@ -217,20 +337,24 @@ export async function chatWithAgent(
   let simulated = false;
 
   if (process.env.GEMINI_API_KEY) {
-    const result = await runGeminiLoop(companyId, config.personality, history);
+    const result = await runGeminiLoop(companyId, systemInstruction, history);
     reply = result.reply;
     toolsUsed = result.toolsUsed;
   } else {
     // Sem chave da API: modo simulado — usa as MESMAS ferramentas com um
     // roteador simples, para treinar fluxos e validar dados sem custo.
     simulated = true;
-    const result = await simulatedReply(companyId, history.at(-1)?.content ?? "");
+    const result = await simulatedReply(
+      companyId,
+      history.at(-1)?.content ?? "",
+      opts.identifiedCustomer,
+    );
     reply = result.reply;
     toolsUsed = result.toolsUsed;
   }
 
   await prisma.agentMessage.create({
-    data: { companyId, sessionId, role: "assistant", content: reply },
+    data: { companyId, sessionId, role: "assistant", content: reply, customerId, channel },
   });
 
   return { reply, toolsUsed, simulated };
@@ -238,7 +362,7 @@ export async function chatWithAgent(
 
 async function runGeminiLoop(
   companyId: string,
-  personality: string,
+  systemInstruction: string,
   history: ChatTurn[],
 ): Promise<{ reply: string; toolsUsed: string[] }> {
   const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -253,7 +377,7 @@ async function runGeminiLoop(
       model: "gemini-2.5-flash",
       contents,
       config: {
-        systemInstruction: personality,
+        systemInstruction,
         tools: [{ functionDeclarations: TOOLS }],
         toolConfig: {
           functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO },
@@ -296,8 +420,26 @@ async function runGeminiLoop(
 async function simulatedReply(
   companyId: string,
   text: string,
+  identifiedCustomer?: IdentifiedCustomer,
 ): Promise<{ reply: string; toolsUsed: string[] }> {
   const lower = text.toLowerCase();
+
+  // Se o número já foi reconhecido, o modo simulado também usa esse contexto:
+  // responde citando a situação do cliente identificado (sem precisar buscar).
+  if (identifiedCustomer && !/estoque|dispon[ií]vel|tem barril|inativ|sumid|reativa|parado/.test(lower)) {
+    const sit = JSON.parse(
+      await runTool(companyId, "situacao_cliente", { customerId: identifiedCustomer.id }),
+    );
+    if (sit && sit.nome) {
+      return {
+        reply:
+          `[simulado] Oi, ${sit.nome}! Vi aqui que você tem ${sit.totalBarris} barril(is) com você ` +
+          `(segmento ${sit.segmento}, última movimentação há ${sit.diasDesdeUltimaMovimentacao ?? "?"} dias). ` +
+          `Como posso ajudar? 🍺`,
+        toolsUsed: ["situacao_cliente"],
+      };
+    }
+  }
 
   if (/estoque|dispon[ií]vel|tem barril/.test(lower)) {
     const data = JSON.parse(await runTool(companyId, "estoque_disponivel", {}));
