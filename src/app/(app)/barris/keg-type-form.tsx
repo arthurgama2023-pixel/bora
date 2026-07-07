@@ -187,7 +187,7 @@ export function KegTypeForm({ initial }: { initial?: KegTypeFormData }) {
           <p className="mt-1 text-xs text-muted-foreground">
             {category === "CHOPEIRA"
               ? "Quantas unidades você tem disponíveis na casa. Alimenta o estoque automaticamente."
-              : "Quantos você tem na casa agora, cheios e vazios. Alimenta o estoque automaticamente (via ajuste, mantendo o histórico)."}
+              : "Entrega = cheios prontos pra sair · Retirada = vazios já retirados · Saldo = total. Alimenta o estoque automaticamente (via ajuste, mantendo o histórico)."}
           </p>
           {!stockLoaded ? (
             <p className="mt-3 text-sm text-muted-foreground">Carregando saldo atual…</p>
@@ -203,8 +203,8 @@ export function KegTypeForm({ initial }: { initial?: KegTypeFormData }) {
               </Field>
             </div>
           ) : (
-            <div className="mt-3 grid max-w-md gap-4 sm:grid-cols-2">
-              <Field label="Cheios">
+            <div className="mt-3 grid max-w-lg gap-4 sm:grid-cols-3">
+              <Field label="Entrega">
                 <Input
                   type="number"
                   min={0}
@@ -212,13 +212,18 @@ export function KegTypeForm({ initial }: { initial?: KegTypeFormData }) {
                   onChange={(e) => setStockFull(Math.max(0, Number(e.target.value) || 0))}
                 />
               </Field>
-              <Field label="Vazios">
+              <Field label="Retirada">
                 <Input
                   type="number"
                   min={0}
                   value={stockEmpty}
                   onChange={(e) => setStockEmpty(Math.max(0, Number(e.target.value) || 0))}
                 />
+              </Field>
+              <Field label="Saldo">
+                <div className="flex h-10 items-center rounded-lg border border-border bg-muted/40 px-3 text-sm font-bold text-brand-strong">
+                  {stockFull + stockEmpty}
+                </div>
               </Field>
             </div>
           )}
