@@ -20,7 +20,7 @@ export default async function NewMovementPage({
     prisma.kegType.findMany({
       where: { companyId: session.companyId, active: true },
       orderBy: { capacityLiters: "asc" },
-      select: { id: true, name: true, code: true },
+      select: { id: true, name: true, code: true, category: true },
     }),
     prisma.customer.findMany({
       where: { companyId: session.companyId, status: { not: "INACTIVE" } },

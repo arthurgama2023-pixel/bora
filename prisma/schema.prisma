@@ -114,6 +114,7 @@ model KegType {
   name           String // ex.: Barril 50L
   capacityLiters Int
   code           String // ex.: BRL-50
+  category       String   @default("BARRIL") // BARRIL | CHOPEIRA
   assetValue     Float    @default(0) // valor patrimonial unitário
   notes          String?
   active         Boolean  @default(true)

@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { handle } from "@/lib/api";
 import { assertRole, requireSession } from "@/lib/auth";
-import { kegTypeSchema } from "@/lib/validation";
+import { kegTypeUpdateSchema } from "@/lib/validation";
 import { getKegType, updateKegType } from "@/server/services/keg-types";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -19,7 +19,7 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
     const session = await requireSession();
     assertRole(session, ["ADMIN", "MANAGER"]);
     const { id } = await ctx.params;
-    const data = kegTypeSchema.partial().parse(await request.json());
+    const data = kegTypeUpdateSchema.parse(await request.json());
     return updateKegType(session, id, data);
   });
 }

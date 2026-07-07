@@ -3,12 +3,15 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
+import { KEG_CATEGORIES, KEG_CATEGORY_LABELS, type KegCategory } from "@/lib/enums";
+import { cn } from "@/lib/utils";
 
 export type KegTypeFormData = {
   id?: string;
   name?: string;
   capacityLiters?: number;
   code?: string;
+  category?: string;
   assetValue?: number;
   notes?: string | null;
   active?: boolean;
@@ -18,6 +21,9 @@ export function KegTypeForm({ initial }: { initial?: KegTypeFormData }) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [category, setCategory] = useState<KegCategory>(
+    (initial?.category as KegCategory) ?? "BARRIL",
+  );
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -28,6 +34,7 @@ export function KegTypeForm({ initial }: { initial?: KegTypeFormData }) {
       name: String(fd.get("name") ?? "").trim(),
       capacityLiters: Number(fd.get("capacityLiters")),
       code: String(fd.get("code") ?? "").trim(),
+      category,
       assetValue: Number(fd.get("assetValue") || 0),
       notes: String(fd.get("notes") ?? "").trim() || null,
       active: fd.get("active") === "true",
@@ -58,12 +65,35 @@ export function KegTypeForm({ initial }: { initial?: KegTypeFormData }) {
   return (
     <form onSubmit={submit}>
       <Card className="max-w-2xl p-6">
+        <div className="mb-6">
+          <span className="mb-2 block text-xs font-medium text-muted-foreground">
+            Categoria *
+          </span>
+          <div className="inline-flex rounded-lg border border-border bg-muted/40 p-1">
+            {KEG_CATEGORIES.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setCategory(c)}
+                className={cn(
+                  "rounded-md px-4 py-2 text-sm font-medium transition-colors",
+                  category === c
+                    ? "bg-brand text-brand-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {KEG_CATEGORY_LABELS[c]}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Nome *">
             <Input
               name="name"
               defaultValue={initial?.name ?? ""}
-              placeholder="Barril 50 Litros"
+              placeholder={category === "CHOPEIRA" ? "Chopeira 2 Torneiras" : "Barril 50 Litros"}
               required
             />
           </Field>
@@ -75,7 +105,7 @@ export function KegTypeForm({ initial }: { initial?: KegTypeFormData }) {
               required
             />
           </Field>
-          <Field label="Capacidade (litros) *">
+          <Field label={category === "CHOPEIRA" ? "Nº de torneiras *" : "Capacidade (litros) *"}>
             <Input
               name="capacityLiters"
               type="number"
