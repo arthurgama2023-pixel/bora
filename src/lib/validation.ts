@@ -28,11 +28,23 @@ export const customerSchema = z.object({
   whatsapp: z.string().trim().optional().nullable(),
   email: z.string().trim().optional().nullable(),
   address: z.string().trim().optional().nullable(),
+  neighborhood: z.string().trim().optional().nullable(),
   city: z.string().trim().optional().nullable(),
   state: z.string().trim().max(2, "Use a sigla da UF").optional().nullable(),
   contactName: z.string().trim().optional().nullable(),
   notes: z.string().trim().optional().nullable(),
   status: z.enum(CUSTOMER_STATUSES).default("ACTIVE"),
+});
+
+// Preços por tipo de barril que um cliente específico paga (lista completa —
+// entradas com price <= 0 são tratadas como "sem preço definido" e removidas).
+export const customerPricesSchema = z.object({
+  prices: z.array(
+    z.object({
+      kegTypeId: z.string().min(1),
+      price: z.coerce.number().min(0),
+    }),
+  ),
 });
 
 export const kegTypeSchema = z.object({

@@ -2,7 +2,7 @@
 
 import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
 import {
   CUSTOMER_STATUSES,
@@ -23,11 +23,20 @@ export type CustomerFormData = {
   whatsapp?: string | null;
   email?: string | null;
   address?: string | null;
+  neighborhood?: string | null;
   city?: string | null;
   state?: string | null;
   contactName?: string | null;
   notes?: string | null;
   status?: string;
+};
+
+type PriceRow = {
+  kegTypeId: string;
+  name: string;
+  code: string;
+  capacityLiters: number;
+  price: number;
 };
 
 export function CustomerForm({
@@ -46,6 +55,58 @@ export function CustomerForm({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+
+  // Preços por tipo de barril — a lista vem pronta (todos os tipos ativos da
+  // empresa, pré-selecionados) para só preencher o valor que este cliente paga.
+  const [prices, setPrices] = useState<PriceRow[]>([]);
+  const [pricesLoaded, setPricesLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      if (initial?.id) {
+        const res = await fetch(`/api/v1/customers/${initial.id}/prices`);
+        const json = await res.json();
+        if (!cancelled && json.ok) setPrices(json.data);
+      } else {
+        const res = await fetch("/api/v1/keg-types");
+        const json = await res.json();
+        if (!cancelled && json.ok) {
+          setPrices(
+            (json.data as { id: string; name: string; code: string; capacityLiters: number; active: boolean }[])
+              .filter((k) => k.active)
+              .map((k) => ({
+                kegTypeId: k.id,
+                name: k.name,
+                code: k.code,
+                capacityLiters: k.capacityLiters,
+                price: 0,
+              })),
+          );
+        }
+      }
+      if (!cancelled) setPricesLoaded(true);
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [initial?.id]);
+
+  function updatePrice(kegTypeId: string, value: string) {
+    const price = value === "" ? 0 : Number(value);
+    setPrices((prev) => prev.map((p) => (p.kegTypeId === kegTypeId ? { ...p, price } : p)));
+  }
+
+  async function savePrices(customerId: string) {
+    await fetch(`/api/v1/customers/${customerId}/prices`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prices: prices.map((p) => ({ kegTypeId: p.kegTypeId, price: p.price })),
+      }),
+    });
+  }
 
   async function handleDelete() {
     if (!initial?.id) return;
@@ -96,6 +157,7 @@ export function CustomerForm({
         setError(json.error ?? "Erro ao salvar");
         return;
       }
+      await savePrices(json.data.id);
       router.push(`/clientes/${json.data.id}`);
       router.refresh();
     } catch {
@@ -156,6 +218,9 @@ export function CustomerForm({
           </Field>
           <Field label="Endereço" className="lg:col-span-2">
             <Input name="address" defaultValue={initial?.address ?? ""} />
+          </Field>
+          <Field label="Bairro">
+            <Input name="neighborhood" defaultValue={initial?.neighborhood ?? ""} />
           </Field>
           <Field label="Cidade">
             <Input name="city" defaultValue={initial?.city ?? ""} />
@@ -244,6 +309,48 @@ export function CustomerForm({
                 Cancelar
               </Button>
             </div>
+          </div>
+        )}
+      </Card>
+
+      <Card className="mt-4 p-6">
+        <h2 className="text-sm font-semibold">Preços por tipo de barril</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Cada cliente pode pagar um valor diferente pelo mesmo tipo de barril.
+          Deixe em branco os tipos que não se aplicam a este cliente.
+        </p>
+        {!pricesLoaded ? (
+          <p className="mt-4 text-sm text-muted-foreground">Carregando…</p>
+        ) : prices.length === 0 ? (
+          <p className="mt-4 text-sm text-muted-foreground">
+            Nenhum tipo de barril cadastrado ainda.
+          </p>
+        ) : (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {prices.map((p) => (
+              <div key={p.kegTypeId} className="space-y-1">
+                <span className="block text-xs font-medium text-muted-foreground">
+                  {p.name}{" "}
+                  <span className="text-muted-foreground/70">
+                    ({p.code} · {p.capacityLiters}L)
+                  </span>
+                </span>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    R$
+                  </span>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="0,00"
+                    className="pl-9"
+                    value={p.price > 0 ? p.price : ""}
+                    onChange={(e) => updatePrice(p.kegTypeId, e.target.value)}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </Card>

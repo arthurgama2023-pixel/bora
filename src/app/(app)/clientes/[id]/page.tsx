@@ -20,8 +20,8 @@ import {
   type CustomerType,
   type MovementType,
 } from "@/lib/enums";
-import { cn, formatCpfCnpj, formatDateTime, movementCode } from "@/lib/utils";
-import { getCustomerBalance } from "@/server/services/customers";
+import { cn, formatCpfCnpj, formatCurrency, formatDateTime, movementCode } from "@/lib/utils";
+import { getCustomerBalance, getCustomerPrices } from "@/server/services/customers";
 import { getCustomerStatement } from "@/server/services/reports";
 
 export const dynamic = "force-dynamic";
@@ -47,10 +47,12 @@ export default async function CustomerDetailPage({
   if (!session) redirect("/login");
   const { id } = await params;
 
-  const [statement, balance] = await Promise.all([
+  const [statement, balance, prices] = await Promise.all([
     getCustomerStatement(session.companyId, id),
     getCustomerBalance(session.companyId, id),
+    getCustomerPrices(session.companyId, id),
   ]);
+  const pricedTypes = prices.filter((p) => p.price > 0);
   const c = statement.customer;
   const canEdit = session.role === "ADMIN" || session.role === "MANAGER";
 
@@ -95,7 +97,8 @@ export default async function CustomerDetailPage({
             <Info label="WhatsApp">{c.whatsapp ?? "—"}</Info>
             <Info label="E-mail">{c.email ?? "—"}</Info>
             <Info label="Endereço">
-              {[c.address, c.city, c.state].filter(Boolean).join(", ") || "—"}
+              {[c.address, c.neighborhood, c.city, c.state].filter(Boolean).join(", ") ||
+                "—"}
             </Info>
             <Info label="Responsável">{c.contactName ?? "—"}</Info>
             {c.notes && <Info label="Observações">{c.notes}</Info>}
@@ -146,6 +149,27 @@ export default async function CustomerDetailPage({
           </dl>
         </Card>
       </div>
+
+      {pricedTypes.length > 0 && (
+        <Card className="mt-6 p-5">
+          <h2 className="mb-4 font-semibold">Preços deste cliente</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {pricedTypes.map((p) => (
+              <div
+                key={p.kegTypeId}
+                className="rounded-lg border border-border px-3 py-2"
+              >
+                <span className="block text-xs text-muted-foreground">
+                  {p.name} ({p.code})
+                </span>
+                <span className="font-semibold text-brand-strong">
+                  {formatCurrency(p.price)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <h2 className="mb-3 mt-8 text-lg font-semibold">
         Extrato de movimentações
