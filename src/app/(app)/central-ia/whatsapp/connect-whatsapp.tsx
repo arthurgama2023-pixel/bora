@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Loader2, Lock, Smartphone } from "lucide-react";
+import { CheckCircle2, Loader2, Lock, Plus, Smartphone, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Card, Field, Input } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -50,13 +50,35 @@ export function ConnectWhatsApp({
   const [apiKey, setApiKey] = useState("");
   const [instance, setInstance] = useState(instanceName);
 
-  const [allowedNumbers, setAllowedNumbers] = useState("");
+  // Cada número em sua própria caixinha. Guardamos como lista; o backend recebe
+  // uma string separada por vírgula (compatível com o que já existia).
+  const [allowedList, setAllowedList] = useState<string[]>([""]);
   const [savingAllowed, setSavingAllowed] = useState(false);
   const [allowedSaved, setAllowedSaved] = useState(false);
 
   useEffect(() => {
-    apiGet("/api/v1/whatsapp/allowed").then((d) => d && setAllowedNumbers(d.allowedNumbers ?? ""));
+    apiGet("/api/v1/whatsapp/allowed").then((d) => {
+      if (!d) return;
+      const list = String(d.allowedNumbers ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      setAllowedList(list.length ? list : [""]);
+    });
   }, []);
+
+  function updateNumber(idx: number, value: string) {
+    setAllowedList((prev) => prev.map((n, i) => (i === idx ? value : n)));
+  }
+  function addNumber() {
+    setAllowedList((prev) => [...prev, ""]);
+  }
+  function removeNumber(idx: number) {
+    setAllowedList((prev) => {
+      const next = prev.filter((_, i) => i !== idx);
+      return next.length ? next : [""];
+    });
+  }
 
   const refresh = useCallback(async () => {
     const data = (await apiGet("/api/v1/whatsapp/status")) as Status | null;
@@ -98,6 +120,10 @@ export function ConnectWhatsApp({
     setSavingAllowed(true);
     setAllowedSaved(false);
     try {
+      const allowedNumbers = allowedList
+        .map((n) => n.trim())
+        .filter(Boolean)
+        .join(",");
       const json = await apiPost("/api/v1/whatsapp/allowed", { allowedNumbers });
       if (json?.ok) {
         setAllowedSaved(true);
@@ -332,19 +358,44 @@ export function ConnectWhatsApp({
             <Lock className="h-4 w-4 text-brand-strong" />
             <h2 className="text-sm font-semibold">Quem o agente atende</h2>
           </div>
-          <form onSubmit={saveAllowed} className="space-y-2">
-            <Field label="Números permitidos">
-              <Input
-                value={allowedNumbers}
-                onChange={(e) => setAllowedNumbers(e.target.value)}
-                placeholder="21980828309  (vários: separe por vírgula)"
-                inputMode="tel"
-              />
-              <span className="mt-1 block text-[11px] text-muted-foreground">
-                O agente só responde a estes números. Deixe <strong>vazio</strong> para atender qualquer
-                um. Com ou sem o 55 na frente — tanto faz.
-              </span>
-            </Field>
+          <form onSubmit={saveAllowed} className="space-y-3">
+            <div className="space-y-2">
+              {allowedList.map((num, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <Input
+                    value={num}
+                    onChange={(e) => updateNumber(idx, e.target.value)}
+                    placeholder="21980828309"
+                    inputMode="tel"
+                    className="max-w-xs"
+                  />
+                  {(allowedList.length > 1 || num.trim() !== "") && (
+                    <button
+                      type="button"
+                      onClick={() => removeNumber(idx)}
+                      title="Remover número"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-danger"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={addNumber}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-strong hover:underline"
+            >
+              <Plus className="h-3.5 w-3.5" /> Outro número
+            </button>
+
+            <p className="text-[11px] text-muted-foreground">
+              O agente só responde a estes números. Deixe <strong>todos vazios</strong> para
+              atender qualquer um. Com ou sem o 55 na frente — tanto faz.
+            </p>
+
             <div className="flex items-center gap-2">
               <Button type="submit" size="sm" disabled={savingAllowed}>
                 {savingAllowed ? "Salvando…" : "Salvar"}
