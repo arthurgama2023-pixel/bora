@@ -122,36 +122,42 @@ export async function getCustomerPrices(companyId: string, customerId: string) {
     }),
     prisma.customerPrice.findMany({ where: { companyId, customerId } }),
   ]);
-  const byType = new Map(prices.map((p) => [p.kegTypeId, p.price]));
-  return kegTypes.map((k) => ({
-    kegTypeId: k.id,
-    name: k.name,
-    code: k.code,
-    capacityLiters: k.capacityLiters,
-    price: byType.get(k.id) ?? 0,
-  }));
+  const byType = new Map(prices.map((p) => [p.kegTypeId, p]));
+  return kegTypes.map((k) => {
+    const row = byType.get(k.id);
+    return {
+      kegTypeId: k.id,
+      name: k.name,
+      code: k.code,
+      capacityLiters: k.capacityLiters,
+      price: row?.price ?? 0,
+      quantity: row?.quantity ?? 0,
+    };
+  });
 }
 
-// Substitui a tabela de preços do cliente. price <= 0 remove a entrada (volta
-// a "sem preço definido") em vez de gravar zero.
+// Substitui a tabela de preços do cliente. Uma entrada é mantida se tiver preço
+// OU quantidade; com ambos zerados, é removida (volta a "não definido").
 export async function setCustomerPrices(
   session: Session,
   customerId: string,
-  prices: { kegTypeId: string; price: number }[],
+  prices: { kegTypeId: string; price: number; quantity?: number }[],
 ) {
   await getCustomer(session.companyId, customerId); // valida existência/empresa
 
   await prisma.$transaction(async (tx) => {
     for (const p of prices) {
-      if (p.price > 0) {
+      const quantity = p.quantity ?? 0;
+      if (p.price > 0 || quantity > 0) {
         await tx.customerPrice.upsert({
           where: { customerId_kegTypeId: { customerId, kegTypeId: p.kegTypeId } },
-          update: { price: p.price },
+          update: { price: p.price, quantity },
           create: {
             companyId: session.companyId,
             customerId,
             kegTypeId: p.kegTypeId,
             price: p.price,
+            quantity,
           },
         });
       } else {
