@@ -28,6 +28,7 @@ export type CustomerFormData = {
   state?: string | null;
   contactName?: string | null;
   notes?: string | null;
+  openBalance?: number;
   status?: string;
 };
 
@@ -211,11 +212,14 @@ export function CustomerForm({
     setError("");
     setLoading(true);
     const fd = new FormData(e.currentTarget);
-    const payload = Object.fromEntries(
-      [...fd.entries()].map(([k, v]) => [k, String(v).trim() || null]),
+    const payload: Record<string, unknown> = Object.fromEntries(
+      [...fd.entries()]
+        .filter(([k]) => k !== "openBalance")
+        .map(([k, v]) => [k, String(v).trim() || null]),
     );
     payload.status = payload.status ?? "ACTIVE";
     payload.type = type;
+    payload.openBalance = Number(fd.get("openBalance") || 0);
     if (!payload.name) {
       setError("Nome é obrigatório");
       setLoading(false);
@@ -309,6 +313,22 @@ export function CustomerForm({
           </Field>
           <Field label="Responsável">
             <Input name="contactName" defaultValue={initial?.contactName ?? ""} />
+          </Field>
+          <Field label="Valor em aberto (R$)">
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                R$
+              </span>
+              <Input
+                name="openBalance"
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="0,00"
+                className="pl-9"
+                defaultValue={initial?.openBalance || ""}
+              />
+            </div>
           </Field>
           <Field label="Status">
             <Select name="status" defaultValue={initial?.status ?? "ACTIVE"}>

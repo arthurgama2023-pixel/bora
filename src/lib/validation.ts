@@ -34,6 +34,7 @@ export const customerSchema = z.object({
   state: z.string().trim().max(2, "Use a sigla da UF").optional().nullable(),
   contactName: z.string().trim().optional().nullable(),
   notes: z.string().trim().optional().nullable(),
+  openBalance: z.coerce.number().min(0).optional(),
   status: z.enum(CUSTOMER_STATUSES).default("ACTIVE"),
 });
 
