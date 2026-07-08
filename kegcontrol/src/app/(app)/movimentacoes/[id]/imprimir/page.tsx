@@ -146,8 +146,12 @@ export default async function PrintMovementPage({
             <span className="font-semibold">
               Saldo do cliente após esta movimentação:
             </span>{" "}
-            {balance.totals.total} barril(is) em comodato ({balance.totals.full}{" "}
-            cheio(s) · {balance.totals.empty} vazio(s))
+            {balance.barrilTotals.total > 0 &&
+              `${balance.barrilTotals.total} barril(is) em comodato (${balance.barrilTotals.full} cheio(s) · ${balance.barrilTotals.empty} vazio(s))`}
+            {balance.barrilTotals.total > 0 && balance.chopeiraTotals.total > 0 && " · "}
+            {balance.chopeiraTotals.total > 0 &&
+              `${balance.chopeiraTotals.total} chopeira(s) em comodato (${balance.chopeiraTotals.full} cheio(s) · ${balance.chopeiraTotals.empty} vazio(s))`}
+            {balance.barrilTotals.total === 0 && balance.chopeiraTotals.total === 0 && "nenhum item em comodato"}
             {balance.rows.length > 0 && (
               <span className="text-neutral-600">
                 {" — "}
