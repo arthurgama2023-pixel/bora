@@ -64,7 +64,9 @@ export async function getCustomer(companyId: string, id: string) {
   return customer;
 }
 
-// Saldo do cliente por tipo de barril (cheios/vazios) + total.
+// Saldo do cliente por tipo (cheios/vazios) + totais — separados por categoria
+// (Barril x Chopeira), porque são coisas diferentes: somar as duas num único
+// "X barril(is)" confunde a contagem real de barris.
 export async function getCustomerBalance(companyId: string, customerId: string) {
   const buckets = await prisma.stockBalance.findMany({
     where: { companyId, customerId, quantity: { gt: 0 } },
@@ -85,15 +87,27 @@ export async function getCustomerBalance(companyId: string, customerId: string) 
     byType.set(b.kegTypeId, row);
   }
   const rows = [...byType.values()];
-  const totals = rows.reduce(
-    (acc, r) => ({
-      full: acc.full + r.full,
-      empty: acc.empty + r.empty,
-      total: acc.total + r.full + r.empty,
-    }),
-    { full: 0, empty: 0, total: 0 },
-  );
-  return { rows, totals };
+  const sum = (rs: typeof rows) =>
+    rs.reduce(
+      (acc, r) => ({
+        full: acc.full + r.full,
+        empty: acc.empty + r.empty,
+        total: acc.total + r.full + r.empty,
+      }),
+      { full: 0, empty: 0, total: 0 },
+    );
+
+  const barrilRows = rows.filter((r) => r.kegType.category !== "CHOPEIRA");
+  const chopeiraRows = rows.filter((r) => r.kegType.category === "CHOPEIRA");
+
+  return {
+    rows,
+    totals: sum(rows), // geral (mantido para quem já consome sem distinguir categoria)
+    barrilRows,
+    chopeiraRows,
+    barrilTotals: sum(barrilRows),
+    chopeiraTotals: sum(chopeiraRows),
+  };
 }
 
 export async function createCustomer(session: Session, data: CustomerData) {

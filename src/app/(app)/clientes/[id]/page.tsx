@@ -115,10 +115,10 @@ export default async function CustomerDetailPage({
         </Card>
 
         <Card className="p-5">
-          <h2 className="mb-4 font-semibold">Barris em poder do cliente</h2>
+          <h2 className="mb-4 font-semibold">Barris e chopeiras em poder do cliente</h2>
           {balance.rows.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Nenhum barril com este cliente.
+              Nenhum barril ou chopeira com este cliente.
             </p>
           ) : (
             <div className="space-y-3">
@@ -136,15 +136,34 @@ export default async function CustomerDetailPage({
               ))}
             </div>
           )}
-          <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
-            <span className="text-sm text-muted-foreground">Saldo total</span>
-            <span className="text-2xl font-bold text-brand-strong">
-              {balance.totals.total} barril(is)
-            </span>
+          <div className="mt-4 space-y-2 border-t border-border pt-4">
+            {balance.barrilTotals.total > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Saldo de barris</span>
+                <span className="text-2xl font-bold text-brand-strong">
+                  {balance.barrilTotals.total} barril(is)
+                </span>
+              </div>
+            )}
+            {balance.chopeiraTotals.total > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Saldo de chopeiras</span>
+                <span className="text-2xl font-bold text-info">
+                  {balance.chopeiraTotals.total} chopeira(s)
+                </span>
+              </div>
+            )}
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {balance.totals.full} cheio(s) · {balance.totals.empty} vazio(s)
-          </p>
+          {balance.barrilTotals.total > 0 && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Barris: {balance.barrilTotals.full} cheio(s) · {balance.barrilTotals.empty} vazio(s)
+            </p>
+          )}
+          {balance.chopeiraTotals.total > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Chopeiras: {balance.chopeiraTotals.full} cheio(s) · {balance.chopeiraTotals.empty} vazio(s)
+            </p>
+          )}
         </Card>
 
         <Card className="p-5">
