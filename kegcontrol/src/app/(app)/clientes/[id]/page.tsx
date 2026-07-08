@@ -101,6 +101,15 @@ export default async function CustomerDetailPage({
                 "—"}
             </Info>
             <Info label="Responsável">{c.contactName ?? "—"}</Info>
+            <Info label="Valor em aberto">
+              {c.openBalance > 0 ? (
+                <span className="font-semibold text-danger">
+                  {formatCurrency(c.openBalance)}
+                </span>
+              ) : (
+                "—"
+              )}
+            </Info>
             {c.notes && <Info label="Observações">{c.notes}</Info>}
           </dl>
         </Card>
