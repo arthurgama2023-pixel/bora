@@ -11,6 +11,7 @@ import {
 import { formatCpfCnpj, formatDateTime, movementCode } from "@/lib/utils";
 import { getCustomerBalance } from "@/server/services/customers";
 import { getMovement } from "@/server/services/movements";
+import { getCustomerStatement } from "@/server/services/reports";
 import { PrintActions } from "./print-actions";
 
 export const dynamic = "force-dynamic";
@@ -33,14 +34,26 @@ export default async function PrintMovementPage({
   const { id } = await params;
 
   const m = await getMovement(session.companyId, id);
-  const balance = m.customerId
-    ? await getCustomerBalance(session.companyId, m.customerId)
-    : null;
+  const [balance, statement] = await Promise.all([
+    m.customerId ? getCustomerBalance(session.companyId, m.customerId) : null,
+    m.customerId ? getCustomerStatement(session.companyId, m.customerId) : null,
+  ]);
 
   const title =
     SHEET_TITLES[m.type as MovementType] ?? "Comprovante de Movimentação";
   const totalKegs = m.items.reduce((a, i) => a + i.quantity, 0);
-  const hasSignature = ["DELIVERY", "PICKUP", "SWAP"].includes(m.type);
+  // Assinatura do cliente aparece sempre que a movimentação tem um cliente
+  // vinculado (não só nas entregas/retiradas/trocas — um Ajuste ou Perda
+  // ligados a um cliente também merecem a assinatura dele).
+  const hasSignature = Boolean(m.customer);
+
+  // Histórico de movimentações ANTERIORES a esta, mais recentes primeiro —
+  // as últimas 8, para não estourar a folha impressa.
+  const history = (statement?.rows ?? [])
+    .filter((r) => r.movement.id !== m.id)
+    .slice()
+    .reverse()
+    .slice(0, 8);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -163,6 +176,45 @@ export default async function PrintMovementPage({
                   .join(" · ")}
               </span>
             )}
+          </div>
+        )}
+
+        {/* histórico de movimentações anteriores deste cliente */}
+        {history.length > 0 && (
+          <div className="mt-5">
+            <div className="mb-1.5 text-xs font-bold uppercase tracking-wide text-neutral-500">
+              Histórico de movimentações anteriores
+            </div>
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr className="border-y border-neutral-400 text-left">
+                  <th className="py-1 pr-2">Data</th>
+                  <th className="py-1 pr-2">Código</th>
+                  <th className="py-1 pr-2">Tipo</th>
+                  <th className="py-1 pr-2">Itens</th>
+                  <th className="py-1 text-right">Saldo após</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((r) => (
+                  <tr key={r.movement.id} className="border-b border-neutral-200">
+                    <td className="py-1 pr-2 text-neutral-600">
+                      {formatDateTime(r.movement.occurredAt)}
+                    </td>
+                    <td className="py-1 pr-2 font-mono">{movementCode(r.movement.number)}</td>
+                    <td className="py-1 pr-2">
+                      {MOVEMENT_TYPE_LABELS[r.movement.type as MovementType] ?? r.movement.type}
+                    </td>
+                    <td className="py-1 pr-2 text-neutral-600">
+                      {r.movement.items
+                        .map((i) => `${i.quantity}x ${i.kegType.code}`)
+                        .join(", ")}
+                    </td>
+                    <td className="py-1 text-right font-semibold">{r.balance}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
