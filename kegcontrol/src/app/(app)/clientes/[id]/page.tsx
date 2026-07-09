@@ -7,6 +7,7 @@ import {
   Card,
   EmptyState,
   PageHeader,
+  StatCard,
   Table,
   Td,
   Th,
@@ -75,6 +76,20 @@ export default async function CustomerDetailPage({
       );
       return { ...r, qty, value: hasAnyPrice ? value : null };
     });
+
+  // Totais dos pedidos listados acima: Entrega = cheios que saíram pro
+  // cliente, Retirada = vazios que voltaram dele (troca), Saldo = diferença.
+  const ordersTotals = orders.reduce(
+    (acc, o) => {
+      for (const item of o.movement.items) {
+        if (item.toLocation === "CUSTOMER") acc.entrega += item.quantity;
+        if (item.fromLocation === "CUSTOMER") acc.retirada += item.quantity;
+      }
+      return acc;
+    },
+    { entrega: 0, retirada: 0 },
+  );
+  const ordersSaldo = ordersTotals.entrega - ordersTotals.retirada;
 
   return (
     <>
@@ -232,6 +247,16 @@ export default async function CustomerDetailPage({
           </p>
         ) : (
           <>
+            <div className="mb-4 grid grid-cols-3 gap-3">
+              <StatCard label="Entrega" value={ordersTotals.entrega} hint="cheios entregues" />
+              <StatCard label="Retirada" value={ordersTotals.retirada} hint="vazios retirados" />
+              <StatCard
+                label="Saldo"
+                value={ordersSaldo > 0 ? `+${ordersSaldo}` : ordersSaldo}
+                hint="entrega − retirada"
+                accent
+              />
+            </div>
             <div className="space-y-2">
               {orders.map((o) => (
                 <div
