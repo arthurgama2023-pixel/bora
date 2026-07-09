@@ -2,16 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CrownMark } from "@/components/logo";
 import { getSession } from "@/lib/auth";
-import {
-  CONDITION_LABELS,
-  MOVEMENT_TYPE_LABELS,
-  type Condition,
-  type MovementType,
-} from "@/lib/enums";
-import { formatCpfCnpj, formatDateTime, movementCode } from "@/lib/utils";
+import { CONDITION_LABELS, type Condition, type MovementType } from "@/lib/enums";
+import { cn, formatCpfCnpj, formatDate, formatDateTime, movementCode } from "@/lib/utils";
 import { getCustomerBalance } from "@/server/services/customers";
 import { getMovement } from "@/server/services/movements";
-import { getCustomerStatement } from "@/server/services/reports";
+import { getCustomerKegTypeLedger } from "@/server/services/reports";
 import { PrintActions } from "./print-actions";
 
 export const dynamic = "force-dynamic";
@@ -33,10 +28,11 @@ export default async function PrintMovementPage({
   if (!session) redirect("/login");
   const { id } = await params;
 
+  const emptyLedger: Awaited<ReturnType<typeof getCustomerKegTypeLedger>> = new Map();
   const m = await getMovement(session.companyId, id);
-  const [balance, statement] = await Promise.all([
+  const [balance, ledgerByType] = await Promise.all([
     m.customerId ? getCustomerBalance(session.companyId, m.customerId) : null,
-    m.customerId ? getCustomerStatement(session.companyId, m.customerId) : null,
+    m.customerId ? getCustomerKegTypeLedger(session.companyId, m.customerId) : Promise.resolve(emptyLedger),
   ]);
 
   const title =
@@ -47,13 +43,21 @@ export default async function PrintMovementPage({
   // ligados a um cliente também merecem a assinatura dele).
   const hasSignature = Boolean(m.customer);
 
-  // Histórico de movimentações ANTERIORES a esta, mais recentes primeiro —
-  // as últimas 8, para não estourar a folha impressa.
-  const history = (statement?.rows ?? [])
-    .filter((r) => r.movement.id !== m.id)
-    .slice()
-    .reverse()
-    .slice(0, 8);
+  // Histórico por tipo (estilo boletim): pra cada tipo de barril/chopeira
+  // desta movimentação, as últimas 5 "fotos" (Entrega/Retirada/Saldo) daquele
+  // tipo especificamente, a mais recente sendo esta própria movimentação.
+  const kegTypesInMovement = [...new Map(m.items.map((i) => [i.kegType.id, i.kegType])).values()];
+  const typeHistories = kegTypesInMovement
+    .map((kt) => {
+      const entries = ledgerByType.get(kt.id)?.entries ?? [];
+      const idx = entries.findIndex((e) => e.movementId === m.id);
+      if (idx === -1) return null;
+      const startIdx = Math.max(0, idx - 4);
+      const shown = entries.slice(startIdx, idx + 1);
+      const opening = startIdx > 0 ? entries[startIdx - 1].saldo : 0;
+      return { kegType: kt, opening, shown };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -179,44 +183,51 @@ export default async function PrintMovementPage({
           </div>
         )}
 
-        {/* histórico de movimentações anteriores deste cliente */}
-        {history.length > 0 && (
-          <div className="mt-5">
-            <div className="mb-1.5 text-xs font-bold uppercase tracking-wide text-neutral-500">
-              Histórico de movimentações anteriores
+        {/* histórico por tipo — Entrega/Retirada/Saldo, uma caixinha por data */}
+        {typeHistories.map(({ kegType, opening, shown }) => (
+          <div key={kegType.id} className="mt-5">
+            <div className="flex items-baseline justify-between border-b border-neutral-400 pb-1 text-xs font-bold uppercase tracking-wide text-neutral-600">
+              <span>{kegType.name}</span>
+              <span className="font-semibold normal-case">Saldo Inicial: {opening}</span>
             </div>
-            <table className="w-full border-collapse text-xs">
-              <thead>
-                <tr className="border-y border-neutral-400 text-left">
-                  <th className="py-1 pr-2">Data</th>
-                  <th className="py-1 pr-2">Código</th>
-                  <th className="py-1 pr-2">Tipo</th>
-                  <th className="py-1 pr-2">Itens</th>
-                  <th className="py-1 text-right">Saldo após</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((r) => (
-                  <tr key={r.movement.id} className="border-b border-neutral-200">
-                    <td className="py-1 pr-2 text-neutral-600">
-                      {formatDateTime(r.movement.occurredAt)}
-                    </td>
-                    <td className="py-1 pr-2 font-mono">{movementCode(r.movement.number)}</td>
-                    <td className="py-1 pr-2">
-                      {MOVEMENT_TYPE_LABELS[r.movement.type as MovementType] ?? r.movement.type}
-                    </td>
-                    <td className="py-1 pr-2 text-neutral-600">
-                      {r.movement.items
-                        .map((i) => `${i.quantity}x ${i.kegType.code}`)
-                        .join(", ")}
-                    </td>
-                    <td className="py-1 text-right font-semibold">{r.balance}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div
+              className="mt-1.5 grid gap-1.5"
+              style={{ gridTemplateColumns: `repeat(${shown.length}, minmax(0, 1fr))` }}
+            >
+              {shown.map((e, i) => {
+                const isCurrent = e.movementId === m.id;
+                return (
+                  <div
+                    key={`${e.movementId}-${i}`}
+                    className={cn(
+                      "rounded border p-1.5 text-center",
+                      isCurrent ? "border-2 border-black" : "border-neutral-300",
+                    )}
+                  >
+                    <div className="text-[10px] text-neutral-500">{formatDate(e.date)}</div>
+                    <div className="mt-1 grid grid-cols-3 gap-1 border-t border-neutral-300 pt-1 text-[10px]">
+                      <div>
+                        <div className="text-neutral-500">Entrega</div>
+                        <div className="font-semibold">{e.entrega}</div>
+                      </div>
+                      <div>
+                        <div className="text-neutral-500">Retirada</div>
+                        <div className="font-semibold">{e.retirada}</div>
+                      </div>
+                      <div>
+                        <div className="text-neutral-500">Saldo</div>
+                        <div className="font-bold">{e.saldo}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-[10px] text-neutral-500">
+              Cliente, para o nosso controle. Favor informar entregas e devoluções.
+            </p>
           </div>
-        )}
+        ))}
 
         {m.notes && (
           <div className="mt-4 text-sm">
