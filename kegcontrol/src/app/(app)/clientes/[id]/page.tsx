@@ -56,6 +56,26 @@ export default async function CustomerDetailPage({
   const c = statement.customer;
   const canEdit = session.role === "ADMIN" || session.role === "MANAGER";
 
+  // Histórico de pedidos: entregas e trocas são o que efetivamente leva barril
+  // até o cliente (um "pedido" de verdade) — ajustes/perdas/manutenção ficam
+  // de fora daqui (já aparecem no extrato completo, mais abaixo). Valor
+  // estimado usa o preço cadastrado deste cliente por tipo de barril.
+  const priceByType = new Map(prices.map((p) => [p.kegTypeId, p.price]));
+  const orders = [...statement.rows]
+    .reverse()
+    .filter((r) => ["DELIVERY", "SWAP"].includes(r.movement.type))
+    .slice(0, 5)
+    .map((r) => {
+      const delivered = r.movement.items.filter((i) => i.toLocation === "CUSTOMER");
+      const qty = delivered.reduce((a, i) => a + i.quantity, 0);
+      const hasAnyPrice = delivered.some((i) => (priceByType.get(i.kegTypeId) ?? 0) > 0);
+      const value = delivered.reduce(
+        (a, i) => a + i.quantity * (priceByType.get(i.kegTypeId) ?? 0),
+        0,
+      );
+      return { ...r, qty, value: hasAnyPrice ? value : null };
+    });
+
   return (
     <>
       <PageHeader
@@ -203,6 +223,51 @@ export default async function CustomerDetailPage({
           </div>
         </Card>
       )}
+
+      <Card className="mt-6 p-5">
+        <h2 className="mb-4 font-semibold">Histórico de pedidos</h2>
+        {orders.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Nenhuma entrega ou troca registrada para este cliente ainda.
+          </p>
+        ) : (
+          <>
+            <div className="space-y-2">
+              {orders.map((o) => (
+                <div
+                  key={o.movement.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm"
+                >
+                  <div>
+                    <Link
+                      href={`/movimentacoes/${o.movement.id}`}
+                      className="font-mono text-xs font-semibold text-brand-strong hover:underline"
+                    >
+                      {movementCode(o.movement.number)}
+                    </Link>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {formatDateTime(o.movement.occurredAt)}
+                    </span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {o.movement.items
+                      .filter((i) => i.toLocation === "CUSTOMER")
+                      .map((i) => `${i.quantity}x ${i.kegType.code}`)
+                      .join(", ")}
+                  </span>
+                  <span className="font-semibold text-brand-strong">
+                    {o.value !== null ? formatCurrency(o.value) : "—"}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Últimos {orders.length} pedido(s) (entregas/trocas) · valor estimado com
+              base nos preços cadastrados deste cliente.
+            </p>
+          </>
+        )}
+      </Card>
 
       <h2 className="mb-3 mt-8 text-lg font-semibold">
         Extrato de movimentações
