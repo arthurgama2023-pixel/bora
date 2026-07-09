@@ -1,6 +1,64 @@
 import { ApiError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
 
+/**
+ * Ledger por TIPO de barril/chopeira: para cada tipo que o cliente já teve
+ * contato, a sequência cronológica de Entrega (foi pro cliente)/Retirada
+ * (voltou do cliente)/Saldo corrente daquele tipo especificamente — é o que
+ * alimenta a folha impressa no estilo "BARRIL X — Saldo Inicial: N" com uma
+ * caixinha por movimentação.
+ */
+export async function getCustomerKegTypeLedger(companyId: string, customerId: string) {
+  const movements = await prisma.movement.findMany({
+    where: { companyId, customerId },
+    orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }],
+    include: { items: { include: { kegType: true } } },
+  });
+
+  const byType = new Map<
+    string,
+    {
+      kegType: (typeof movements)[number]["items"][number]["kegType"];
+      saldo: number;
+      entries: Array<{
+        movementId: string;
+        movementNumber: number;
+        date: Date;
+        entrega: number;
+        retirada: number;
+        saldo: number;
+      }>;
+    }
+  >();
+
+  for (const m of movements) {
+    const perType = new Map<string, { entrega: number; retirada: number }>();
+    for (const item of m.items) {
+      const row = perType.get(item.kegTypeId) ?? { entrega: 0, retirada: 0 };
+      if (item.toLocation === "CUSTOMER") row.entrega += item.quantity;
+      if (item.fromLocation === "CUSTOMER") row.retirada += item.quantity;
+      perType.set(item.kegTypeId, row);
+    }
+    for (const [kegTypeId, delta] of perType) {
+      if (delta.entrega === 0 && delta.retirada === 0) continue;
+      const kegType = m.items.find((i) => i.kegTypeId === kegTypeId)!.kegType;
+      const state = byType.get(kegTypeId) ?? { kegType, saldo: 0, entries: [] };
+      state.saldo += delta.entrega - delta.retirada;
+      state.entries.push({
+        movementId: m.id,
+        movementNumber: m.number,
+        date: m.occurredAt,
+        entrega: delta.entrega,
+        retirada: delta.retirada,
+        saldo: state.saldo,
+      });
+      byType.set(kegTypeId, state);
+    }
+  }
+
+  return byType;
+}
+
 // Extrato do cliente estilo bancário: cada movimentação com delta e saldo corrente.
 export async function getCustomerStatement(
   companyId: string,
