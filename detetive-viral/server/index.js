@@ -31,6 +31,7 @@ const { updateFavoritesFromPool, getReferenceUsernames } = require('./favorites'
 const fs = require('fs');
 const path = require('path');
 const { pool, initDb, getCached, setCached } = require('./db');
+const { ingestReels } = require('./ingest'); // V2 Fase A — catálogo + snapshots + score
 const { computePostingFrequency } = require('./postingFrequency');
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 horas (perfil + hashtags)
 const CLASSIFY_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias (nicho/hashtags mudam pouco)
@@ -1483,6 +1484,9 @@ async function computeNicheVideos(apify, cls, force = false) {
   const hashtagKey = [...cls.hashtags].sort().join(',');
 
   // Apify: reels brutos das hashtags (cache 12h por conjunto de hashtags)
+  // V2: `freshReels` acumula só COLETA FRESCA (Apify) — dados de cache são a
+  // mesma observação de antes e não podem virar snapshot novo.
+  const freshReels = [];
   let rawPosts;
   const hashtagHit = !force && await getCached('hashtags', hashtagKey);
   if (hashtagHit) {
@@ -1491,6 +1495,7 @@ async function computeNicheVideos(apify, cls, force = false) {
   } else {
     rawPosts = await searchViralHashtags(apify, cls.hashtags, 70); // 70 x 6 hashtags ≈ 400 reels
     await setCached('hashtags', hashtagKey, rawPosts);
+    freshReels.push(...rawPosts);
     console.log(`[Niche] 📦 ${rawPosts.length} reels brutos (Apify) cacheados p/ "${hashtagKey}"`);
   }
 
@@ -1506,6 +1511,7 @@ async function computeNicheVideos(apify, cls, force = false) {
         { username: refs, resultsLimit: refs.length * 8 }, { timeout: 180000 }
       );
       const { items: favReels } = await apify.dataset(favRun.defaultDatasetId).listItems({ limit: refs.length * 8 });
+      freshReels.push(...(favReels || [])); // V2: re-scrape é observação FRESCA (mesmo dos já vistos)
       const seen = new Set(rawPosts.map(p => p.shortCode || p.id));
       let added = 0;
       for (const r of (favReels || [])) {
@@ -1517,6 +1523,10 @@ async function computeNicheVideos(apify, cls, force = false) {
   } catch (e) {
     console.warn('[Niche] ⚠️ Camada de favoritos falhou (seguindo só com hashtags):', e.message);
   }
+
+  // ── V2 Fase A: persiste TODA coleta fresca no catálogo (videos + snapshots +
+  // creators + Score v3). É daqui que nasce a série temporal da Fase B. ────────
+  if (freshReels.length) await ingestReels(freshReels, nicheSlug(detectedNiche));
 
   // Filtro de desempenho — corta view-bait/impulsionado
   const MIN_VIEWS = 10000, MIN_INTERACTIONS = 300, MIN_ENG_RATE = 2.5;
@@ -1551,6 +1561,29 @@ async function computeNicheVideos(apify, cls, force = false) {
   const relevantSet = await filterRelevanceAI(detectedNiche, candForAI);
   const relevant = candidates.filter((_, i) => relevantSet.has(i));
   console.log(`[Niche] 🤖 Relevantes: ${relevant.length} de ${candidates.length}`);
+
+  // V2: veredito da IA vira status no catálogo + reputação do criador.
+  // Rejeições acumuladas cortam o criador ANTES da IA nas próximas rodadas
+  // (Fase C) — o custo de IA por nicho CAI com o uso.
+  try {
+    const approvedCodes = relevant.map(x => x.p.shortCode).filter(Boolean);
+    const rejectedCodes = candidates.filter((_, i) => !relevantSet.has(i))
+      .map(x => x.p.shortCode).filter(Boolean);
+    if (approvedCodes.length) {
+      await pool.query(`UPDATE videos SET status = 'approved' WHERE shortcode = ANY($1)`, [approvedCodes]);
+      await pool.query(`
+        UPDATE creators c SET reputation = c.reputation + 1
+        FROM videos v WHERE v.shortcode = ANY($1) AND c.username = v.owner_username
+      `, [approvedCodes]);
+    }
+    if (rejectedCodes.length) {
+      await pool.query(`UPDATE videos SET status = 'rejected_ai' WHERE shortcode = ANY($1)`, [rejectedCodes]);
+      await pool.query(`
+        UPDATE creators c SET reputation = c.reputation - 1
+        FROM videos v WHERE v.shortcode = ANY($1) AND c.username = v.owner_username
+      `, [rejectedCodes]);
+    }
+  } catch (e) { console.warn('[V2] ⚠️ status/reputação não gravados:', e.message); }
 
   // Mapper p/ formato do frontend — id baseado no NICHO (compartilhável entre usuários)
   const slug = nicheSlug(detectedNiche);
@@ -2413,6 +2446,44 @@ app.get('/api/admin/activity', localhostOnly, async (req, res) => {
       limit,
       offset
     });
+  } catch (e) {
+    console.error('[Admin] Erro:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// V2 Fase A — inspeção do catálogo `videos` + Score v3 com breakdown.
+// ?niche_key= filtra por nicho; ?sort=score|velocity|recent
+app.get('/api/admin/videos', localhostOnly, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit || '30', 10), 200);
+    const niche = req.query.niche_key || null;
+    const sort = {
+      score: 'v.viral_score DESC NULLS LAST',
+      recent: 'v.posted_at DESC NULLS LAST',
+      velocity: `(v.score_breakdown->>'velocity_per_h')::numeric DESC NULLS LAST`,
+    }[req.query.sort] || 'v.viral_score DESC NULLS LAST';
+
+    const { rows } = await pool.query(`
+      SELECT v.shortcode, v.niche_key, v.owner_username, v.viral_score, v.score_breakdown,
+             v.status, v.posted_at, v.first_seen_at,
+             (SELECT COUNT(*)::int FROM video_snapshots s WHERE s.shortcode = v.shortcode) AS snapshots,
+             LEFT(v.caption, 90) AS caption
+      FROM videos v
+      WHERE ($1::text IS NULL OR v.niche_key = $1)
+      ORDER BY ${sort}
+      LIMIT $2
+    `, [niche, limit]);
+
+    const totals = await pool.query(`
+      SELECT COUNT(*)::int AS videos,
+             (SELECT COUNT(*)::int FROM video_snapshots) AS snapshots,
+             (SELECT COUNT(*)::int FROM creators) AS creators,
+             COUNT(*) FILTER (WHERE score_breakdown->>'mode' = 'measured')::int AS measured,
+             COUNT(DISTINCT niche_key)::int AS nichos
+      FROM videos
+    `);
+    res.json({ totals: totals.rows[0], videos: rows });
   } catch (e) {
     console.error('[Admin] Erro:', e.message);
     res.status(500).json({ error: e.message });

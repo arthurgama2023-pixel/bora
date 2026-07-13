@@ -2,10 +2,11 @@
 
 import { createContext, useContext, useMemo, useState, ReactNode } from "react";
 import { getProductById } from "@/data/products";
+import { useLocation } from "@/lib/location-context";
+import { isCaxiasBairro, getCaxiasPrice } from "@/data/caxias-pricing";
 import type { CartItem } from "@/lib/types";
 
 const MINIMUM_ORDER = 150;
-const DELIVERY_FEE = 25;
 
 interface CartContextValue {
   items: CartItem[];
@@ -19,18 +20,28 @@ interface CartContextValue {
   total: number;
   minimumOrder: number;
   meetsMinimum: boolean;
+  // preço unitário já ajustado pela zona escolhida
+  unitPrice: (productId: string) => number;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
 
-function priceFor(productId: string, quantity: number): number {
-  const product = getProductById(productId);
-  if (!product) return 0;
-  return product.price * quantity;
-}
-
 export function CartProvider({ children }: { children: ReactNode }) {
+  const { priceFactor, zone } = useLocation();
   const [items, setItems] = useState<CartItem[]>([]);
+
+  function unitPrice(productId: string): number {
+    const product = getProductById(productId);
+    if (!product) return 0;
+
+    // Se é Duque de Caxias, usa preço fixo
+    if (zone && isCaxiasBairro(zone.name)) {
+      const fixedPrice = getCaxiasPrice(productId);
+      if (fixedPrice !== undefined) return fixedPrice;
+    }
+
+    return product.price * priceFactor;
+  }
 
   function addItem(productId: string, quantity: number) {
     setItems((prev) => {
@@ -61,12 +72,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }
 
   const subtotal = useMemo(
-    () => items.reduce((sum, i) => sum + priceFor(i.productId, i.quantity), 0),
-    [items]
+    () => items.reduce((sum, i) => sum + i.quantity * unitPrice(i.productId), 0),
+    [items, priceFactor, zone]
   );
 
   const itemCount = items.length;
-  const deliveryFee = subtotal > 0 ? DELIVERY_FEE : 0;
+  // frete grátis pra região escolhida (parte da bonificação)
+  const deliveryFee = 0;
   const total = subtotal + deliveryFee;
   const meetsMinimum = subtotal === 0 || subtotal >= MINIMUM_ORDER;
 
@@ -84,6 +96,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         total,
         minimumOrder: MINIMUM_ORDER,
         meetsMinimum,
+        unitPrice,
       }}
     >
       {children}

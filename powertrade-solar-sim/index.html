@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>PowerTrade Solar | Energia Sustentável</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "tertiary-container": "#00defd",
+                    "secondary-container": "#e2e2e2",
+                    "tertiary": "#006877",
+                    "surface-container-high": "#e8e8e8",
+                    "secondary-fixed-dim": "#c6c6c6",
+                    "on-tertiary-fixed": "#001f25",
+                    "surface-container": "#eeeeee",
+                    "inverse-surface": "#2f3131",
+                    "error-container": "#ffdad6",
+                    "on-primary-fixed": "#261a00",
+                    "primary": "#785900",
+                    "on-background": "#1a1c1c",
+                    "surface-container-low": "#f3f3f4",
+                    "secondary-fixed": "#e2e2e2",
+                    "error": "#ba1a1a",
+                    "surface-dim": "#dadada",
+                    "outline": "#827660",
+                    "on-error-container": "#93000a",
+                    "surface-variant": "#e2e2e2",
+                    "on-primary-container": "#6d5100",
+                    "on-secondary": "#ffffff",
+                    "on-surface-variant": "#4f4632",
+                    "on-primary-fixed-variant": "#5b4300",
+                    "inverse-primary": "#fabd00",
+                    "surface": "#f9f9f9",
+                    "on-tertiary-fixed-variant": "#004e5a",
+                    "secondary": "#5e5e5e",
+                    "primary-container": "#ffc107",
+                    "on-tertiary": "#ffffff",
+                    "surface-bright": "#f9f9f9",
+                    "primary-fixed-dim": "#fabd00",
+                    "tertiary-fixed-dim": "#00daf8",
+                    "tertiary-fixed": "#a5eeff",
+                    "on-secondary-fixed": "#1b1b1b",
+                    "surface-tint": "#785900",
+                    "surface-container-lowest": "#ffffff",
+                    "on-surface": "#1a1c1c",
+                    "on-error": "#ffffff",
+                    "text-muted": "#666666",
+                    "on-secondary-fixed-variant": "#474747",
+                    "on-secondary-container": "#646464",
+                    "on-primary": "#ffffff",
+                    "background": "#f9f9f9",
+                    "on-tertiary-container": "#005e6c",
+                    "primary-fixed": "#ffdf9e",
+                    "surface-container-highest": "#e2e2e2",
+                    "outline-variant": "#d4c5ab",
+                    "surface-gray": "#F2F2F2",
+                    "inverse-on-surface": "#f0f1f1",
+                    "solar-glow": "rgba(255, 193, 7, 0.15)"
+            },
+            "borderRadius": { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" },
+            "spacing": {
+                    "margin-mobile": "20px", "base": "8px", "element-gap": "24px", "gutter": "24px",
+                    "section-gap": "120px", "max-width": "1280px", "margin-desktop": "80px"
+            },
+            "fontFamily": {
+                    "label-sm": ["Hanken Grotesk"], "body-md": ["Hanken Grotesk"], "body-lg": ["Hanken Grotesk"],
+                    "headline-lg": ["Hanken Grotesk"], "label-caps": ["Hanken Grotesk"], "headline-lg-mobile": ["Hanken Grotesk"],
+                    "headline-display": ["Hanken Grotesk"], "headline-md": ["Hanken Grotesk"]
+            },
+            "fontSize": {
+                    "label-sm": ["14px", {"lineHeight": "20px", "fontWeight": "500"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "headline-lg": ["40px", {"lineHeight": "48px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                    "headline-lg-mobile": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "headline-display": ["64px", {"lineHeight": "72px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .solar-shadow { box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05); }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .glass-nav { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+        body { background-color: #f9f9f9; }
+        @keyframes countpop { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        .count-pop { animation: countpop .5s ease both; }
+        .modal-hidden { opacity: 0; pointer-events: none; }
+        .modal-hidden .modal-card { transform: translateY(24px) scale(.98); }
+        .modal-card { transition: transform .35s cubic-bezier(.16,1,.3,1); }
+        .glass-panel { background: rgba(255,255,255,0.08); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.15); }
+        .hero-gradient { background: linear-gradient(180deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.85) 100%); }
+        .solar-glow-active { box-shadow: 0 0 20px rgba(255,193,7,0.4); }
+    </style>
+</head>
+<body class="font-body-md text-on-surface selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full z-50 bg-surface/80 glass-nav border-b border-surface-gray shadow-sm transition-all duration-300">
+<div class="max-w-max-width mx-auto px-margin-mobile md:px-margin-desktop flex justify-between items-center h-20">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary-container text-3xl" style="font-variation-settings:'FILL' 1;">solar_power</span>
+<span class="font-bold text-xl tracking-tight">PowerTrade<span class="text-primary-container">Solar</span></span>
+</div>
+<div class="hidden md:flex items-center space-x-8">
+<a class="font-label-sm text-label-sm text-primary font-bold border-b-2 border-primary pb-1" href="#">Início</a>
+<a class="font-label-sm text-label-sm text-secondary hover:text-primary transition-colors" href="#simulador">Simulador</a>
+<a class="font-label-sm text-label-sm text-secondary hover:text-primary transition-colors" href="#projetos">Projetos</a>
+<a class="font-label-sm text-label-sm text-secondary hover:text-primary transition-colors" href="#contato">Contato</a>
+<button data-simular class="bg-primary-container text-on-primary-container px-6 py-2.5 rounded-lg font-bold hover:scale-[1.02] transition-all shadow-sm">Simular Economia</button>
+</div>
+<button id="menu-btn" aria-label="Abrir menu" class="md:hidden text-on-surface"><span class="material-symbols-outlined text-3xl">menu</span></button>
+</div>
+<!-- Mobile menu -->
+<div id="mobile-menu" class="hidden md:hidden border-t border-surface-gray bg-surface/95 glass-nav px-margin-mobile py-4 space-y-1">
+<a class="block py-2 font-bold text-primary" href="#simulador">Início</a>
+<a class="block py-2 text-secondary" href="#simulador">Simulador</a>
+<a class="block py-2 text-secondary" href="#projetos">Projetos</a>
+<a class="block py-2 text-secondary" href="#contato">Contato</a>
+<button data-simular class="w-full mt-2 bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold">Simular Economia</button>
+</div>
+</nav>
+<!-- Hero Section -->
+<section class="relative min-h-screen flex items-center pt-28 pb-20 lg:pt-20 lg:pb-0 overflow-hidden" id="simulador">
+<div class="absolute inset-0 z-0">
+<div class="w-full h-full bg-cover bg-center" style="background-image: url('https://powertradesolar.com.br/wp-content/uploads/2026/01/beautiful-alternative-energy-plant-with-solar-panels-scaled.jpg')"></div>
+<div class="absolute inset-0 hero-gradient"></div>
+</div>
+<div class="relative z-10 max-w-max-width mx-auto px-margin-mobile md:px-margin-desktop w-full flex flex-col gap-8 lg:grid lg:grid-cols-2 lg:gap-x-section-gap lg:gap-y-0 lg:items-center">
+<!-- Hero Heading (badge + título) -->
+<div class="text-white order-1 lg:col-start-1 lg:row-start-1 lg:self-end">
+<div class="inline-flex items-center gap-2 px-3 py-1 bg-primary/20 border border-primary/30 rounded-full mb-6">
+<span class="w-2 h-2 rounded-full bg-primary-container animate-pulse"></span>
+<span class="text-label-caps font-label-caps tracking-widest uppercase">Energia do Futuro</span>
+</div>
+<h1 class="font-headline-display text-headline-lg-mobile md:text-headline-display">A revolução solar na sua mão.</h1>
+</div>
+<!-- Interactive Quick Simulator (mobile: logo abaixo do título) -->
+<div class="glass-panel p-8 md:p-10 rounded-xl shadow-2xl order-2 lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:self-center">
+<div class="mb-8">
+<h3 class="font-headline-md text-headline-md text-white mb-2">Simulador Rápido</h3>
+<p class="text-white/60 font-body-md">Arraste e descubra sua economia em segundos.</p>
+</div>
+<div class="space-y-6">
+<div>
+<label class="block text-white/80 font-label-sm mb-3">Sua conta de luz mensal: <span id="billLabel" class="text-primary-container font-bold">R$ 800</span></label>
+<div class="relative">
+<input class="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer accent-primary-container" id="billRange" max="5000" min="200" step="50" type="range" value="800"/>
+<div class="flex justify-between mt-2 text-white/40 text-xs"><span>R$ 200</span><span>R$ 5.000+</span></div>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div class="p-4 bg-white/5 border border-white/10 rounded-lg">
+<p class="text-white/40 text-xs font-label-caps mb-1">ECONOMIA ESTIMADA</p>
+<p class="text-primary-container font-headline-md text-headline-md transition-transform" id="savingsValue">R$ 720</p>
+<p class="text-white/40 text-[10px]">por mês</p>
+</div>
+<div class="p-4 bg-white/5 border border-white/10 rounded-lg">
+<p class="text-white/40 text-xs font-label-caps mb-1">VALORIZAÇÃO IMÓVEL</p>
+<p class="text-white font-headline-md text-headline-md">+ 6%</p>
+<p class="text-white/40 text-[10px]">média nacional</p>
+</div>
+</div>
+<div class="pt-4">
+<button id="hero-report" class="hero-cta w-full py-4 bg-primary-container text-black font-bold rounded-lg solar-glow-active hover:brightness-110 transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined">analytics</span> Gerar Relatório Completo
+</button>
+</div>
+</div>
+</div>
+<!-- Hero Body (texto + botões) -->
+<div class="text-white order-3 lg:col-start-1 lg:row-start-2 lg:self-start">
+<p class="font-body-lg text-body-lg text-white/80 max-w-xl mb-10 mt-6 lg:mt-0">Transformamos tecnologia complexa em economia real. Nossa plataforma inteligente gerencia cada fóton para garantir que sua casa seja uma usina de eficiência.</p>
+<div class="flex flex-wrap gap-4">
+<button class="hero-cta px-8 py-4 bg-primary-container text-black font-bold rounded-lg hover:scale-105 transition-transform">Verificar Viabilidade</button>
+<a href="#projetos" class="px-8 py-4 border border-white/30 glass-panel text-white font-bold rounded-lg hover:bg-white/10 transition-colors flex items-center">Como Funciona</a>
+</div>
+</div>
+</div>
+<!-- Scroll Indicator -->
+<div class="absolute bottom-10 left-1/2 -translate-x-1/2 flex-col items-center gap-2 opacity-50 hidden lg:flex">
+<span class="text-white/40 text-[10px] font-label-caps uppercase tracking-widest">Descubra</span>
+<div class="w-px h-12 bg-gradient-to-b from-primary-container to-transparent"></div>
+</div>
+</section>
+<!-- Trust Banner -->
+<div class="bg-primary py-8">
+<div class="max-w-max-width mx-auto px-margin-mobile md:px-margin-desktop flex flex-col md:flex-row items-center justify-between gap-6">
+<div class="flex items-center gap-4 text-surface">
+<span class="material-symbols-outlined text-4xl">savings</span>
+<div><p class="font-headline-md text-headline-md leading-tight">Até 90% de Economia</p><p class="font-body-md opacity-80">Reduza drasticamente sua conta mensal</p></div>
+</div>
+<div class="h-12 w-px bg-surface/20 hidden md:block"></div>
+<div class="flex items-center gap-4 text-surface">
+<span class="material-symbols-outlined text-4xl" style="font-variation-settings: 'FILL' 1;">verified</span>
+<div><p class="font-headline-md text-headline-md leading-tight">+20 Anos de Grupo</p><p class="font-body-md opacity-80">Manutenção especializada inclusa</p></div>
+</div>
+<div class="h-12 w-px bg-surface/20 hidden md:block"></div>
+<div class="flex items-center gap-4 text-surface">
+<span class="material-symbols-outlined text-4xl">calendar_today</span>
+<div><p class="font-headline-md text-headline-md leading-tight">Até 240 Meses</p><p class="font-body-md opacity-80">Financiamento facilitado</p></div>
+</div>
+</div>
+</div>
+<!-- Projects Gallery Tabs -->
+<section class="py-16 md:py-section-gap bg-surface-container-low scroll-mt-20" id="projetos">
+<div class="max-w-max-width mx-auto px-margin-mobile md:px-margin-desktop">
+<div class="text-center mb-10 space-y-4">
+<span class="font-label-caps text-label-caps text-primary uppercase">Portfólio</span>
+<h2 class="font-headline-lg text-headline-lg">Conheça nossos projetos</h2>
+<div class="w-20 h-1 bg-primary-container mx-auto rounded-full"></div>
+</div>
+<!-- Tab buttons -->
+<div class="flex flex-wrap justify-center gap-2 md:gap-3 mb-8" id="proj-tabs">
+<button class="proj-tab px-5 py-2.5 rounded-full font-bold text-label-sm transition-all" data-tab="ongrid">On Grid</button>
+<button class="proj-tab px-5 py-2.5 rounded-full font-bold text-label-sm transition-all" data-tab="offgrid">Off Grid</button>
+<button class="proj-tab px-5 py-2.5 rounded-full font-bold text-label-sm transition-all" data-tab="hibrido">Híbrido</button>
+<button class="proj-tab px-5 py-2.5 rounded-full font-bold text-label-sm transition-all" data-tab="recarga">Recarga Veicular</button>
+</div>
+<!-- Tab panels -->
+<div class="proj-panel" data-panel="ongrid">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center bg-surface-container-lowest rounded-[2rem] border border-surface-gray solar-shadow overflow-hidden">
+<div class="aspect-[4/3] lg:aspect-auto lg:h-full min-h-[280px] overflow-hidden">
+<img class="w-full h-full object-cover" alt="Sistema On Grid" src="https://powertradesolar.com.br/wp-content/uploads/2026/01/zero-grid.jpg" data-fallback="https://lh3.googleusercontent.com/aida-public/AB6AXuBkB2czcvKymG7AAlkYyxPNk1ZPLEz6gCxZTFMRhXFbP973YhN6cRZQMmvi23yfB44aAYPJuzOcjLvCYfP9SxukY0y_j_lwpUabcx_zTC8kdZ9urrR23owdPe37XNSUG2KsUmjY0g2XbZWUod8fkRoZ7jQGr6U22Y-t3gQSfmS6IL9CMijIwPHPJzN7L1CG_6NJ4peN91rNtAlvQCWcpYeUE-NdQTo3Pkws67r1bHz4z3YgK8sqKitY"/>
+</div>
+<div class="p-8 space-y-4">
+<span class="inline-block bg-primary-container/20 text-primary px-3 py-1 rounded-full text-label-caps font-bold uppercase">Conectado à rede</span>
+<h3 class="font-headline-md text-headline-md">On Grid</h3>
+<p class="text-secondary font-body-md">Sistema fotovoltaico conectado diretamente à rede da concessionária. A energia excedente gera créditos que abatem sua conta — a opção mais econômica e de retorno mais rápido.</p>
+<button data-simular class="bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold hover:scale-105 transition-all">Simular economia</button>
+</div>
+</div>
+</div>
+<div class="proj-panel hidden" data-panel="offgrid">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center bg-surface-container-lowest rounded-[2rem] border border-surface-gray solar-shadow overflow-hidden">
+<div class="aspect-[4/3] lg:aspect-auto lg:h-full min-h-[280px] overflow-hidden">
+<img class="w-full h-full object-cover" alt="Sistema Off Grid" src="https://powertradesolar.com.br/wp-content/uploads/2026/01/off-grid.jpg" data-fallback="https://lh3.googleusercontent.com/aida/AP1WRLtSA3HuJDSgs6brZimT6Jlopkb3l3nS9N-E6JWYNz3wDvObsDvT-cTWzzHpeAHOGhr5n4zUp4G7mKsFTSPhDDpMrhRYZiuZPJdPKaV9WwGb82-MP6Okxc0mwgaot93oyG5cD5tmSQ7mYHKGpADbZYoQV6l-tNy3Tf0pEajgN9aUe3r9F-xU3jBXiZJTKsuZePO6PJwBFFN00ukWWcHxqkBpeTn9Gej_1VM6dnNtaUEQi7pO7VX3wGBcyEo"/>
+</div>
+<div class="p-8 space-y-4">
+<span class="inline-block bg-primary-container/20 text-primary px-3 py-1 rounded-full text-label-caps font-bold uppercase">Independente da rede</span>
+<h3 class="font-headline-md text-headline-md">Off Grid</h3>
+<p class="text-secondary font-body-md">Geração 100% autônoma com armazenamento em baterias. Ideal para sítios, fazendas e locais remotos sem fornecimento elétrico da concessionária.</p>
+<button data-simular class="bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold hover:scale-105 transition-all">Simular economia</button>
+</div>
+</div>
+</div>
+<div class="proj-panel hidden" data-panel="hibrido">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center bg-surface-container-lowest rounded-[2rem] border border-surface-gray solar-shadow overflow-hidden">
+<div class="aspect-[4/3] lg:aspect-auto lg:h-full min-h-[280px] overflow-hidden">
+<img class="w-full h-full object-cover" alt="Sistema Híbrido" src="https://powertradesolar.com.br/wp-content/uploads/2026/01/hibrido.jpg" data-fallback="https://lh3.googleusercontent.com/aida/AP1WRLseoJD27f5a1q-W0E4s0LhhX_V9bhHAW6YHql5S1fjCN47geW4e7GnS8cCnuSzaj7uFdX162IocBP9QXdbWY-Bhk_uXV6KcorC73zWe-qPVUgxwnLl7x1GhTYsLCLkohBtc_tXVlu9r8U5m31tTWKwD8z_HsiLj69bu1Lzr0s0WjPDJo1jBtimAvGBymCUbO2lQh4vpIG3sT2AVWJXnWi4zAme-K_67Fe17_n0Jqu7hIDpYL7LRFyObPw"/>
+</div>
+<div class="p-8 space-y-4">
+<span class="inline-block bg-primary-container/20 text-primary px-3 py-1 rounded-full text-label-caps font-bold uppercase">Solar + baterias</span>
+<h3 class="font-headline-md text-headline-md">Híbrido</h3>
+<p class="text-secondary font-body-md">Combina a conexão à rede com bancos de bateria. Você economiza no dia a dia e ainda mantém energia armazenada como reserva contra quedas e apagões.</p>
+<button data-simular class="bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold hover:scale-105 transition-all">Simular economia</button>
+</div>
+</div>
+</div>
+<div class="proj-panel hidden" data-panel="recarga">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center bg-surface-container-lowest rounded-[2rem] border border-surface-gray solar-shadow overflow-hidden">
+<div class="aspect-[4/3] lg:aspect-auto lg:h-full min-h-[280px] overflow-hidden">
+<img class="w-full h-full object-cover" alt="Estação de Recarga Veicular" src="https://powertradesolar.com.br/wp-content/uploads/2026/01/Capa_business_branca_700x478px.png" data-fallback="https://lh3.googleusercontent.com/aida/AP1WRLss9e8mKwmgdg4eCbRxo0ufuIp9-L223bHApI1NyQwCA1nA6Nf9ggxuXUwaMNH3vPypsj1iUDpHJEU3DFmwUz49J-UKcuG2NNoodRySdjxuiWzg6XqsxMS2oViYqDlxUUIeqaEluXHGnETuCIGVkRiyG3x54At5zICzGu5jKiBcdkPCSw68bs-9TbIPuAg8dC6iAiN7708TAqJVATcBrMd1tyUVKItzzdbkGZ1G1OEOkcr_L2A4oI6zbHI"/>
+</div>
+<div class="p-8 space-y-4">
+<span class="inline-block bg-primary-container/20 text-primary px-3 py-1 rounded-full text-label-caps font-bold uppercase">Mobilidade elétrica</span>
+<h3 class="font-headline-md text-headline-md">Estação de Recarga Veicular</h3>
+<p class="text-secondary font-body-md">Carregadores residenciais e business dos maiores fabricantes do Brasil, com o mais alto grau de segurança. Recarga rápida e confiável para o seu veículo elétrico.</p>
+<button data-simular class="bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold hover:scale-105 transition-all">Simular economia</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Photo Gallery -->
+<section class="py-16 md:py-section-gap" id="galeria">
+<div class="max-w-max-width mx-auto px-margin-mobile md:px-margin-desktop">
+<div class="text-center mb-10 space-y-4">
+<span class="font-label-caps text-label-caps text-primary uppercase">Galeria</span>
+<h2 class="font-headline-lg text-headline-lg">Projetos e instalações</h2>
+<div class="w-20 h-1 bg-primary-container mx-auto rounded-full"></div>
+</div>
+<div class="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-gutter">
+<figure class="group relative aspect-[4/3] rounded-2xl overflow-hidden solar-shadow">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="Usinas fotovoltaicas" src="https://powertradesolar.com.br/wp-content/uploads/2026/01/beautiful-alternative-energy-plant-with-solar-panels-scaled.jpg" data-fallback="https://images.unsplash.com/photo-1509391366360-2e959784a276?w=800"/>
+<figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-white font-bold">Usinas Fotovoltaicas</figcaption>
+</figure>
+<figure class="group relative aspect-[4/3] rounded-2xl overflow-hidden solar-shadow">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="Projetos residenciais" src="https://powertradesolar.com.br/wp-content/uploads/2026/01/quanto-custa-colocar-energia-solar.jpg" data-fallback="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800"/>
+<figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-white font-bold">Projetos Residenciais</figcaption>
+</figure>
+<figure class="group relative aspect-[4/3] rounded-2xl overflow-hidden solar-shadow">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="Comércio e supermercados" src="https://powertradesolar.com.br/wp-content/uploads/2026/01/Energia-solar-fotovoltaica-conquista-setor-supermercadista.jpg" data-fallback="https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=800"/>
+<figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-white font-bold">Comércio &amp; Supermercados</figcaption>
+</figure>
+<figure class="group relative aspect-[4/3] rounded-2xl overflow-hidden solar-shadow">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="Painéis de alta eficiência" src="https://powertradesolar.com.br/wp-content/uploads/2026/01/panneaux-solaire-photovoltaique.jpg" data-fallback="https://images.unsplash.com/photo-1508514177221-188b1cf16e9d?w=800"/>
+<figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-white font-bold">Painéis de Alta Eficiência</figcaption>
+</figure>
+<figure class="group relative aspect-[4/3] rounded-2xl overflow-hidden solar-shadow">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="Instalação especializada" src="https://powertradesolar.com.br/wp-content/uploads/2026/01/pexels-kindelmedia-9799731-scaled.jpg" data-fallback="https://images.unsplash.com/photo-1497440001374-f26997328c1b?w=800"/>
+<figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-white font-bold">Instalação Especializada</figcaption>
+</figure>
+<figure class="group relative aspect-[4/3] rounded-2xl overflow-hidden solar-shadow">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="Recarga veicular" src="https://powertradesolar.com.br/wp-content/uploads/2026/01/eve-0074h-estacao-de-recarga-home-7.4kw-instalacao-especializada.png" data-fallback="https://images.unsplash.com/photo-1593941707882-a5bba14938c7?w=800"/>
+<figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-white font-bold">Recarga Veicular</figcaption>
+</figure>
+</div>
+</div>
+</section>
+<!-- Footer -->
+<footer class="bg-surface-container-lowest border-t border-surface-gray py-16 md:py-section-gap" id="contato">
+<div class="max-w-max-width mx-auto px-margin-mobile md:px-margin-desktop">
+<div class="grid grid-cols-1 md:grid-cols-3 gap-element-gap">
+<div class="space-y-6">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary-container text-3xl" style="font-variation-settings:'FILL' 1;">solar_power</span>
+<span class="font-bold text-xl">PowerTrade<span class="text-primary-container">Solar</span></span>
+</div>
+<p class="text-text-muted font-body-md">Atuamos com atenção a cada detalhe, garantindo o mais alto padrão de qualidade e eficiência energética.</p>
+</div>
+<div class="space-y-6">
+<h5 class="font-bold text-lg uppercase tracking-wider">Contato</h5>
+<ul class="space-y-4 font-body-md text-text-muted">
+<li class="flex items-start gap-3"><span class="material-symbols-outlined text-primary">location_on</span><span>Rua Timburi, 120 – Vila Maria Alta, São Paulo – SP 02122-030</span></li>
+<li class="flex items-center gap-3"><span class="material-symbols-outlined text-primary">call</span><span>(11) 2955-3344</span></li>
+<li class="flex items-center gap-3"><span class="material-symbols-outlined text-primary">mail</span><span>comercial@powertrade.com.br</span></li>
+</ul>
+</div>
+<div class="space-y-6">
+<h5 class="font-bold text-lg uppercase tracking-wider">Horário</h5>
+<p class="text-text-muted font-body-md">Segunda à Sexta<br/>08:00 às 18:00</p>
+<button data-simular class="bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold hover:scale-105 transition-all">Simular Economia</button>
+</div>
+</div>
+<div class="mt-16 pt-8 border-t border-surface-gray text-center text-text-muted font-label-sm">© 2024 PowerTrade Solar. Todos os direitos reservados.</div>
+</div>
+</footer>
+<!-- WhatsApp FAB -->
+<a class="fixed bottom-8 right-8 bg-[#25D366] text-white w-16 h-16 rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-all z-[99]" href="https://wa.me/551129553344" target="_blank">
+<span class="material-symbols-outlined text-3xl" style="font-variation-settings: 'FILL' 1;">chat</span>
+</a>
+
+<!-- ===================== SIMULATOR INTRO POPUP ===================== -->
+<div id="sim-intro" class="modal-hidden fixed inset-0 z-[101] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-300">
+  <div class="modal-card bg-surface-container-lowest w-full max-w-md rounded-[2rem] solar-shadow overflow-hidden">
+    <div class="bg-primary text-surface p-6 relative">
+      <button id="intro-close" aria-label="Fechar" class="absolute top-5 right-5 text-surface/80 hover:text-surface"><span class="material-symbols-outlined text-2xl">close</span></button>
+      <span class="font-label-caps text-label-caps uppercase opacity-80">Simulador gratuito</span>
+      <h3 class="font-headline-md text-headline-md mt-1">Simule sua economia</h3>
+      <p class="opacity-80 text-label-sm mt-1">Descubra em 10 segundos quanto você deixa de gastar.</p>
+    </div>
+    <form id="intro-form" class="p-6 space-y-4">
+      <div>
+        <label class="font-label-sm text-label-sm text-secondary mb-1 block">Nome *</label>
+        <input id="intro-name" required class="w-full bg-surface-gray border-none rounded-lg p-3 focus:ring-2 focus:ring-primary-container" placeholder="Seu nome completo" type="text"/>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="font-label-sm text-label-sm text-secondary mb-1 block">Celular *</label>
+          <input id="intro-phone" required inputmode="numeric" maxlength="15" class="w-full bg-surface-gray border-none rounded-lg p-3 focus:ring-2 focus:ring-primary-container" placeholder="(11) 99999-9999" type="tel"/>
+        </div>
+        <div>
+          <label class="font-label-sm text-label-sm text-secondary mb-1 block">CEP *</label>
+          <input id="intro-cep" required inputmode="numeric" maxlength="9" class="w-full bg-surface-gray border-none rounded-lg p-3 focus:ring-2 focus:ring-primary-container" placeholder="00000-000" type="text"/>
+        </div>
+      </div>
+      <div>
+        <label class="font-label-sm text-label-sm text-secondary mb-1 block">Valor médio da conta (R$) *</label>
+        <input id="intro-bill" required inputmode="numeric" class="w-full bg-surface-gray border-none rounded-lg p-3 text-lg font-bold focus:ring-2 focus:ring-primary-container" placeholder="Ex: 500" type="text"/>
+      </div>
+      <div>
+        <label class="font-label-sm text-label-sm text-secondary mb-1 block">Tipo de imóvel</label>
+        <select id="intro-type" class="w-full bg-surface-gray border-none rounded-lg p-3 focus:ring-2 focus:ring-primary-container">
+          <option value="residencial">Residencial</option>
+          <option value="empresarial">Empresarial / Comércio</option>
+          <option value="industrial">Industrial</option>
+          <option value="rural">Agronegócio / Rural</option>
+        </select>
+      </div>
+      <button type="submit" class="w-full bg-primary-container text-on-primary-container py-4 rounded-lg font-bold hover:opacity-90 transition-all flex items-center justify-center gap-2">Calcular Economia <span class="material-symbols-outlined">calculate</span></button>
+      <p class="text-text-muted text-xs text-center">Estimativa gratuita e sem compromisso.</p>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== SIMULATOR RESULT MODAL ===================== -->
+<div id="sim-modal" class="modal-hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-300">
+  <div class="modal-card bg-surface w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-[2rem] solar-shadow">
+    <!-- header -->
+    <div class="bg-primary text-surface p-8 rounded-t-[2rem] relative">
+      <button id="sim-close" class="absolute top-6 right-6 text-surface/80 hover:text-surface"><span class="material-symbols-outlined text-3xl">close</span></button>
+      <span class="font-label-caps text-label-caps uppercase opacity-80">Resultado da Simulação</span>
+      <h3 class="font-headline-lg text-headline-lg mt-1">Sua economia com energia solar</h3>
+      <p class="opacity-80 mt-1" id="res-context"></p>
+    </div>
+    <div class="p-8 space-y-8">
+      <!-- Headline savings -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="bg-surface-container-lowest border border-surface-gray rounded-2xl p-6 text-center count-pop">
+          <p class="text-text-muted text-label-sm uppercase tracking-wide">Economia / mês</p>
+          <p class="font-headline-lg text-headline-lg text-primary" id="res-month">R$ 0</p>
+        </div>
+        <div class="bg-surface-container-lowest border border-surface-gray rounded-2xl p-6 text-center count-pop">
+          <p class="text-text-muted text-label-sm uppercase tracking-wide">Economia / ano</p>
+          <p class="font-headline-lg text-headline-lg" id="res-year">R$ 0</p>
+        </div>
+        <div class="bg-on-surface text-surface rounded-2xl p-6 text-center count-pop">
+          <p class="opacity-70 text-label-sm uppercase tracking-wide">Em 25 anos</p>
+          <p class="font-headline-lg text-headline-lg text-primary-container" id="res-25">R$ 0</p>
+        </div>
+      </div>
+      <!-- System spec -->
+      <div>
+        <h4 class="font-bold text-lg mb-3 flex items-center gap-2"><span class="material-symbols-outlined text-primary">solar_power</span> Sistema recomendado</h4>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="bg-surface-container-low rounded-xl p-4"><p class="text-text-muted text-xs uppercase">Potência</p><p class="font-bold text-xl" id="res-kwp">0 kWp</p></div>
+          <div class="bg-surface-container-low rounded-xl p-4"><p class="text-text-muted text-xs uppercase">Painéis (~550W)</p><p class="font-bold text-xl" id="res-panels">0</p></div>
+          <div class="bg-surface-container-low rounded-xl p-4"><p class="text-text-muted text-xs uppercase">Geração/mês</p><p class="font-bold text-xl" id="res-gen">0 kWh</p></div>
+          <div class="bg-surface-container-low rounded-xl p-4"><p class="text-text-muted text-xs uppercase">Área aprox.</p><p class="font-bold text-xl" id="res-area">0 m²</p></div>
+        </div>
+      </div>
+      <!-- Investment + payback + financing -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div class="border border-primary-container/40 bg-primary-container/10 rounded-xl p-5">
+          <p class="text-text-muted text-xs uppercase">Investimento estimado</p>
+          <p class="font-bold text-2xl text-on-primary-container leading-tight"><span id="res-cost-month">R$ 0</span> <span class="text-base font-semibold">em 87x</span></p>
+          <p class="text-on-primary-container/70 text-label-sm mt-1">ou <span class="font-semibold" id="res-cost">R$ 0</span> à vista</p>
+        </div>
+        <div class="border border-surface-gray rounded-xl p-5">
+          <p class="text-text-muted text-xs uppercase">Retorno (payback)</p>
+          <p class="font-bold text-2xl" id="res-payback">0 anos</p>
+        </div>
+        <div class="border border-surface-gray rounded-xl p-5">
+          <p class="text-text-muted text-xs uppercase">Parcela em 240x</p>
+          <p class="font-bold text-2xl" id="res-installment">R$ 0</p>
+        </div>
+      </div>
+      <!-- Extra value props -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div class="flex items-start gap-3 bg-surface-container-low rounded-xl p-4">
+          <span class="material-symbols-outlined text-tertiary">home_work</span>
+          <div><p class="font-bold" id="res-valuation">+R$ 0</p><p class="text-text-muted text-xs">Valorização do imóvel</p></div>
+        </div>
+        <div class="flex items-start gap-3 bg-surface-container-low rounded-xl p-4">
+          <span class="material-symbols-outlined text-tertiary">forest</span>
+          <div><p class="font-bold" id="res-co2">0 t CO₂</p><p class="text-text-muted text-xs">Evitadas em 25 anos</p></div>
+        </div>
+        <div class="flex items-start gap-3 bg-surface-container-low rounded-xl p-4">
+          <span class="material-symbols-outlined text-tertiary">nature</span>
+          <div><p class="font-bold" id="res-trees">0 árvores</p><p class="text-text-muted text-xs">Equivalente plantado</p></div>
+        </div>
+      </div>
+      <!-- CTA -->
+      <div class="bg-on-surface text-surface rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div>
+          <p class="font-bold text-lg">Gostou do resultado?</p>
+          <p class="opacity-70 text-label-sm">Fale com um especialista e receba a proposta oficial.</p>
+        </div>
+        <a id="res-whatsapp" href="#" target="_blank" class="bg-[#25D366] text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap hover:scale-105 transition-all">
+          <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">chat</span> Falar no WhatsApp
+        </a>
+      </div>
+      <p class="text-text-muted text-xs text-center">*Estimativa educativa baseada em tarifa média e irradiação típica do Sudeste. Valores finais dependem de análise técnica.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ---- Nav scroll effect ----
+  window.addEventListener('scroll', () => {
+    const nav = document.querySelector('nav');
+    if (window.scrollY > 50) { nav.classList.add('shadow-md'); } else { nav.classList.remove('shadow-md'); }
+  });
+
+  // ---- Image fallback (caso o hotlink do site do cliente seja bloqueado) ----
+  document.querySelectorAll('img[data-fallback]').forEach(img => {
+    img.addEventListener('error', function handler() {
+      img.removeEventListener('error', handler);
+      img.src = img.getAttribute('data-fallback');
+    });
+  });
+
+  // ---- Project gallery tabs ----
+  const projTabs = document.querySelectorAll('.proj-tab');
+  const projPanels = document.querySelectorAll('.proj-panel');
+  const activeTab = 'bg-primary text-surface shadow-md';
+  const idleTab = 'bg-surface-container-lowest text-secondary border border-surface-gray hover:text-primary';
+  function selectTab(name) {
+    projTabs.forEach(t => {
+      const on = t.dataset.tab === name;
+      t.className = 'proj-tab px-5 py-2.5 rounded-full font-bold text-label-sm transition-all ' + (on ? activeTab : idleTab);
+    });
+    projPanels.forEach(p => p.classList.toggle('hidden', p.dataset.panel !== name));
+  }
+  projTabs.forEach(t => t.addEventListener('click', () => selectTab(t.dataset.tab)));
+  selectTab('ongrid');
+
+  // ---- Mobile menu ----
+  const menuBtn = document.getElementById('menu-btn');
+  const mobileMenu = document.getElementById('mobile-menu');
+  const closeMenu = () => mobileMenu.classList.add('hidden');
+  menuBtn.addEventListener('click', () => mobileMenu.classList.toggle('hidden'));
+  mobileMenu.querySelectorAll('a').forEach(a => a.addEventListener('click', closeMenu));
+
+  // ---- Simulation model (parâmetros ajustáveis) ----
+  const CFG = {
+    tarifa: 0.95,          // R$/kWh (média Sudeste com impostos)
+    hsp: 4.6,              // horas de sol pleno/dia
+    perf: 0.78,            // performance ratio do sistema
+    painelW: 550,          // W por painel
+    economia: 0.90,        // até 90% da conta
+    custoPorKwp: 4200,     // R$/kWp instalado (turn-key)
+    areaPorKwp: 6,         // m² por kWp
+    co2PorKwh: 0.0817,     // kg CO2/kWh (fator médio grid BR)
+    co2PorArvore: 22,      // kg CO2 absorvido/árvore/ano
+    valorizacaoPct: 0.04,  // +4% no valor do imóvel (residencial)
+  };
+
+  const fmtBRL = n => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+  const parseBill = s => {
+    const clean = String(s).replace(/[^\d,.]/g, '').replace(/\.(?=\d{3})/g, '').replace(',', '.');
+    return parseFloat(clean) || 0;
+  };
+
+  function simulate(bill, type) {
+    const kwhMes = bill / CFG.tarifa;
+    const geracaoAlvo = kwhMes;                         // cobrir ~100% do consumo
+    const kwp = geracaoAlvo / (CFG.hsp * 30 * CFG.perf);
+    const painels = Math.max(1, Math.ceil((kwp * 1000) / CFG.painelW));
+    const kwpReal = (painels * CFG.painelW) / 1000;
+    const geracaoMes = kwpReal * CFG.hsp * 30 * CFG.perf;
+    const area = kwpReal * CFG.areaPorKwp;
+    const economiaMes = bill * CFG.economia;
+    const economiaAno = economiaMes * 12;
+    // 25 anos com reajuste tarifário médio de 6%/ano
+    let economia25 = 0, fator = 1;
+    for (let a = 0; a < 25; a++) { economia25 += economiaAno * fator; fator *= 1.06; }
+    const custo = kwpReal * CFG.custoPorKwp;
+    const paybackAnos = custo / economiaAno;
+    const parcela240 = custo / 240;
+    const parcela87 = custo / 87;
+    const valorizacao = type === 'residencial' ? bill * 12 * 8 * CFG.valorizacaoPct * 0 + custo * 0.9 : custo * 0.6;
+    const co2Ano = geracaoMes * 12 * CFG.co2PorKwh;      // kg/ano
+    const co225t = (co2Ano * 25) / 1000;                 // toneladas em 25 anos
+    const arvores = Math.round((co2Ano * 25) / CFG.co2PorArvore);
+    return { kwhMes, kwpReal, painels, geracaoMes, area, economiaMes, economiaAno, economia25, custo, paybackAnos, parcela240, parcela87, valorizacao, co225t, arvores };
+  }
+
+  // ---- Modal wiring ----
+  const modal = document.getElementById('sim-modal');
+  const openModal = () => { modal.classList.remove('modal-hidden'); document.body.style.overflow = 'hidden'; };
+  const closeModal = () => { modal.classList.add('modal-hidden'); document.body.style.overflow = ''; };
+  document.getElementById('sim-close').addEventListener('click', closeModal);
+  modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeIntro(); } });
+
+  // ---- Intro popup wiring ----
+  const intro = document.getElementById('sim-intro');
+  const openIntro = () => { intro.classList.remove('modal-hidden'); document.body.style.overflow = 'hidden'; setTimeout(() => document.getElementById('intro-name').focus(), 300); };
+  const closeIntro = () => { intro.classList.add('modal-hidden'); document.body.style.overflow = ''; };
+  document.getElementById('intro-close').addEventListener('click', closeIntro);
+  intro.addEventListener('click', e => { if (e.target === intro) closeIntro(); });
+
+  // Máscaras de celular e CEP
+  const phoneEl = document.getElementById('intro-phone');
+  const cepEl = document.getElementById('intro-cep');
+  phoneEl.addEventListener('input', () => {
+    let v = phoneEl.value.replace(/\D/g, '').slice(0, 11);
+    if (v.length > 6) v = `(${v.slice(0,2)}) ${v.slice(2,7)}-${v.slice(7)}`;
+    else if (v.length > 2) v = `(${v.slice(0,2)}) ${v.slice(2)}`;
+    else if (v.length > 0) v = `(${v}`;
+    phoneEl.value = v;
+  });
+  cepEl.addEventListener('input', () => {
+    let v = cepEl.value.replace(/\D/g, '').slice(0, 8);
+    if (v.length > 5) v = `${v.slice(0,5)}-${v.slice(5)}`;
+    cepEl.value = v;
+  });
+
+  // "Simular Economia" buttons -> abrem o pop-up direto (sem scroll)
+  document.querySelectorAll('[data-simular]').forEach(btn => btn.addEventListener('click', () => {
+    closeMenu();
+    openIntro();
+  }));
+
+  // Hero: slider ao vivo + CTAs que levam o valor pro pop-up
+  const billRange = document.getElementById('billRange');
+  if (billRange) {
+    const savingsValue = document.getElementById('savingsValue');
+    const billLabel = document.getElementById('billLabel');
+    const updateSlider = () => {
+      const val = +billRange.value;
+      if (billLabel) billLabel.textContent = fmtBRL(val);
+      savingsValue.textContent = fmtBRL(Math.round(val * CFG.economia));
+      savingsValue.classList.add('scale-110');
+      setTimeout(() => savingsValue.classList.remove('scale-110'), 120);
+    };
+    billRange.addEventListener('input', updateSlider);
+    updateSlider();
+  }
+  document.querySelectorAll('.hero-cta:not(#hero-report)').forEach(btn => btn.addEventListener('click', () => {
+    if (billRange) document.getElementById('intro-bill').value = billRange.value;
+    openIntro();
+  }));
+
+  // "Gerar Relatório Completo" -> vai direto para o WhatsApp com a mensagem já baseada na conta do slider
+  const heroReportBtn = document.getElementById('hero-report');
+  if (heroReportBtn && billRange) {
+    heroReportBtn.addEventListener('click', () => {
+      const bill = +billRange.value;
+      const r = simulate(bill, 'residencial');
+      const msg = `Olá, eu fiz uma simulação e encontrei uma economia de ${fmtBRL(r.economiaMes)} por mês, gostaria de receber uma proposta oficial.`;
+      window.open(`https://wa.me/551129553344?text=${encodeURIComponent(msg)}`, '_blank');
+    });
+  }
+
+  // Intro form submit -> calcula e mostra resultado
+  document.getElementById('intro-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const nome = document.getElementById('intro-name').value.trim();
+    const celular = document.getElementById('intro-phone').value.trim();
+    const cep = document.getElementById('intro-cep').value.trim();
+    const bill = parseBill(document.getElementById('intro-bill').value);
+    const type = document.getElementById('intro-type').value;
+    if (!nome) { alert('Informe seu nome.'); return; }
+    if (celular.replace(/\D/g, '').length < 10) { alert('Informe um celular válido com DDD.'); return; }
+    if (cep.replace(/\D/g, '').length !== 8) { alert('Informe um CEP válido (8 dígitos).'); return; }
+    if (bill < 50) { alert('Informe um valor de conta a partir de R$ 50.'); return; }
+    closeIntro();
+    showResult(bill, type, { nome, celular, cep });
+  });
+
+  // ---- Preenche e exibe o modal de resultado ----
+  function showResult(bill, type, lead = {}) {
+    const r = simulate(bill, type);
+
+    document.getElementById('res-context').textContent =
+      `${lead.nome ? lead.nome + ' • ' : ''}Conta de ${fmtBRL(bill)}/mês • ${type.charAt(0).toUpperCase() + type.slice(1)} • ~${Math.round(r.kwhMes)} kWh/mês`;
+    document.getElementById('res-month').textContent = fmtBRL(r.economiaMes);
+    document.getElementById('res-year').textContent = fmtBRL(r.economiaAno);
+    document.getElementById('res-25').textContent = fmtBRL(r.economia25);
+    document.getElementById('res-kwp').textContent = r.kwpReal.toFixed(2).replace('.', ',') + ' kWp';
+    document.getElementById('res-panels').textContent = r.painels;
+    document.getElementById('res-gen').textContent = Math.round(r.geracaoMes) + ' kWh';
+    document.getElementById('res-area').textContent = Math.round(r.area) + ' m²';
+    document.getElementById('res-cost').textContent = fmtBRL(r.custo);
+    document.getElementById('res-cost-month').textContent = fmtBRL(r.parcela87);
+    document.getElementById('res-payback').textContent = r.paybackAnos.toFixed(1).replace('.', ',') + ' anos';
+    document.getElementById('res-installment').textContent = fmtBRL(r.parcela240);
+    document.getElementById('res-valuation').textContent = '+' + fmtBRL(r.valorizacao);
+    document.getElementById('res-co2').textContent = r.co225t.toFixed(1).replace('.', ',') + ' t CO₂';
+    document.getElementById('res-trees').textContent = r.arvores.toLocaleString('pt-BR') + ' árvores';
+
+    let msg = `Olá, eu fiz uma simulação e encontrei uma economia de ${fmtBRL(r.economiaMes)} por mês, gostaria de receber uma proposta oficial.\n\n`;
+    if (lead.nome) msg += `Nome: ${lead.nome}\n`;
+    if (lead.celular) msg += `Celular: ${lead.celular}\n`;
+    if (lead.cep) msg += `CEP: ${lead.cep}\n`;
+    document.getElementById('res-whatsapp').href = `https://wa.me/551129553344?text=${encodeURIComponent(msg)}`;
+
+    openModal();
+  }
+</script>
+</body></html>

@@ -1,5 +1,9 @@
+"use client";
+
 import Link from "next/link";
 import { formatPrice } from "@/lib/cart-context";
+import { useLocation } from "@/lib/location-context";
+import { isCaxiasBairro, getCaxiasPrice } from "@/data/caxias-pricing";
 import type { Product } from "@/lib/types";
 
 const tagColors: Record<string, string> = {
@@ -9,6 +13,18 @@ const tagColors: Record<string, string> = {
 };
 
 export default function ProductCard({ product }: { product: Product }) {
+  const { zone, priceFactor, discountPercent } = useLocation();
+
+  // Se é Duque de Caxias, usa preço fixo
+  let finalPrice = product.price * priceFactor;
+  let isCaxias = false;
+  if (zone && isCaxiasBairro(zone.name)) {
+    const fixedPrice = getCaxiasPrice(product.id);
+    if (fixedPrice !== undefined) {
+      finalPrice = fixedPrice;
+      isCaxias = true;
+    }
+  }
   return (
     <Link
       href={`/produto/${product.id}`}
@@ -36,9 +52,24 @@ export default function ProductCard({ product }: { product: Product }) {
         )}
         <h3 className="font-bold text-brand-black">{product.name}</h3>
         <p className="line-clamp-2 text-sm text-gray-600">{product.description}</p>
-        <p className="mt-auto pt-2 text-lg font-extrabold text-brand-amber">
-          {formatPrice(product.price)} / un.
-        </p>
+        <div className="mt-auto pt-2">
+          {discountPercent > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400 line-through">{formatPrice(product.price)}</span>
+              <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-bold text-green-700">
+                −{discountPercent}% hoje
+              </span>
+            </div>
+          )}
+          <p className="text-lg font-extrabold text-brand-amber">
+            {formatPrice(finalPrice)} / un.
+          </p>
+          {zone && (
+            <span className="mt-1 inline-flex w-fit items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">
+              🚚 Frete grátis
+            </span>
+          )}
+        </div>
       </div>
     </Link>
   );

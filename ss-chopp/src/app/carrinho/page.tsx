@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getProductById } from "@/data/products";
 import { useCart, formatPrice } from "@/lib/cart-context";
+import { useLocation } from "@/lib/location-context";
 
 const WHATSAPP_NUMBER = "5521993765465";
 
@@ -62,11 +63,17 @@ function isValidCPFOrCNPJ(value: string): boolean {
 }
 
 export default function CarrinhoPage() {
-  const { items, updateQuantity, removeItem, subtotal, deliveryFee, total, minimumOrder, meetsMinimum, clearCart } =
+  const { items, updateQuantity, removeItem, subtotal, deliveryFee, total, minimumOrder, meetsMinimum, clearCart, unitPrice } =
     useCart();
+  const { zone } = useLocation();
   const [sent, setSent] = useState(false);
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("entrega");
   const [address, setAddress] = useState({ nome: "", rua: "", numero: "", bairro: "", complemento: "", cpfCnpj: "" });
+
+  // já que o cliente escolheu o bairro na entrada, joga ele no endereço
+  useEffect(() => {
+    if (zone && !address.bairro) setAddress((a) => ({ ...a, bairro: zone.name }));
+  }, [zone, address.bairro]);
 
   if (sent) {
     return (
@@ -113,11 +120,12 @@ export default function CarrinhoPage() {
     const lines = items.map((item) => {
       const product = getProductById(item.productId);
       if (!product) return "";
-      const lineTotal = product.price * item.quantity;
+      const lineTotal = unitPrice(item.productId) * item.quantity;
       return `    ${product.emoji} ${product.name}\n       ${item.quantity}x = ${formatPrice(lineTotal)}`;
     });
 
     const deliveryLabel = deliveryMethod === "entrega" ? "🚚 Entrega" : "🏪 Retirada na loja";
+    const zoneLine = zone ? [`📍 *REGIÃO*: ${zone.name} — ${zone.city} (entrega ${zone.eta.toLowerCase()})`, ""] : [];
     const addressLines =
       deliveryMethod === "entrega"
         ? [
@@ -133,12 +141,13 @@ export default function CarrinhoPage() {
       "║  🍺 PEDIDO SS-CHOPP DISTRIBUIDORA  ║",
       "╚════════════════════════════════╝",
       "",
+      ...zoneLine,
       "📦 *ITENS DO PEDIDO*",
       ...lines,
       "",
       "─────────────────────────────────",
       `💰 Subtotal: ${formatPrice(subtotal)}`,
-      `🚛 Taxa de entrega: ${formatPrice(finalDeliveryFee)}`,
+      `🚛 Taxa de entrega: ${finalDeliveryFee > 0 ? formatPrice(finalDeliveryFee) : "GRÁTIS 🎉"}`,
       "",
       `✅ *TOTAL: ${formatPrice(finalTotal)}*`,
       "─────────────────────────────────",
@@ -166,7 +175,7 @@ export default function CarrinhoPage() {
         {items.map((item) => {
           const product = getProductById(item.productId);
           if (!product) return null;
-          const lineTotal = product.price * item.quantity;
+          const lineTotal = unitPrice(item.productId) * item.quantity;
 
           return (
             <div
@@ -186,7 +195,7 @@ export default function CarrinhoPage() {
               </div>
               <div className="flex-1">
                 <p className="font-bold text-brand-black">{product.name}</p>
-                <p className="text-sm text-gray-500">{formatPrice(product.price)}/un.</p>
+                <p className="text-sm text-gray-500">{formatPrice(unitPrice(item.productId))}/un.</p>
                 <div className="mt-1 flex items-center gap-2">
                   <button
                     onClick={() => updateQuantity(item.productId, Math.max(0, item.quantity - 1))}
@@ -307,7 +316,11 @@ export default function CarrinhoPage() {
         </div>
         <div className="flex justify-between text-sm text-gray-600">
           <span>Taxa de entrega</span>
-          <span>{formatPrice(finalDeliveryFee)}</span>
+          {finalDeliveryFee > 0 ? (
+            <span>{formatPrice(finalDeliveryFee)}</span>
+          ) : (
+            <span className="font-bold text-green-600">Grátis 🎉</span>
+          )}
         </div>
         <div className="mt-2 flex justify-between border-t border-gray-100 pt-2 text-lg font-extrabold text-brand-black">
           <span>Total</span>

@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "functions": {
+    "/api/projects/[id]/ai-edit": {
+      "maxDuration": 120
+    },
+    "/api/projects/[id]/filmstrip": {
+      "maxDuration": 60
+    },
+    "/api/projects/[id]/music": {
+      "maxDuration": 60
+    }
+  }
+}

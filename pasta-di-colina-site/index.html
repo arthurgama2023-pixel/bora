@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pasta di Colina — Ristorante di Qualità | A mesa italiana do Rio</title>
+  <title>Pasta di Colina | A mesa italiana do Rio</title>
   <meta name="description" content="Suba a colina e sente-se à nossa mesa. Massas frescas feitas à mão, o aroma do forno e a tradição italiana no coração do Rio de Janeiro." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -25,8 +25,7 @@
         <a href="#essencia">Nossa Essência</a>
         <a href="#cardapio">Sabores</a>
         <a href="#momentos">Momentos</a>
-        <a href="#unidades">Onde Estamos</a>
-        <a href="#convite" class="nav__cta">Visite-nos</a>
+        <a href="#unidades" class="nav__cta">Onde Estamos</a>
       </nav>
       <button class="nav__burger" id="burger" aria-label="Menu">
         <span></span><span></span><span></span>
@@ -35,29 +34,122 @@
   </header>
 
   <!-- ===== HERO ===== -->
-  <section class="hero" id="hero" style="background-image:url('https://images.pexels.com/photos/10439164/pexels-photo-10439164.jpeg')">
+  <section class="hero" id="hero">
+    <video class="hero__video" autoplay muted loop playsinline poster="https://images.pexels.com/photos/10439164/pexels-photo-10439164.jpeg">
+      <source src="https://videos.pexels.com/video-files/37714300/15994005_1080_1920_60fps.mp4" type="video/mp4" />
+    </video>
     <div class="hero__overlay"></div>
     <div class="hero__content">
-      <h1 class="hero__title">A Itália mais perto<br>do que você <em>imagina</em>.</h1>
-      <p class="hero__sub">Massa fresca, forno a lenha e a mesa farta esperando por você.</p>
-      <div class="hero__actions">
-        <a href="#convite" class="btn btn--primary">Reserve Agora</a>
-        <a href="#unidades" class="btn btn--ghost">Onde nos visitar</a>
+
+      <!-- ===== PAINEL 1 · MARCA ===== -->
+      <div class="hero__panel hero__panel--brand is-active" data-panel="brand">
+        <div class="hero__story" id="heroStory">
+          <div class="story__stage active">
+            <span class="story__label">● na fábrica</span>
+            <p class="story__text">Da farinha selecionada...</p>
+          </div>
+          <div class="story__stage">
+            <span class="story__label">● nas nossas mãos</span>
+            <p class="story__text">Trabalhada com carinho...</p>
+          </div>
+          <div class="story__stage">
+            <span class="story__label">● no forno</span>
+            <p class="story__text">Com o calor e o aroma certos...</p>
+          </div>
+          <div class="story__stage">
+            <span class="story__label">● à sua mesa</span>
+            <p class="story__text">Pronta para te receber.</p>
+          </div>
+        </div>
+        <h1 class="hero__title">A Itália mais perto<br>do que você <em>imagina</em>.</h1>
+        <p class="hero__sub">Massa fresca, forno a lenha e a mesa farta esperando por você.</p>
+        <div class="hero__actions">
+          <a href="https://reservation-widget.tagme.com.br/group/6883cce2a7a893fd38f0a8d4?utm_source=ig&utm_medium=social&utm_content=link_in_bio&fbclid=PAZXh0bgNhZW0CMTEAc3J0YwZhcHBfaWQPOTM2NjE5NzQzMzkyNDU5AAGndLn6bn8y0GqHMowxKJndd42gUpE6taSXxbOUJA9xj_I0rQ1Gd6FIzVJcYWs_aem_TjKL3I9joX0F9vfZub-iwQ" class="btn btn--green" target="_blank" rel="noopener">Reserve Agora</a>
+          <a href="#unidades" class="btn btn--ghost">Onde nos visitar</a>
+        </div>
+        <div class="hero__stats">
+          <div class="stat stat--red"><span class="stat__num">33</span><span class="stat__label">massas feitas à mão</span></div>
+          <div class="stat stat--green"><span class="stat__num">27</span><span class="stat__label">pizzas saídas do forno</span></div>
+          <div class="stat stat--gold"><span class="stat__num">11</span><span class="stat__label">unidades no RJ</span></div>
+        </div>
       </div>
-      <div class="hero__stats">
-        <div class="stat"><span class="stat__num">33</span><span class="stat__label">massas feitas à mão</span></div>
-        <div class="stat"><span class="stat__num">27</span><span class="stat__label">pizzas saídas do forno</span></div>
-        <div class="stat"><span class="stat__num">8+</span><span class="stat__label">mesas pra te receber</span></div>
+
+      <!-- ===== PAINEL 2 · OFERTA ===== -->
+      <div class="hero__panel hero__panel--offer" data-panel="offer">
+        <div class="offer">
+          <div class="offer__pitch">
+            <span class="offer__badge">🔥 Oferta da Semana</span>
+            <h2 class="offer__title">Rodízio Completo.<br><em>Sem limite, sem pressa.</em></h2>
+
+            <!-- Card de preço duplicado só para mobile — aparece logo abaixo do título -->
+            <div class="offer__card offer__card--inline">
+              <span class="offer__period">segunda a quinta · jantar</span>
+              <div class="offer__prices">
+                <span class="offer__was">Rodízio a partir de</span>
+                <div class="offer__now">
+                  <span class="offer__currency">R$</span>
+                  <span class="offer__value">37</span>
+                </div>
+                <span class="offer__per">por pessoa · all inclusive</span>
+              </div>
+              <a href="https://reservation-widget.tagme.com.br/group/6883cce2a7a893fd38f0a8d4?utm_source=ig&utm_medium=social&utm_content=link_in_bio&fbclid=PAZXh0bgNhZW0CMTEAc3J0YwZhcHBfaWQPOTM2NjE5NzQzMzkyNDU5AAGndLn6bn8y0GqHMowxKJndd42gUpE6taSXxbOUJA9xj_I0rQ1Gd6FIzVJcYWs_aem_TjKL3I9joX0F9vfZub-iwQ" class="btn btn--green btn--lg offer__cta" target="_blank" rel="noopener">📅 Garantir Minha Mesa</a>
+              <p class="offer__guarantee">Cancele grátis até 2h antes · Sem cartão</p>
+              <div class="offer__urgency">
+                <span class="offer__dot"></span>
+                <span>Vagas limitadas — <strong>poucas mesas disponíveis</strong></span>
+              </div>
+            </div>
+
+            <p class="offer__lead">60 itens chegando direto à sua mesa — massas frescas da fábrica, pizzas do forno a lenha, saladas e sobremesa.</p>
+            <ul class="offer__list">
+              <li>33 massas artesanais, sem parar de servir</li>
+              <li>27 pizzas saídas do forno a lenha</li>
+              <li>Saladas, antepastos e sobremesa inclusa</li>
+              <li>Reserva sem cartão de crédito</li>
+            </ul>
+            <div class="offer__proof">
+              <span class="offer__stars">★★★★★</span>
+              <span>Nota 4.8 · Mais de 50.000 mesas servidas desde 2019</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Aba de promoção — ancorada à hero, canto superior esquerdo -->
+    <div class="offer__card">
+      <span class="offer__period">segunda a quinta · jantar</span>
+      <div class="offer__prices">
+        <span class="offer__was">Rodízio a partir de</span>
+        <div class="offer__now">
+          <span class="offer__currency">R$</span>
+          <span class="offer__value">37</span>
+        </div>
+        <span class="offer__per">por pessoa · all inclusive</span>
+      </div>
+      <a href="https://reservation-widget.tagme.com.br/group/6883cce2a7a893fd38f0a8d4?utm_source=ig&utm_medium=social&utm_content=link_in_bio&fbclid=PAZXh0bgNhZW0CMTEAc3J0YwZhcHBfaWQPOTM2NjE5NzQzMzkyNDU5AAGndLn6bn8y0GqHMowxKJndd42gUpE6taSXxbOUJA9xj_I0rQ1Gd6FIzVJcYWs_aem_TjKL3I9joX0F9vfZub-iwQ" class="btn btn--green btn--lg offer__cta" target="_blank" rel="noopener">📅 Garantir Minha Mesa</a>
+      <p class="offer__guarantee">Cancele grátis até 2h antes · Sem cartão</p>
+      <div class="offer__urgency">
+        <span class="offer__dot"></span>
+        <span>Vagas limitadas — <strong>poucas mesas disponíveis</strong></span>
       </div>
     </div>
+
     <a href="#experiencia" class="hero__scroll" aria-label="Rolar para baixo">↓</a>
   </section>
 
   <!-- ===== TICKER ===== -->
-  <div class="ticker">
+  <div class="ticker ticker--green">
     <div class="ticker__track">
       <span>Massa Fresca</span><span>•</span><span>Forno a Lenha</span><span>•</span><span>Mesa Farta</span><span>•</span><span>Cappelletti</span><span>•</span><span>Gnocchi</span><span>•</span><span>Cannelloni</span><span>•</span>
       <span>Massa Fresca</span><span>•</span><span>Forno a Lenha</span><span>•</span><span>Mesa Farta</span><span>•</span><span>Cappelletti</span><span>•</span><span>Gnocchi</span><span>•</span><span>Cannelloni</span><span>•</span>
+    </div>
+  </div>
+  <div class="ticker ticker--red">
+    <div class="ticker__track">
+      <span>Desde 2019</span><span>•</span><span>Rodízio Gourmet</span><span>•</span><span>Ingredientes Frescos</span><span>•</span><span>Travessas ao Forno</span><span>•</span><span>11 Unidades no RJ</span><span>•</span>
+      <span>Desde 2019</span><span>•</span><span>Rodízio Gourmet</span><span>•</span><span>Ingredientes Frescos</span><span>•</span><span>Travessas ao Forno</span><span>•</span><span>11 Unidades no RJ</span><span>•</span>
     </div>
   </div>
 
@@ -92,6 +184,14 @@
         <h3>O aconchego</h3>
         <p>A luz baixa, a conversa boa, a mesa que não acaba. Aqui ninguém tem pressa de ir embora — e tudo bem.</p>
       </article>
+    </div>
+  </section>
+
+  <!-- ===== BANNER ORIGEM ===== -->
+  <section class="origem">
+    <div class="origem__inner">
+      <span class="origem__year">2019</span>
+      <p class="origem__text">No primeiro dia, a fila dobrou o quarteirão.<br><strong>60 pessoas</strong> descobriram o que você está prestes a provar.</p>
     </div>
   </section>
 
@@ -200,16 +300,142 @@
     <div class="section__head">
       <p class="section__eyebrow">Onde a colina te espera</p>
       <h2 class="section__title">Perto de você, pelo Rio</h2>
+      <p class="section__lead">11 unidades espalhadas pela cidade. Encontre a mais próxima e venha visitar.</p>
     </div>
-    <div class="units">
-      <div class="unit">Shopping Nova Iguaçu</div>
-      <div class="unit">Park Shopping Campo Grande</div>
-      <div class="unit">Via Brasil Shopping</div>
-      <div class="unit">Top Shopping</div>
-      <div class="unit">Shopping Boulevard</div>
-      <div class="unit">Partage São Gonçalo</div>
-      <div class="unit">Parque Shopping Sulacap</div>
-      <div class="unit">Shopping Carioca</div>
+    <div class="ucards">
+
+      <article class="ucard">
+        <div class="ucard__photo" style="background-image:url('https://static.wixstatic.com/media/4b9188_b6725dc2438c45c092bfe7e8fe5981a4~mv2.png/v1/fill/w_800,h_450,al_c,q_90,enc_avif,quality_auto/4b9188_b6725dc2438c45c092bfe7e8fe5981a4~mv2.png')"></div>
+        <div class="ucard__info">
+          <span class="ucard__eyebrow">Pasta di Colina</span>
+          <h3 class="ucard__name">Ilha Plaza · Nova Iguaçu</h3>
+          <div class="ucard__actions">
+            <a href="https://maps.google.com/?q=Pasta+Di+Colina+Ilha+Plaza+Nova+Iguaçu" class="ucard__btn ucard__btn--map" target="_blank" rel="noopener">📍 Como Chegar</a>
+            <a href="https://reservation-widget.tagme.com.br/group/6883cce2a7a893fd38f0a8d4?utm_source=ig&utm_medium=social&utm_content=link_in_bio" class="ucard__btn ucard__btn--reserve" target="_blank" rel="noopener">📅 Reservar</a>
+          </div>
+        </div>
+      </article>
+
+      <article class="ucard">
+        <div class="ucard__photo" style="background-image:url('https://static.wixstatic.com/media/4b9188_d9afd6ff970d44c7b345383e9d485d67~mv2.jpg/v1/fill/w_800,h_450,al_c,q_90,enc_avif,quality_auto/4b9188_d9afd6ff970d44c7b345383e9d485d67~mv2.jpg')"></div>
+        <div class="ucard__info">
+          <span class="ucard__eyebrow">Pasta di Colina</span>
+          <h3 class="ucard__name">Park Shopping Campo Grande</h3>
+          <div class="ucard__actions">
+            <a href="https://maps.google.com/?q=Pasta+Di+Colina+Park+Shopping+Campo+Grande" class="ucard__btn ucard__btn--map" target="_blank" rel="noopener">📍 Como Chegar</a>
+            <a href="https://reservation-widget.tagme.com.br/group/6883cce2a7a893fd38f0a8d4?utm_source=ig&utm_medium=social&utm_content=link_in_bio" class="ucard__btn ucard__btn--reserve" target="_blank" rel="noopener">📅 Reservar</a>
+          </div>
+        </div>
+      </article>
+
+      <article class="ucard">
+        <div class="ucard__photo" style="background-image:url('https://static.wixstatic.com/media/4b9188_6aaf6a8836bb4b9e8fdd176d9000192b~mv2.jpg/v1/fill/w_800,h_450,al_c,q_90,enc_avif,quality_auto/4b9188_6aaf6a8836bb4b9e8fdd176d9000192b~mv2.jpg')"></div>
+        <div class="ucard__info">
+          <span class="ucard__eyebrow">Pasta di Colina</span>
+          <h3 class="ucard__name">Via Brasil Shopping</h3>
+          <div class="ucard__actions">
+            <a href="https://maps.google.com/?q=Pasta+Di+Colina+Via+Brasil+Shopping" class="ucard__btn ucard__btn--map" target="_blank" rel="noopener">📍 Como Chegar</a>
+            <a href="https://reservation-widget.tagme.com.br/group/6883cce2a7a893fd38f0a8d4?utm_source=ig&utm_medium=social&utm_content=link_in_bio" class="ucard__btn ucard__btn--reserve" target="_blank" rel="noopener">📅 Reservar</a>
+          </div>
+        </div>
+      </article>
+
+      <article class="ucard">
+        <div class="ucard__photo" style="background-image:url('https://static.wixstatic.com/media/4b9188_552b00ef51bf467a82a6c762e360be6b~mv2.jpeg/v1/fill/w_800,h_450,fp_0.73_0.46,q_85,enc_avif,quality_auto/4b9188_552b00ef51bf467a82a6c762e360be6b~mv2.jpeg')"></div>
+        <div class="ucard__info">
+          <span class="ucard__eyebrow">Pasta di Colina</span>
+          <h3 class="ucard__name">West Shopping</h3>
+          <div class="ucard__actions">
+            <a href="https://maps.google.com/?q=Pasta+Di+Colina+West+Shopping" class="ucard__btn ucard__btn--map" target="_blank" rel="noopener">📍 Como Chegar</a>
+            <a href="https://reservation-widget.tagme.com.br/group/6883cce2a7a893fd38f0a8d4?utm_source=ig&utm_medium=social&utm_content=link_in_bio" class="ucard__btn ucard__btn--reserve" target="_blank" rel="noopener">📅 Reservar</a>
+          </div>
+        </div>
+      </article>
+
+      <article class="ucard">
+        <div class="ucard__photo" style="background-image:url('https://static.wixstatic.com/media/4b9188_3900206a49404efeb640115a790bc0d0~mv2.jpg/v1/fill/w_800,h_450,al_c,q_85,enc_avif,quality_auto/4b9188_3900206a49404efeb640115a790bc0d0~mv2.jpg')"></div>
+        <div class="ucard__info">
+          <span class="ucard__eyebrow">Pasta di Colina</span>
+          <h3 class="ucard__name">Top Shopping</h3>
+          <div class="ucard__actions">
+            <a href="https://maps.google.com/?q=Pasta+Di+Colina+Top+Shopping+Nova+Iguaçu" class="ucard__btn ucard__btn--map" target="_blank" rel="noopener">📍 Como Chegar</a>
+            <a href="https://reservation-widget.tagme.com.br/group/6883cce2a7a893fd38f0a8d4?utm_source=ig&utm_medium=social&utm_content=link_in_bio" class="ucard__btn ucard__btn--reserve" target="_blank" rel="noopener">📅 Reservar</a>
+          </div>
+        </div>
+      </article>
+
+      <article class="ucard">
+        <div class="ucard__photo" style="background-image:url('https://static.wixstatic.com/media/4b9188_284793b6d9924162a2dc673da04c43e6~mv2.jpeg/v1/fill/w_800,h_450,al_c,q_85,enc_avif,quality_auto/4b9188_284793b6d9924162a2dc673da04c43e6~mv2.jpeg')"></div>
+        <div class="ucard__info">
+          <span class="ucard__eyebrow">Pasta di Colina</span>
+          <h3 class="ucard__name">Shopping Boulevard</h3>
+          <div class="ucard__actions">
+            <a href="https://maps.google.com/?q=Pasta+Di+Colina+Shopping+Boulevard+Rio+de+Janeiro" class="ucard__btn ucard__btn--map" target="_blank" rel="noopener">📍 Como Chegar</a>
+            <a href="https://reservation-widget.tagme.com.br/group/6883cce2a7a893fd38f0a8d4?utm_source=ig&utm_medium=social&utm_content=link_in_bio" class="ucard__btn ucard__btn--reserve" target="_blank" rel="noopener">📅 Reservar</a>
+          </div>
+        </div>
+      </article>
+
+      <article class="ucard">
+        <div class="ucard__photo" style="background-image:url('https://static.wixstatic.com/media/4b9188_1196b99c93f9462dbf2c71861fbfd54b~mv2.jpeg/v1/fill/w_800,h_450,al_c,q_85,enc_avif,quality_auto/4b9188_1196b99c93f9462dbf2c71861fbfd54b~mv2.jpeg')"></div>
+        <div class="ucard__info">
+          <span class="ucard__eyebrow">Pasta di Colina</span>
+          <h3 class="ucard__name">Partage São Gonçalo</h3>
+          <div class="ucard__actions">
+            <a href="https://maps.google.com/?q=Pasta+Di+Colina+Partage+São+Gonçalo" class="ucard__btn ucard__btn--map" target="_blank" rel="noopener">📍 Como Chegar</a>
+            <a href="https://reservation-widget.tagme.com.br/group/6883cce2a7a893fd38f0a8d4?utm_source=ig&utm_medium=social&utm_content=link_in_bio" class="ucard__btn ucard__btn--reserve" target="_blank" rel="noopener">📅 Reservar</a>
+          </div>
+        </div>
+      </article>
+
+      <article class="ucard">
+        <div class="ucard__photo" style="background-image:url('https://static.wixstatic.com/media/4b9188_d792326bffd94447945896d4ca355fed~mv2.jpeg/v1/fill/w_800,h_450,fp_0.96_0.5,q_85,enc_avif,quality_auto/4b9188_d792326bffd94447945896d4ca355fed~mv2.jpeg')"></div>
+        <div class="ucard__info">
+          <span class="ucard__eyebrow">Pasta di Colina</span>
+          <h3 class="ucard__name">Parque Shopping Sulacap</h3>
+          <div class="ucard__actions">
+            <a href="https://maps.google.com/?q=Pasta+Di+Colina+Parque+Shopping+Sulacap" class="ucard__btn ucard__btn--map" target="_blank" rel="noopener">📍 Como Chegar</a>
+            <a href="https://reservation-widget.tagme.com.br/group/6883cce2a7a893fd38f0a8d4?utm_source=ig&utm_medium=social&utm_content=link_in_bio" class="ucard__btn ucard__btn--reserve" target="_blank" rel="noopener">📅 Reservar</a>
+          </div>
+        </div>
+      </article>
+
+      <article class="ucard">
+        <div class="ucard__photo" style="background-image:url('https://static.wixstatic.com/media/4b9188_c6246d6ee4f846ea8d79907fc885ff34~mv2.jpeg/v1/fill/w_800,h_450,al_c,q_85,enc_avif,quality_auto/4b9188_c6246d6ee4f846ea8d79907fc885ff34~mv2.jpeg')"></div>
+        <div class="ucard__info">
+          <span class="ucard__eyebrow">Pasta di Colina</span>
+          <h3 class="ucard__name">Shopping Carioca</h3>
+          <div class="ucard__actions">
+            <a href="https://maps.google.com/?q=Pasta+Di+Colina+Shopping+Carioca" class="ucard__btn ucard__btn--map" target="_blank" rel="noopener">📍 Como Chegar</a>
+            <a href="https://reservation-widget.tagme.com.br/group/6883cce2a7a893fd38f0a8d4?utm_source=ig&utm_medium=social&utm_content=link_in_bio" class="ucard__btn ucard__btn--reserve" target="_blank" rel="noopener">📅 Reservar</a>
+          </div>
+        </div>
+      </article>
+
+      <article class="ucard">
+        <div class="ucard__photo" style="background-image:url('https://static.wixstatic.com/media/4b9188_39e78c75690a43ebb935a63d52b7a33a~mv2.jpeg/v1/fill/w_800,h_450,al_c,q_85,enc_avif,quality_auto/4b9188_39e78c75690a43ebb935a63d52b7a33a~mv2.jpeg')"></div>
+        <div class="ucard__info">
+          <span class="ucard__eyebrow">Pasta di Colina</span>
+          <h3 class="ucard__name">Plaza Rio das Ostras</h3>
+          <div class="ucard__actions">
+            <a href="https://maps.google.com/?q=Pasta+Di+Colina+Plaza+Rio+das+Ostras" class="ucard__btn ucard__btn--map" target="_blank" rel="noopener">📍 Como Chegar</a>
+            <a href="https://reservation-widget.tagme.com.br/group/6883cce2a7a893fd38f0a8d4?utm_source=ig&utm_medium=social&utm_content=link_in_bio" class="ucard__btn ucard__btn--reserve" target="_blank" rel="noopener">📅 Reservar</a>
+          </div>
+        </div>
+      </article>
+
+      <article class="ucard">
+        <div class="ucard__photo" style="background-image:url('https://static.wixstatic.com/media/4b9188_a5461a6b7b2142218dde6666dac05ccb~mv2.jpg/v1/fill/w_800,h_450,fp_0.98_0.5,q_85,enc_avif,quality_auto/4b9188_a5461a6b7b2142218dde6666dac05ccb~mv2.jpg')"></div>
+        <div class="ucard__info">
+          <span class="ucard__eyebrow">Pasta di Colina</span>
+          <h3 class="ucard__name">Shopping Grande Rio</h3>
+          <div class="ucard__actions">
+            <a href="https://maps.google.com/?q=Pasta+Di+Colina+Shopping+Grande+Rio" class="ucard__btn ucard__btn--map" target="_blank" rel="noopener">📍 Como Chegar</a>
+            <a href="https://reservation-widget.tagme.com.br/group/6883cce2a7a893fd38f0a8d4?utm_source=ig&utm_medium=social&utm_content=link_in_bio" class="ucard__btn ucard__btn--reserve" target="_blank" rel="noopener">📅 Reservar</a>
+          </div>
+        </div>
+      </article>
+
     </div>
   </section>
 
@@ -223,7 +449,7 @@
         <a href="https://wa.me/552138997346" class="btn btn--primary btn--lg" target="_blank" rel="noopener">💬 Falar com a gente</a>
         <a href="https://instagram.com/pastadicolina" class="btn btn--ghost btn--lg" target="_blank" rel="noopener">📷 Conhecer no Instagram</a>
       </div>
-      <p class="convite__phone">📞 (21) 3899-7346</p>
+      <p class="convite__phone">📲 WhatsApp: (21) 3899-7346</p>
     </div>
   </section>
 
@@ -233,7 +459,7 @@
       <div class="footer__brand">
         <span class="nav__logo"><img src="assets/logo.jpg" alt="Pasta di Colina" /></span>
         <strong>Pasta di Colina</strong>
-        <p>Ristorante di Qualità — Rio de Janeiro</p>
+        <p>Pasta di Colina — Rio de Janeiro</p>
       </div>
       <div class="footer__links">
         <a href="#experiencia">A Experiência</a>
@@ -243,14 +469,12 @@
       </div>
       <div class="footer__social">
         <a href="https://instagram.com/pastadicolina" target="_blank" rel="noopener">Instagram</a>
-        <a href="https://wa.me/552138997346" target="_blank" rel="noopener">WhatsApp</a>
+        <a href="https://wa.me/552138997346" target="_blank" rel="noopener">📲 (21) 3899-7346</a>
       </div>
     </div>
     <p class="footer__copy">© 2026 Pasta di Colina. Feito com 🍅 e tempo, no Rio de Janeiro.</p>
   </footer>
 
-  <!-- ===== WHATSAPP FLOAT ===== -->
-  <a href="https://wa.me/552138997346" class="wpp-float" target="_blank" rel="noopener" aria-label="WhatsApp">💬</a>
 
   <script src="script.js"></script>
 </body>

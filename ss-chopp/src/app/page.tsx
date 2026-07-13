@@ -3,9 +3,11 @@
 import { useMemo, useState } from "react";
 import { categories, products } from "@/data/products";
 import ProductCard from "@/components/ProductCard";
+import { useLocation } from "@/lib/location-context";
 import type { Category } from "@/lib/types";
 
 export default function Home() {
+  const { zone, discountPercent } = useLocation();
   const [activeCategory, setActiveCategory] = useState<Category | "todos">("todos");
   const [search, setSearch] = useState("");
 
@@ -21,6 +23,12 @@ export default function Home() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
+      {zone && discountPercent > 0 && (
+        <div className="mb-4 flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-3 text-center text-sm font-bold text-white">
+          🎉 {discountPercent}% de desconto + frete grátis em {zone.name} — aproveite hoje!
+        </div>
+      )}
+
       <p className="mb-4 text-center text-sm font-semibold uppercase tracking-wide text-brand-black/70">
         Chopp gelado pra fechar com chave de ouro toda festa, churrasco ou dia de jogo
       </p>

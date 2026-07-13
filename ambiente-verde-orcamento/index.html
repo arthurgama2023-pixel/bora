@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Ambiente Verde | Gestão de Resíduos e Consultoria Ambiental</title>
+<meta content="Soluções inteligentes na gestão de resíduos. Coleta, transporte, compostagem, consultoria ambiental e certificação Lixo Zero para a sua empresa." name="description"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          "brand": "#70b55c",
+          "brand-dark": "#304e34",
+          "brand-deep": "#101b12",
+          "brand-black": "#090b09",
+          "accent-blue": "#1a4b7e",
+          "accent-peach": "#ffbc7d",
+          "surface": "#0d1510",
+          "surface-card": "#15201699",
+          "on-surface": "#e6ede7",
+          "muted": "#9db3a3"
+        },
+        fontFamily: { sans: ["Hanken Grotesk", "sans-serif"] },
+        maxWidth: { "container": "1200px" }
+      }
+    }
+  }
+</script>
+<style>
+  body { background-color: #0d1510; color: #e6ede7; -webkit-font-smoothing: antialiased; font-family: "Hanken Grotesk", sans-serif; }
+  .glass-card { background: rgba(16, 27, 18, 0.55); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(112, 181, 92, 0.25); }
+  .leaf-glow { box-shadow: 0 0 24px rgba(112, 181, 92, 0.25); }
+  .leaf-glow:hover { box-shadow: 0 0 36px rgba(112, 181, 92, 0.45); }
+  .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+  .nav-scrolled { background: rgba(9, 11, 9, 0.95) !important; border-bottom: 1px solid rgba(112,181,92,0.15); }
+  /* entrada ao rolar (fadeInUp) */
+  .reveal { opacity: 0; transform: translateY(28px); transition: opacity .7s ease, transform .7s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } }
+  /* video de fundo cobrindo a hero */
+  .video-cover { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; }
+  .video-cover iframe { position: absolute; top: 50%; left: 50%; width: 100vw; height: 56.25vw; min-height: 100%; min-width: 177.77vh; transform: translate(-50%, -50%); border: 0; }
+</style>
+</head>
+<body>
+<!-- Nav -->
+<header class="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-xl border-b border-brand/10 h-20 transition-all duration-300" id="top-nav">
+<div class="flex justify-between items-center max-w-container mx-auto px-5 md:px-10 h-full">
+<a href="#top" class="flex items-center gap-2 font-bold text-lg tracking-tight">
+<span class="material-symbols-outlined text-brand text-3xl" style="font-variation-settings:'FILL' 1;">recycling</span>
+<span>Ambiente<span class="text-brand">Verde</span></span>
+</a>
+<nav class="hidden md:flex items-center gap-8 text-sm">
+<a class="text-on-surface/70 hover:text-brand transition-colors" href="#servicos">Serviços</a>
+<a class="text-on-surface/70 hover:text-brand transition-colors" href="#lixozero">Lixo Zero</a>
+<a class="text-on-surface/70 hover:text-brand transition-colors" href="#depoimentos">Clientes</a>
+<a class="text-on-surface/70 hover:text-brand transition-colors" href="#contato">Contato</a>
+</nav>
+<a href="#simulador" class="bg-brand text-brand-black px-5 py-2.5 rounded-full text-sm font-bold leaf-glow transition-all hover:scale-105">Solicitar proposta</a>
+</div>
+</header>
+
+<main id="top">
+<!-- Hero + Estimador -->
+<section class="relative flex items-center pt-20 pb-8 md:pb-0 md:min-h-screen overflow-hidden" id="simulador">
+<div class="absolute inset-0 z-0" style="background: radial-gradient(120% 100% at 70% 0%, #304e34 0%, #101b12 55%, #090b09 100%);">
+<div class="video-cover">
+<iframe src="https://player.vimeo.com/video/1129178946?background=1&autoplay=1&loop=1&muted=1&autopause=0" allow="autoplay; fullscreen" title="Ambiente Verde" loading="lazy"></iframe>
+</div>
+<div class="absolute inset-0 bg-gradient-to-b from-brand-black/80 via-brand-black/75 to-surface z-10"></div>
+</div>
+<div class="relative z-20 max-w-container mx-auto px-4 md:px-10 w-full flex flex-col gap-8 lg:grid lg:grid-cols-2 lg:gap-16 lg:items-center py-6 md:py-24">
+<!-- texto -->
+<div class="order-1 space-y-4 md:space-y-6 text-center lg:text-left">
+<div class="inline-flex items-center gap-2 px-3 py-1 bg-brand/15 border border-brand/30 rounded-full">
+<span class="w-2 h-2 rounded-full bg-brand animate-pulse"></span>
+<span class="text-[11px] font-bold tracking-widest uppercase text-brand">Gestão de Resíduos</span>
+</div>
+<h1 class="font-extrabold text-3xl md:text-5xl leading-tight text-white">Soluções inteligentes na <span class="text-brand">gestão de resíduos</span>.</h1>
+<p class="hidden md:block text-muted text-lg max-w-xl">Atuamos com responsabilidade ambiental, eficiência operacional e compromisso com o Meio Ambiente. Referência em sustentabilidade e inovação.</p>
+</div>
+<!-- Card estimador de impacto -->
+<div class="order-2 glass-card p-5 md:p-8 rounded-2xl leaf-glow max-w-xl w-full mx-auto">
+<div class="space-y-1 md:space-y-2 mb-4 md:mb-6">
+<h2 class="font-bold text-xl md:text-2xl text-white">Estime seu impacto</h2>
+<p class="text-muted text-sm hidden md:block">Descubra em segundos o potencial ambiental da sua empresa.</p>
+</div>
+<div class="space-y-3 md:space-y-5 text-left">
+<div class="flex justify-between items-end">
+<label class="text-xs md:text-sm font-semibold text-white/90">Resíduos gerados por mês</label>
+<span id="vol-value" class="text-xl md:text-2xl font-extrabold text-brand">20 ton</span>
+</div>
+<div>
+<input id="vol-range" class="w-full h-2 bg-white/15 rounded-lg appearance-none cursor-pointer accent-brand" max="500" min="1" step="1" type="range" value="20"/>
+<div class="flex justify-between text-[11px] text-muted mt-1"><span>1 ton</span><span>500+ ton</span></div>
+</div>
+<div class="grid grid-cols-2 gap-2 md:gap-4">
+<div class="bg-white/5 p-3 md:p-5 rounded-xl border border-white/10">
+<div class="text-[10px] md:text-xs text-muted uppercase tracking-wider mb-1">CO₂ evitado / ano</div>
+<div id="co2-value" class="text-lg md:text-2xl font-extrabold text-brand">180 t</div>
+<div class="text-[10px] md:text-xs text-muted" id="trees-value">≈ 8.100 árvores</div>
+</div>
+<div class="bg-white/5 p-3 md:p-5 rounded-xl border border-white/10">
+<div class="text-[10px] md:text-xs text-muted uppercase tracking-wider mb-1">Desviado do aterro</div>
+<div id="divert-value" class="text-lg md:text-2xl font-extrabold text-white">228 t</div>
+<div class="text-[10px] md:text-xs text-muted">até 95% recuperado</div>
+</div>
+</div>
+<a id="quote-btn" href="#" target="_blank" rel="noopener" class="w-full bg-brand text-brand-black py-3 md:py-4 rounded-xl font-bold leaf-glow flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform text-sm md:text-base">
+<span class="material-symbols-outlined text-lg md:text-xl" style="font-variation-settings:'FILL' 1;">chat</span>Solicitar proposta personalizada
+</a>
+<p class="text-[10px] text-muted text-center">*Estimativa educativa. Valores finais dependem de análise técnica.</p>
+</div>
+</div>
+</div>
+</section>
+
+<!-- Stats -->
+<section class="py-16 md:py-24 bg-brand-black">
+<div class="max-w-container mx-auto px-5 md:px-10">
+<div class="text-center mb-12 reveal">
+<h2 class="font-extrabold text-2xl md:text-4xl text-white">Compromisso com a sustentabilidade e resultados</h2>
+<p class="text-muted max-w-2xl mx-auto mt-3">A Ambiente Verde realiza todo o processo de gestão, transporte e destinação de resíduos, convertendo-os em insumos de valor agregado e fortalecendo a economia circular.</p>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
+<div class="glass-card rounded-2xl p-8 text-center reveal">
+<span class="material-symbols-outlined text-brand text-4xl mb-3" style="font-variation-settings:'FILL' 1;">compost</span>
+<div class="font-extrabold text-3xl md:text-4xl text-white">+2 milhões</div>
+<div class="text-muted text-sm mt-1">de toneladas de resíduos orgânicos destinados à compostagem</div>
+</div>
+<div class="glass-card rounded-2xl p-8 text-center reveal">
+<span class="material-symbols-outlined text-brand text-4xl mb-3" style="font-variation-settings:'FILL' 1;">recycling</span>
+<div class="font-extrabold text-3xl md:text-4xl text-white">Classe I · IIA · IIB</div>
+<div class="text-muted text-sm mt-1">certificações completas para coleta e transporte de resíduos</div>
+</div>
+<div class="glass-card rounded-2xl p-8 text-center reveal">
+<span class="material-symbols-outlined text-brand text-4xl mb-3" style="font-variation-settings:'FILL' 1;">verified</span>
+<div class="font-extrabold text-3xl md:text-4xl text-white">Lixo Zero</div>
+<div class="text-muted text-sm mt-1">apoio completo rumo à certificação e conformidade com a PNRS</div>
+</div>
+</div>
+</div>
+</section>
+
+<!-- Serviços -->
+<section class="py-16 md:py-24" id="servicos">
+<div class="max-w-container mx-auto px-5 md:px-10">
+<div class="text-center mb-12 reveal">
+<span class="text-brand font-bold text-xs uppercase tracking-widest">O que fazemos</span>
+<h2 class="font-extrabold text-2xl md:text-4xl text-white mt-2">Soluções integradas para a gestão de resíduos da sua empresa</h2>
+<p class="text-muted max-w-2xl mx-auto mt-3">Atendemos todas as etapas do processo com excelência técnica, segurança legal e foco em sustentabilidade.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+<div class="glass-card rounded-2xl p-6 space-y-3 reveal">
+<span class="material-symbols-outlined text-brand text-3xl" style="font-variation-settings:'FILL' 1;">local_shipping</span>
+<h3 class="font-bold text-lg text-white">Coleta e transporte</h3>
+<p class="text-muted text-sm">Certificações para coleta e transporte de resíduos classe I, IIA e IIB com total segurança.</p>
+</div>
+<div class="glass-card rounded-2xl p-6 space-y-3 reveal">
+<span class="material-symbols-outlined text-brand text-3xl" style="font-variation-settings:'FILL' 1;">compost</span>
+<h3 class="font-bold text-lg text-white">Gestão de orgânicos</h3>
+<p class="text-muted text-sm">Gestão estratégica e compostagem de resíduos orgânicos, transformando-os em insumos de valor.</p>
+</div>
+<div class="glass-card rounded-2xl p-6 space-y-3 reveal">
+<span class="material-symbols-outlined text-brand text-3xl" style="font-variation-settings:'FILL' 1;">eco</span>
+<h3 class="font-bold text-lg text-white">Consultoria ambiental</h3>
+<p class="text-muted text-sm">Consultoria ambiental plena, alinhada às leis e normas ambientais vigentes.</p>
+</div>
+<div class="glass-card rounded-2xl p-6 space-y-3 reveal">
+<span class="material-symbols-outlined text-brand text-3xl" style="font-variation-settings:'FILL' 1;">school</span>
+<h3 class="font-bold text-lg text-white">Capacitação in company</h3>
+<p class="text-muted text-sm">Treinamentos com a qualidade da Ambiente Verde. Transforme conhecimento em alta performance.</p>
+</div>
+</div>
+</div>
+</section>
+
+<!-- Lixo Zero -->
+<section class="py-16 md:py-24 bg-brand-black" id="lixozero">
+<div class="max-w-container mx-auto px-5 md:px-10">
+<div class="text-center mb-12 reveal">
+<span class="text-brand font-bold text-xs uppercase tracking-widest">Certificação</span>
+<h2 class="font-extrabold text-2xl md:text-4xl text-white mt-2">Rumo à certificação <span class="text-brand">Lixo Zero</span></h2>
+<p class="text-muted max-w-2xl mx-auto mt-3">Com nosso apoio, sua empresa alcança a certificação Lixo Zero. Confira algumas vantagens:</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+<div class="glass-card rounded-2xl p-8 reveal">
+<div class="text-brand font-extrabold text-4xl mb-3">01</div>
+<h3 class="font-bold text-lg text-white mb-2">Redução de impacto ambiental</h3>
+<p class="text-muted text-sm">A maior parte dos resíduos é reaproveitada, evitando aterros, reduzindo gases de efeito estufa e preservando recursos naturais.</p>
+</div>
+<div class="glass-card rounded-2xl p-8 reveal">
+<div class="text-brand font-extrabold text-4xl mb-3">02</div>
+<h3 class="font-bold text-lg text-white mb-2">Credibilidade no mercado</h3>
+<p class="text-muted text-sm">Empresas certificadas transmitem confiança e transformam a sustentabilidade em um diferencial estratégico.</p>
+</div>
+<div class="glass-card rounded-2xl p-8 reveal">
+<div class="text-brand font-extrabold text-4xl mb-3">03</div>
+<h3 class="font-bold text-lg text-white mb-2">Valorização institucional</h3>
+<p class="text-muted text-sm">Conformidade com a Política Nacional de Resíduos Sólidos (PNRS), reduzindo riscos de multas e sanções.</p>
+</div>
+</div>
+</div>
+</section>
+
+<!-- Depoimentos -->
+<section class="py-16 md:py-24" id="depoimentos">
+<div class="max-w-container mx-auto px-5 md:px-10">
+<div class="text-center mb-12 reveal">
+<span class="text-brand font-bold text-xs uppercase tracking-widest">Clientes</span>
+<h2 class="font-extrabold text-2xl md:text-4xl text-white mt-2">O que dizem nossos clientes</h2>
+<p class="text-muted max-w-2xl mx-auto mt-3">Feedbacks reais de empresas que confiam na nossa atuação.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+<div class="glass-card rounded-2xl p-8 flex flex-col reveal">
+<span class="material-symbols-outlined text-brand mb-3">format_quote</span>
+<p class="text-on-surface/90 italic flex-grow text-sm">A Ambiente Verde trabalha conosco há quatro anos e tem se mostrado altamente capacitada na gestão dos resíduos, sempre nos dando suporte para atendermos aos requisitos legais.</p>
+<div class="mt-5 pt-4 border-t border-white/10 text-sm"><span class="font-bold text-white">Coordenador de Manutenção</span></div>
+</div>
+<div class="glass-card rounded-2xl p-8 flex flex-col reveal">
+<span class="material-symbols-outlined text-brand mb-3">format_quote</span>
+<p class="text-on-surface/90 italic flex-grow text-sm">Parceria de três anos dando bastante certo. O atendimento e o empenho no gerenciamento dos resíduos atendem plenamente nossas demandas — podemos contar com eles a qualquer hora.</p>
+<div class="mt-5 pt-4 border-t border-white/10 text-sm"><span class="font-bold text-white">Tigre</span> <span class="text-muted">· Qualidade e Meio Ambiente</span></div>
+</div>
+<div class="glass-card rounded-2xl p-8 flex flex-col reveal">
+<span class="material-symbols-outlined text-brand mb-3">format_quote</span>
+<p class="text-on-surface/90 italic flex-grow text-sm">Expressamos nossa satisfação com os serviços prestados na área de gestão de resíduos e consultoria ambiental ao longo desses quatro anos de parceria.</p>
+<div class="mt-5 pt-4 border-t border-white/10 text-sm"><span class="font-bold text-white">Grupo Everest &amp; Eversoft</span></div>
+</div>
+</div>
+</div>
+</section>
+
+<!-- CTA final -->
+<section class="py-16 md:py-24 bg-gradient-to-br from-brand-dark to-brand-black" id="contato">
+<div class="max-w-container mx-auto px-5 md:px-10 text-center space-y-6 reveal">
+<h2 class="font-extrabold text-3xl md:text-4xl text-white">Fale com a Ambiente Verde</h2>
+<p class="text-on-surface/80 max-w-2xl mx-auto">Dê o primeiro passo: comece hoje mesmo a transformar a gestão de resíduos da sua empresa de forma eficiente e sustentável.</p>
+<div class="flex flex-wrap justify-center gap-4 pt-2">
+<a href="https://wa.me/5521991159245?text=Ol%C3%A1%2C%20Ambiente%20Verde!%20Gostaria%20de%20solicitar%20uma%20proposta%20personalizada%20de%20gest%C3%A3o%20de%20res%C3%ADduos." target="_blank" rel="noopener" class="bg-brand text-brand-black px-8 py-4 rounded-full font-bold leaf-glow hover:scale-105 transition-transform flex items-center gap-2">
+<span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">chat</span>Solicitar proposta personalizada
+</a>
+<a href="mailto:comercial@ambienteverde.eco.br" class="border border-white/25 text-white px-8 py-4 rounded-full font-bold hover:bg-white/10 transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined">mail</span>comercial@ambienteverde.eco.br
+</a>
+</div>
+</div>
+</section>
+</main>
+
+<!-- Footer -->
+<footer class="bg-brand-black border-t border-brand/10 py-12">
+<div class="max-w-container mx-auto px-5 md:px-10 flex flex-col md:flex-row justify-between items-center gap-6">
+<div class="flex items-center gap-2 font-bold text-lg">
+<span class="material-symbols-outlined text-brand text-3xl" style="font-variation-settings:'FILL' 1;">recycling</span>
+<span>Ambiente<span class="text-brand">Verde</span></span>
+</div>
+<div class="flex items-center gap-5 text-muted">
+<a class="hover:text-brand transition-colors flex items-center gap-1" href="tel:+552125608173"><span class="material-symbols-outlined text-lg">call</span>(21) 2560-8173</a>
+<a class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-brand hover:text-brand-black transition-all" href="https://instagram.com/ambienteverde.eco" target="_blank" rel="noopener" aria-label="Instagram"><span class="material-symbols-outlined">photo_camera</span></a>
+<a class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-brand hover:text-brand-black transition-all" href="https://linkedin.com/company/ambienteverde-residuos/" target="_blank" rel="noopener" aria-label="LinkedIn"><span class="material-symbols-outlined">work</span></a>
+</div>
+</div>
+<div class="max-w-container mx-auto px-5 md:px-10 mt-8 pt-6 border-t border-white/5 text-center text-muted text-xs">© 2025 Ambiente Verde. Todos os direitos reservados.</div>
+</footer>
+
+<!-- WhatsApp FAB -->
+<a class="fixed bottom-6 right-6 w-14 h-14 bg-[#25D366] rounded-full flex items-center justify-center text-white shadow-xl hover:scale-110 transition-transform z-50" href="https://wa.me/5521991159245?text=Ol%C3%A1%2C%20Ambiente%20Verde!%20Gostaria%20de%20solicitar%20uma%20proposta%20personalizada%20de%20gest%C3%A3o%20de%20res%C3%ADduos." target="_blank" rel="noopener" aria-label="WhatsApp">
+<span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL' 1;">chat</span>
+</a>
+
+<script>
+  // Nav scroll
+  window.addEventListener('scroll', () => {
+    const nav = document.getElementById('top-nav');
+    if (window.scrollY > 50) { nav.classList.add('nav-scrolled'); } else { nav.classList.remove('nav-scrolled'); }
+  });
+
+  // Scroll reveal (fadeInUp) — com fallbacks para nunca deixar conteúdo invisível
+  const revealEls = document.querySelectorAll('.reveal');
+  const showEl = el => el.classList.add('in');
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { showEl(e.target); io.unobserve(e.target); } });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0 });
+    revealEls.forEach(el => io.observe(el));
+    // Fallback: se a transição não rodar (aba throttlada, etc.), força o estado final sem transição
+    setTimeout(() => revealEls.forEach(el => {
+      if (!el.classList.contains('in')) { el.style.transition = 'none'; showEl(el); }
+    }), 2500);
+  } else {
+    revealEls.forEach(showEl);
+  }
+
+  // Estimador de impacto
+  const CO2_POR_TON = 0.75;      // t CO2e evitado por tonelada desviada de aterro (estimativa educativa)
+  const DESVIO = 0.95;           // até 95% recuperado
+  const CO2_POR_ARVORE = 0.022;  // t CO2 absorvido por árvore/ano
+
+  const volRange = document.getElementById('vol-range');
+  const volValue = document.getElementById('vol-value');
+  const co2Value = document.getElementById('co2-value');
+  const treesValue = document.getElementById('trees-value');
+  const divertValue = document.getElementById('divert-value');
+  const quoteBtn = document.getElementById('quote-btn');
+  const nf = new Intl.NumberFormat('pt-BR');
+
+  function update() {
+    const vol = parseInt(volRange.value, 10);
+    const co2Ano = Math.round(vol * 12 * CO2_POR_TON);
+    const arvores = Math.round(co2Ano / CO2_POR_ARVORE);
+    const desviado = Math.round(vol * 12 * DESVIO);
+
+    volValue.textContent = `${nf.format(vol)} ton`;
+    co2Value.textContent = `${nf.format(co2Ano)} t`;
+    treesValue.textContent = `≈ ${nf.format(arvores)} árvores`;
+    divertValue.textContent = `${nf.format(desviado)} t`;
+
+    const msg = `Olá, Ambiente Verde! Minha empresa gera cerca de ${nf.format(vol)} toneladas de resíduos por mês. Gostaria de solicitar uma proposta personalizada de gestão de resíduos.`;
+    quoteBtn.href = `https://wa.me/5521991159245?text=${encodeURIComponent(msg)}`;
+  }
+  volRange.addEventListener('input', update);
+  update();
+</script>
+</body></html>

@@ -30,11 +30,34 @@
       "port": 5050
     },
     {
+      "name": "ambiente-verde",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "ambiente-verde-site", "-l", "5055"],
+      "port": 5055
+    },
+    {
+      "name": "ambiente-verde-backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3015,
+      "autoPort": false,
+      "cwd": "ambiente-verde",
+      "env": { "PORT": "3015" }
+    },
+    {
       "name": "rei-das-carnes",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3002,
       "cwd": "rei-das-carnes"
+    },
+    {
+      "name": "kegcontrol",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "3020"],
+      "port": 3020,
+      "autoPort": true,
+      "cwd": "kegcontrol"
     },
     {
       "name": "ss-chopp",
@@ -49,6 +72,99 @@
       "runtimeArgs": ["-y", "serve", "build/web", "-l", "8080", "--no-clipboard", "-s"],
       "port": 8080,
       "cwd": "mansio_points"
+    },
+    {
+      "name": "powertrade-solar",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "powertrade-solar-site", "-l", "5065"],
+      "port": 5065
+    },
+    {
+      "name": "powertrade-solar-sim",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "powertrade-solar-sim", "-l", "5066"],
+      "port": 5066
+    },
+    {
+      "name": "yanni-solar-sim",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "yanni-solar-sim", "-l", "5067"],
+      "port": 5067
+    },
+    {
+      "name": "yanni-solar-glass",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "yanni-solar-glass", "-l", "5068"],
+      "port": 5068
+    },
+    {
+      "name": "ambiente-verde-orcamento",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "ambiente-verde-orcamento", "-l", "5069"],
+      "port": 5069
+    },
+    {
+      "name": "meta-ai",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "3030"],
+      "port": 3030,
+      "autoPort": true,
+      "cwd": "meta-ai"
+    },
+    {
+      "name": "viral-studio-ai",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3040,
+      "autoPort": true,
+      "cwd": "viral-studio-ai"
+    },
+    {
+      "name": "viral-studio-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:preview"],
+      "port": 3061,
+      "autoPort": true,
+      "cwd": "viral-studio-ai",
+      "env": { "NEXT_DIST_DIR": ".next-preview" }
+    },
+    {
+      "name": "viral-studio-mobile",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "mobile"],
+      "port": 3040,
+      "cwd": "viral-studio-ai"
+    },
+    {
+      "name": "viral-studio-mock",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "dev", "-p", "3095"],
+      "port": 3095,
+      "autoPort": true,
+      "cwd": "viral-studio-ai",
+      "env": { "NEXT_DIST_DIR": ".next-mock", "VIRAL_STUDIO_FORCE_MOCK": "1" }
+    },
+    {
+      "name": "agenda-ai",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3050,
+      "autoPort": true,
+      "cwd": "agenda-ai"
+    },
+    {
+      "name": "ugc-studio",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3070,
+      "autoPort": true,
+      "cwd": "ugc-studio"
+    },
+    {
+      "name": "zamia-camisaria",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "../zamia-camisaria", "-l", "5090"],
+      "port": 5090
     }
   ]
 }

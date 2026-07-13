@@ -3,16 +3,27 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCart, formatPrice } from "@/lib/cart-context";
+import { useLocation } from "@/lib/location-context";
+import { isCaxiasBairro, getCaxiasPrice } from "@/data/caxias-pricing";
 import type { Product } from "@/lib/types";
 
 export default function ProductDetail({ product }: { product: Product }) {
   const router = useRouter();
   const { addItem } = useCart();
+  const { zone, priceFactor, discountPercent } = useLocation();
 
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
 
-  const price = product.price * quantity;
+  // Se é Duque de Caxias, usa preço fixo
+  let unit = product.price * priceFactor;
+  if (zone && isCaxiasBairro(zone.name)) {
+    const fixedPrice = getCaxiasPrice(product.id);
+    if (fixedPrice !== undefined) {
+      unit = fixedPrice;
+    }
+  }
+  const price = unit * quantity;
 
   function handleAddToCart() {
     addItem(product.id, quantity);
@@ -54,9 +65,23 @@ export default function ProductDetail({ product }: { product: Product }) {
             <p className="mt-1 text-sm italic text-gray-500">Como servir: {product.servir}</p>
           )}
 
-          <p className="mt-4 text-lg font-bold text-brand-amber">
-            {formatPrice(product.price)} / un.
-          </p>
+          <div className="mt-4 flex items-baseline gap-2">
+            {discountPercent > 0 && (
+              <span className="text-sm text-gray-400 line-through">{formatPrice(product.price)}</span>
+            )}
+            <span className="text-2xl font-extrabold text-brand-amber">{formatPrice(unit)}</span>
+            <span className="text-sm text-gray-500">/ un.</span>
+            {discountPercent > 0 && (
+              <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-bold text-green-700">
+                −{discountPercent}% hoje
+              </span>
+            )}
+          </div>
+          {zone && (
+            <p className="mt-1 text-xs font-semibold text-green-700">
+              🚚 Frete grátis para {zone.name} · {zone.city} — entrega {zone.eta.toLowerCase()}
+            </p>
+          )}
 
           <div className="mt-4 flex items-center gap-3">
             <p className="text-sm font-semibold text-gray-700">Quantidade:</p>

@@ -111,6 +111,61 @@ async function initDb() {
       error_message   TEXT
     );
   `);
+
+  // ── V2 Fase A (ARQUITETURA_BUSCA_V2.md) ─────────────────────────────────────
+  // `videos` = catálogo permanente de todo reel já coletado (antes ~90% do que
+  // o Apify devolvia era descartado). `video_snapshots` = série temporal que
+  // transforma "crescimento" de estimativa em MEDIÇÃO (Δviews/Δt real).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS videos (
+      shortcode        TEXT PRIMARY KEY,
+      niche_key        TEXT,
+      owner_username   TEXT,
+      caption          TEXT,
+      audio_id         TEXT,
+      video_duration   REAL,
+      posted_at        TIMESTAMPTZ,
+      first_seen_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_snapshot_at TIMESTAMPTZ,
+      viral_score      REAL,
+      score_breakdown  JSONB,
+      status           TEXT NOT NULL DEFAULT 'candidate',
+      ai_analysis      JSONB,
+      raw              JSONB
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_videos_niche_score ON videos (niche_key, viral_score DESC);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_videos_posted ON videos (posted_at DESC);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_videos_audio ON videos (audio_id) WHERE audio_id IS NOT NULL;`);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS video_snapshots (
+      shortcode   TEXT NOT NULL,
+      captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      views       BIGINT,
+      likes       INTEGER,
+      comments    INTEGER,
+      PRIMARY KEY (shortcode, captured_at)
+    );
+  `);
+
+  // Criadores: infra de watchlist (Fase C) e reputação (aprovações/rejeições
+  // da IA acumulam aqui — spammer reincidente é cortado ANTES da IA).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS creators (
+      username        TEXT PRIMARY KEY,
+      niche_key       TEXT,
+      followers       INTEGER,
+      in_watchlist    BOOLEAN NOT NULL DEFAULT FALSE,
+      reputation      REAL NOT NULL DEFAULT 0,
+      last_scraped_at TIMESTAMPTZ,
+      stats           JSONB
+    );
+  `);
+
+  // pg_trgm p/ near-dup de captions (S2) — best effort, exige permissão no DB
+  try { await pool.query('CREATE EXTENSION IF NOT EXISTS pg_trgm'); }
+  catch (e) { console.warn('[DB] pg_trgm indisponível (near-dup desativado):', e.message); }
 }
 
 // Lê uma entrada do cache. Retorna { data, ageMin } se existir e dentro do TTL.
