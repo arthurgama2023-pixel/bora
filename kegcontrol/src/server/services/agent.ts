@@ -13,7 +13,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { getCustomerBalance, getCustomerPrices } from "./customers";
 import { getCustomerInsights, SEGMENT_LABELS } from "./crm";
 import { getCustomerStatement } from "./reports";
-import { getStockSummary } from "./stock";
+import { findCoveredBairro, SITE_CATALOG, resolveProduct } from "../data/bairro-pricing";
 
 // Cliente reconhecido pelo número de WhatsApp (ou null se o número não bate
 // com nenhum cadastro). Passado ao agente para ele "conectar os pontos".
@@ -116,12 +116,60 @@ const TOOLS: FunctionDeclaration[] = [
       "Lista clientes em risco ou inativos (que pararam de pedir), com dias desde a última movimentação e barris parados com eles. Útil para ações de reativação.",
     parameters: { type: Type.OBJECT, properties: {} },
   },
+  {
+    name: "preco_por_bairro",
+    description:
+      "Consulta se um bairro está na área de preço fixo (Duque de Caxias, São João de Meriti e região) e retorna os preços de hoje por tipo de barril, com frete grátis. Use sempre que o cliente mencionar o bairro dele ou perguntar preço/entrega em uma região. Se o bairro não estiver coberto, a ferramenta avisa e você deve dizer que a equipe comercial confirma o valor — nunca invente preço para bairro fora da tabela.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        bairro: { type: Type.STRING, description: "Nome do bairro citado pelo cliente" },
+      },
+      required: ["bairro"],
+    },
+  },
+  {
+    name: "finalizar_pedido",
+    description:
+      "Fecha o pedido do cliente e retorna o resumo com total e a chave PIX para pagamento. Use SOMENTE quando o cliente já confirmou o que quer: o(s) produto(s), a quantidade, o bairro e se é entrega ou retirada (e o endereço, se for entrega). A ferramenta calcula o total pela tabela de preço fixo e devolve a chave PIX. Não use se ainda faltar alguma dessas informações.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        bairro: { type: Type.STRING, description: "Bairro do cliente (para preço e frete)" },
+        entrega: { type: Type.STRING, description: "'entrega' ou 'retirada'" },
+        endereco: { type: Type.STRING, description: "Endereço completo (só quando for entrega)" },
+        itens: {
+          type: Type.ARRAY,
+          description: "Itens do pedido",
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              produto: { type: Type.STRING, description: "Produto pedido, ex.: 'Belco 50L', 'Chopp de Vinho 30L'" },
+              quantidade: { type: Type.INTEGER, description: "Quantidade de barris deste produto" },
+            },
+            required: ["produto", "quantidade"],
+          },
+        },
+      },
+      required: ["bairro", "entrega", "itens"],
+    },
+  },
 ];
+
+// Lê uma configuração da empresa (model Setting). Retorna null se não existir.
+async function getSetting(companyId: string, key: string): Promise<string | null> {
+  const row = await prisma.setting.findUnique({
+    where: { companyId_key: { companyId, key } },
+    select: { value: true },
+  });
+  return row?.value?.trim() || null;
+}
 
 async function runTool(
   companyId: string,
   name: string,
   input: Record<string, unknown>,
+  channel: string = "PLAYGROUND",
 ): Promise<string> {
   switch (name) {
     case "buscar_cliente": {
@@ -133,7 +181,7 @@ async function runTool(
         const key = phoneMatchKey(termo);
         const withPhone = await prisma.customer.findMany({
           where: { companyId, OR: [{ whatsapp: { not: null } }, { phone: { not: null } }] },
-          select: { id: true, name: true, companyName: true, city: true, status: true, whatsapp: true, phone: true },
+          select: { id: true, name: true, companyName: true, contactName: true, neighborhood: true, city: true, status: true, whatsapp: true, phone: true },
         });
         const matches = withPhone.filter(
           (c) => phoneMatchKey(c.whatsapp) === key || phoneMatchKey(c.phone) === key,
@@ -144,15 +192,18 @@ async function runTool(
         where: {
           companyId,
           OR: [
-            { name: { contains: termo } },
-            { companyName: { contains: termo } },
+            // insensitive: o cadastro costuma estar em CAIXA ALTA e o cliente
+            // digita em caixa mista — sem isto a busca por nome não casa.
+            { name: { contains: termo, mode: "insensitive" } },
+            { companyName: { contains: termo, mode: "insensitive" } },
+            { contactName: { contains: termo, mode: "insensitive" } },
             { whatsapp: { contains: termo } },
             { phone: { contains: termo } },
-            { city: { contains: termo } },
+            { city: { contains: termo, mode: "insensitive" } },
           ],
         },
         take: 5,
-        select: { id: true, name: true, companyName: true, city: true, status: true, whatsapp: true },
+        select: { id: true, name: true, companyName: true, contactName: true, neighborhood: true, city: true, status: true, whatsapp: true },
       });
       return JSON.stringify(customers.length ? customers : "Nenhum cliente encontrado");
     }
@@ -193,14 +244,13 @@ async function runTool(
       );
     }
     case "estoque_disponivel": {
-      const summary = await getStockSummary(companyId);
+      // Baseia-se no catálogo do SITE e trata tudo como disponível.
+      // (Não consulta o estoque físico do kegcontrol de propósito.)
       return JSON.stringify(
-        summary.perType.map((t) => ({
-          tipo: t.name,
-          disponivelCheio: t.availableFull,
-          disponivelVazio: t.availableEmpty,
-          comClientes: t.withCustomers,
-          manutencao: t.maintenance,
+        SITE_CATALOG.map((c) => ({
+          tipo: c.produto,
+          disponivel: true,
+          preco: c.price,
         })),
       );
     }
@@ -219,6 +269,93 @@ async function runTool(
           })),
       );
     }
+    case "preco_por_bairro": {
+      // Trava de segurança: preço fixo por bairro só é liberado no playground
+      // (fase de treino/validação) enquanto o WhatsApp real não for aprovado.
+      if (channel !== "PLAYGROUND") {
+        return "Ferramenta em fase de teste (ainda não liberada para atendimento real) — não informe preço, diga que a equipe comercial confirma o valor.";
+      }
+      const bairro = String(input.bairro ?? "");
+      const zona = findCoveredBairro(bairro);
+      if (!zona) {
+        return JSON.stringify({
+          coberto: false,
+          mensagem: "Bairro fora da área de preço fixo. Não informe valores — diga que a equipe comercial confirma.",
+        });
+      }
+      // Catálogo do site, tudo disponível.
+      const precos = SITE_CATALOG.map((c) => ({
+        tipo: c.produto,
+        preco: c.price,
+        disponivel: true,
+      }));
+      return JSON.stringify({
+        coberto: true,
+        bairro: zona.bairro,
+        cidade: zona.city,
+        freteGratis: true,
+        precos,
+      });
+    }
+    case "finalizar_pedido": {
+      // Mesma trava do preço: fechar pedido / enviar PIX só no playground até
+      // ser liberado para atendimento real.
+      if (channel !== "PLAYGROUND") {
+        return "Fechamento de pedido em fase de teste (ainda não liberado para atendimento real) — não envie PIX; diga que a equipe finaliza o pedido.";
+      }
+      const bairro = String(input.bairro ?? "");
+      const zona = findCoveredBairro(bairro);
+      if (!zona) {
+        return JSON.stringify({
+          ok: false,
+          motivo: "Bairro fora da área de entrega/preço fixo. Não feche o pedido nem envie PIX — diga que a equipe comercial confirma valores e disponibilidade.",
+        });
+      }
+      const rawItens = Array.isArray(input.itens) ? (input.itens as Array<Record<string, unknown>>) : [];
+      const itens: Array<{ produto: string; quantidade: number; precoUnit: number; subtotal: number }> = [];
+      const naoReconhecidos: string[] = [];
+      for (const it of rawItens) {
+        const produtoTxt = String(it.produto ?? "");
+        const qtd = Math.max(1, Number(it.quantidade ?? 1));
+        const item = resolveProduct(produtoTxt);
+        if (!item) {
+          naoReconhecidos.push(produtoTxt);
+          continue;
+        }
+        itens.push({ produto: item.produto, quantidade: qtd, precoUnit: item.price, subtotal: item.price * qtd });
+      }
+      if (itens.length === 0) {
+        return JSON.stringify({
+          ok: false,
+          motivo: "Nenhum produto reconhecido na tabela de preço. Confirme com o cliente qual chope e a litragem antes de fechar.",
+          naoReconhecidos,
+        });
+      }
+      const total = itens.reduce((s, i) => s + i.subtotal, 0);
+      // PIX real vem do Setting (pix_key/pix_nome). Enquanto não configurado,
+      // usa um PIX de TESTE — seguro porque esta ferramenta só roda no
+      // playground (channel === PLAYGROUND). Ao configurar o PIX real, ele assume.
+      const pixKey = (await getSetting(companyId, "pix_key")) ?? "12.345.678/0001-95";
+      const pixNome = (await getSetting(companyId, "pix_nome")) ?? "SS-CHOPP DISTRIBUIDORA (PIX DE TESTE)";
+      return JSON.stringify({
+        ok: true,
+        bairro: zona.bairro,
+        cidade: zona.city,
+        entrega: String(input.entrega ?? ""),
+        endereco: input.endereco ? String(input.endereco) : null,
+        itens: itens.map((i) => ({ produto: i.produto, quantidade: i.quantidade, precoUnit: i.precoUnit, subtotal: i.subtotal })),
+        freteGratis: true,
+        total,
+        naoReconhecidos: naoReconhecidos.length ? naoReconhecidos : undefined,
+        pagamento: {
+          forma: "PIX",
+          chave: pixKey,
+          favorecido: pixNome ?? undefined,
+        },
+        instrucao:
+          "Apresente o resumo (itens, total, frete grátis, forma de entrega), envie a chave PIX e o favorecido, e peça para o cliente mandar o comprovante. Avise que a equipe confirma o pedido assim que o pagamento cair. Você NÃO dá baixa no estoque — isso é a equipe que faz.",
+      });
+    }
     default:
       return `Ferramenta desconhecida: ${name}`;
   }
@@ -233,7 +370,7 @@ async function buildIdentityContext(
   customer: NonNullable<IdentifiedCustomer>,
   phone: string,
 ): Promise<string> {
-  const [balance, prices, lastMov] = await Promise.all([
+  const [balance, prices, lastMov, record] = await Promise.all([
     getCustomerBalance(companyId, customer.id),
     getCustomerPrices(companyId, customer.id),
     prisma.movement.findFirst({
@@ -241,7 +378,13 @@ async function buildIdentityContext(
       orderBy: { occurredAt: "desc" },
       select: { occurredAt: true, type: true },
     }),
+    prisma.customer.findUnique({
+      where: { id: customer.id },
+      select: { contactName: true, neighborhood: true, city: true },
+    }),
   ]);
+
+  const contato = record?.contactName?.trim() || null;
 
   const kegs =
     balance.rows
@@ -259,8 +402,10 @@ async function buildIdentityContext(
 
   return [
     "CONTEXTO — CLIENTE IDENTIFICADO PELO NÚMERO DE WHATSAPP:",
-    `Você está conversando com um cliente JÁ CADASTRADO. Reconheça-o pelo nome e não peça para ele se identificar de novo.`,
-    `- Nome: ${customer.name}`,
+    `Você está conversando com um cliente JÁ CADASTRADO. Cumprimente-o pelo nome logo na primeira resposta (siga a regra "# Cumprimento pelo nome") e não peça para ele se identificar de novo.`,
+    `- Estabelecimento: ${customer.name}`,
+    contato ? `- Responsável (contato): ${contato}` : "",
+    record?.neighborhood ? `- Bairro do cliente: ${record.neighborhood}${record.city ? ` · ${record.city}` : ""} (se ele perguntar preço/entrega, já use preco_por_bairro com este bairro sem precisar perguntar de novo)` : "",
     `- customerId: ${customer.id} (USE este id nas ferramentas situacao_cliente, extrato_cliente — não chame buscar_cliente para ele)`,
     `- WhatsApp: ${phone}`,
     `- Status: ${statusLabel} · Tipo: ${typeLabel}`,
@@ -340,7 +485,7 @@ export async function chatWithAgent(
   let simulated = false;
 
   if (process.env.GEMINI_API_KEY) {
-    const result = await runGeminiLoop(companyId, systemInstruction, history);
+    const result = await runGeminiLoop(companyId, systemInstruction, history, channel);
     reply = result.reply;
     toolsUsed = result.toolsUsed;
   } else {
@@ -367,6 +512,7 @@ async function runGeminiLoop(
   companyId: string,
   systemInstruction: string,
   history: ChatTurn[],
+  channel: string,
 ): Promise<{ reply: string; toolsUsed: string[] }> {
   const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const toolsUsed: string[] = [];
@@ -405,7 +551,7 @@ async function runGeminiLoop(
       toolsUsed.push(name);
       let output: string;
       try {
-        output = await runTool(companyId, name, (call.args ?? {}) as Record<string, unknown>);
+        output = await runTool(companyId, name, (call.args ?? {}) as Record<string, unknown>, channel);
       } catch (e) {
         output = `Erro ao consultar: ${e instanceof Error ? e.message : "desconhecido"}`;
       }
