@@ -270,11 +270,8 @@ async function runTool(
       );
     }
     case "preco_por_bairro": {
-      // Trava de segurança: preço fixo por bairro só é liberado no playground
-      // (fase de treino/validação) enquanto o WhatsApp real não for aprovado.
-      if (channel !== "PLAYGROUND") {
-        return "Ferramenta em fase de teste (ainda não liberada para atendimento real) — não informe preço, diga que a equipe comercial confirma o valor.";
-      }
+      // Liberado para todos os canais (inclusive WhatsApp): o agente informa o
+      // preço fixo por bairro conforme o catálogo do site.
       const bairro = String(input.bairro ?? "");
       const zona = findCoveredBairro(bairro);
       if (!zona) {
