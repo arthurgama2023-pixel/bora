@@ -295,11 +295,8 @@ async function runTool(
       });
     }
     case "finalizar_pedido": {
-      // Mesma trava do preço: fechar pedido / enviar PIX só no playground até
-      // ser liberado para atendimento real.
-      if (channel !== "PLAYGROUND") {
-        return "Fechamento de pedido em fase de teste (ainda não liberado para atendimento real) — não envie PIX; diga que a equipe finaliza o pedido.";
-      }
+      // Liberado em todos os canais (inclusive WhatsApp): fecha o pedido e envia
+      // o PIX. A chave PIX vem do Setting (pix_key/pix_nome), com fallback de teste.
       const bairro = String(input.bairro ?? "");
       const zona = findCoveredBairro(bairro);
       if (!zona) {
