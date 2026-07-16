@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  phone         String?        @unique // E.164 sem "+", ex.: 5511999998888 — identidade dos usuários via WhatsApp
+  name          String?
+  image         String?
+  timezone      String         @default("America/Sao_Paulo")
+  workdayStart  Int            @default(8)
+  workdayEnd    Int            @default(19)
+  defaultDurMin Int            @default(60)
+  createdAt     DateTime       @default(now())
+  integrations  Integration[]
+  conversations Conversation[]
+  events        Event[]
+  actionLogs    ActionLog[]
+}
+
+model Integration {
+  id           String    @id @default(cuid())
+  userId       String
+  provider     String // "google"
+  accessToken  String // criptografado (AES-256-GCM)
+  refreshToken String? // criptografado
+  expiresAt    DateTime?
+  scope        String?
+  status       String    @default("active")
+  createdAt    DateTime  @default(now())
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+}
+
+model Conversation {
+  id            String    @id @default(cuid())
+  userId        String
+  pendingAction String? // JSON de ação aguardando confirmação do usuário
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages      Message[]
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  role           String // "user" | "assistant"
+  content        String
+  intent         String? // tipo da intenção detectada (auditoria)
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+// Agenda local (modo demo) + espelho dos eventos criados pelo app no Google
+model Event {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  startsAt    DateTime
+  endsAt      DateTime
+  location    String?
+  description String?
+  source      String   @default("local") // "local" | "google"
+  googleId    String?
+  seriesId    String? // agrupa ocorrências de eventos recorrentes
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startsAt])
+}
+
+model ActionLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  payload   String
+  result    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+// Config de nível de aplicação (chave/valor). Hoje guarda os dados do servidor
+// Evolution API definidos pela aba Conectar; a apikey fica criptografada no value.
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

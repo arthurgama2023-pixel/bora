@@ -56,10 +56,11 @@ export class WhatsAppEvolutionChannel implements Channel {
     if (!data || !key || key.fromMe) return null; // ignora eco das próprias mensagens do bot
 
     const externalId = phoneFromJid(key.remoteJid);
+    const messageId = key.id;
     const text = data.message?.conversation ?? data.message?.extendedTextMessage?.text;
-    if (text) return { externalId, text };
+    if (text) return { externalId, messageId, text };
 
-    if (data.message?.audioMessage) return { externalId, audioRef: key };
+    if (data.message?.audioMessage) return { externalId, messageId, audioRef: key };
     return null;
   }
 

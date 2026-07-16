@@ -5,11 +5,12 @@
   "scripts": {
     "dev": "next dev -p 3050",
     "build": "node scripts/setup-db.mjs && prisma generate && next build",
-    "build:render": "node scripts/setup-db.mjs && prisma generate && next build && prisma db push --accept-data-loss",
+    "build:render": "node scripts/setup-db.mjs && prisma generate && next build && node scripts/migrate-deploy.mjs",
     "start": "next start -p 3050",
     "db:push": "node scripts/setup-db.mjs && prisma db push",
     "db:generate": "node scripts/setup-db.mjs && prisma generate",
-    "render:release": "node scripts/setup-db.mjs && prisma db push --accept-data-loss"
+    "migration:new": "node scripts/new-migration.mjs",
+    "render:release": "node scripts/migrate-deploy.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",

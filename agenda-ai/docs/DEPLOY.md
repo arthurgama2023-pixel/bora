@@ -8,7 +8,19 @@ WhatsApp funcionar). Servidor persistente + Postgres — sem os problemas de ser
 - `scripts/setup-db.mjs` roda no build e ajusta o `provider` do Prisma:
   `postgresql` se `DATABASE_URL` começa com `postgres://`, senão `sqlite`.
 - `src/lib/db.ts` escolhe o adapter pela mesma regra.
-- Schema idêntico; nenhuma migration reescrita.
+
+## Migrations versionadas (produção)
+
+O schema de produção é aplicado por **migrations versionadas** (`prisma/migrations/`),
+não mais por `db push` — mudanças de schema nunca destroem dados silenciosamente.
+
+- **Deploy**: o build do Render roda `scripts/migrate-deploy.mjs` (`prisma migrate deploy`).
+  Um banco antigo da era do `db push` é baselinado automaticamente na primeira vez.
+- **Nova mudança de schema**: edite `prisma/schema.prisma` e rode
+  `npm run migration:new -- nome_da_mudanca`. O script gera o SQL diffando o snapshot
+  (`prisma/schema-snapshot.prisma`) contra o schema novo — **sem precisar de Postgres local**.
+  Revise o SQL (atenção a DROPs) e commite junto.
+- **Dev local** continua com SQLite + `npm run db:push` (banco descartável).
 
 ## Passo 1 — Levar o código para um repositório
 
