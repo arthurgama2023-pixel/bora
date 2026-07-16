@@ -528,10 +528,11 @@ async function runGeminiLoop(
         toolConfig: {
           functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO },
         },
-        // Sem "thinking": resposta direta e rápida, e evita o retorno de texto
-        // vazio (causa do "(sem resposta)"). Teto de tokens curto força objetividade.
-        thinkingConfig: { thinkingBudget: 0 },
-        maxOutputTokens: 500,
+        // Thinking LIGADO (budget modesto): mantém a coerência da conversa — sem
+        // ele o modelo re-pergunta o que já foi dito e repete a lista de preços.
+        // O retorno vazio ("(sem resposta)") é tratado pelo retry abaixo.
+        // A objetividade fica por conta da personalidade (regra "seja direto").
+        thinkingConfig: { thinkingBudget: 1024 },
       },
     });
 
