@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircle2, Loader2, Lock, Plus, Smartphone, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Field, Input } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
@@ -44,7 +44,6 @@ export function ConnectWhatsApp({
   const [savingServer, setSavingServer] = useState(false);
   const [phone, setPhone] = useState("");
   const [mode, setMode] = useState<"code" | "qr">("code");
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [apiUrl, setApiUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -55,6 +54,7 @@ export function ConnectWhatsApp({
   const [allowedList, setAllowedList] = useState<string[]>([""]);
   const [savingAllowed, setSavingAllowed] = useState(false);
   const [allowedSaved, setAllowedSaved] = useState(false);
+  const [serveAll, setServeAll] = useState(false);
 
   useEffect(() => {
     apiGet("/api/v1/whatsapp/allowed").then((d) => {
@@ -64,6 +64,7 @@ export function ConnectWhatsApp({
         .map((s) => s.trim())
         .filter(Boolean);
       setAllowedList(list.length ? list : [""]);
+      setServeAll(list.length === 0);
     });
   }, []);
 
@@ -85,18 +86,17 @@ export function ConnectWhatsApp({
     if (!data) return null;
     setStatus((prev) => ({ ...prev, ...data })); // preserva qr/pairingCode entre polls
     setConfigured(data.configured);
-    if (data.state === "open" && pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
     return data;
   }, []);
 
+  // Acompanha o estado real da instância continuamente — o painel mostra na hora
+  // quando conecta, quando cai e quando está reconectando (sem ficar preso num
+  // "conectado" desatualizado).
   useEffect(() => {
-    if (configured) refresh();
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
+    if (!configured) return;
+    refresh();
+    const id = setInterval(refresh, 5000);
+    return () => clearInterval(id);
   }, [configured, refresh]);
 
   async function saveServer(e: React.FormEvent) {
@@ -126,6 +126,24 @@ export function ConnectWhatsApp({
         .join(",");
       const json = await apiPost("/api/v1/whatsapp/allowed", { allowedNumbers });
       if (json?.ok) {
+        setServeAll(allowedNumbers === "");
+        setAllowedSaved(true);
+        setTimeout(() => setAllowedSaved(false), 2500);
+      }
+    } finally {
+      setSavingAllowed(false);
+    }
+  }
+
+  // Libera o agente para responder a QUALQUER número (allowlist vazia).
+  async function liberarTodos() {
+    setSavingAllowed(true);
+    setAllowedSaved(false);
+    try {
+      const json = await apiPost("/api/v1/whatsapp/allowed", { allowedNumbers: "" });
+      if (json?.ok) {
+        setAllowedList([""]);
+        setServeAll(true);
         setAllowedSaved(true);
         setTimeout(() => setAllowedSaved(false), 2500);
       }
@@ -145,9 +163,6 @@ export function ConnectWhatsApp({
       );
       if (json?.ok) {
         setStatus(json.data as Status);
-        if (json.data.state !== "open" && !pollRef.current) {
-          pollRef.current = setInterval(refresh, 3000);
-        }
       }
     } finally {
       setConnecting(false);
@@ -167,6 +182,15 @@ export function ConnectWhatsApp({
   }
 
   const connected = status?.state === "open";
+  // Indicador honesto do estado atual da instância (atualizado a cada 5s).
+  const stateInfo =
+    status?.state === "open"
+      ? { label: "Conectado", cls: "text-success", dot: "bg-success" }
+      : status?.state === "connecting"
+        ? { label: "Conectando / reconectando…", cls: "text-warning", dot: "bg-warning animate-pulse" }
+        : status?.state === "close"
+          ? { label: "Desconectado", cls: "text-danger", dot: "bg-danger" }
+          : { label: "Verificando…", cls: "text-muted-foreground", dot: "bg-muted-foreground" };
   const step = (done: boolean, n: number) => (
     <span
       className={cn(
@@ -237,7 +261,18 @@ export function ConnectWhatsApp({
           <div className="mb-3 flex items-center gap-2">
             {step(connected, 2)}
             <h2 className="text-sm font-semibold">Conectar o número do agente</h2>
+            <span className="ml-auto flex items-center gap-1.5 text-xs">
+              <span className={cn("h-2 w-2 rounded-full", stateInfo.dot)} />
+              <span className={cn("font-medium", stateInfo.cls)}>{stateInfo.label}</span>
+            </span>
           </div>
+
+          {!connected && status?.state === "connecting" && !status?.pairingCode && !status?.qrBase64 && (
+            <p className="mb-3 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
+              ⚠️ A conexão caiu e não voltou sozinha. Gere um novo código/QR abaixo e pareie de novo no
+              celular do agente para o WhatsApp voltar a responder.
+            </p>
+          )}
 
           {connected ? (
             <div className="rounded-xl bg-success/10 p-4 text-center">
@@ -358,51 +393,81 @@ export function ConnectWhatsApp({
             <Lock className="h-4 w-4 text-brand-strong" />
             <h2 className="text-sm font-semibold">Quem o agente atende</h2>
           </div>
-          <form onSubmit={saveAllowed} className="space-y-3">
-            <div className="space-y-2">
-              {allowedList.map((num, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <Input
-                    value={num}
-                    onChange={(e) => updateNumber(idx, e.target.value)}
-                    placeholder="21980828309"
-                    inputMode="tel"
-                    className="max-w-xs"
-                  />
-                  {(allowedList.length > 1 || num.trim() !== "") && (
-                    <button
-                      type="button"
-                      onClick={() => removeNumber(idx)}
-                      title="Remover número"
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-danger"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
 
-            <button
-              type="button"
-              onClick={addNumber}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-strong hover:underline"
-            >
-              <Plus className="h-3.5 w-3.5" /> Outro número
-            </button>
-
-            <p className="text-[11px] text-muted-foreground">
-              O agente só responde a estes números. Deixe <strong>todos vazios</strong> para
-              atender qualquer um. Com ou sem o 55 na frente — tanto faz.
-            </p>
-
-            <div className="flex items-center gap-2">
-              <Button type="submit" size="sm" disabled={savingAllowed}>
-                {savingAllowed ? "Salvando…" : "Salvar"}
+          {serveAll ? (
+            <div className="space-y-3">
+              <div className="flex items-start gap-2 rounded-xl bg-success/10 p-3">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                <p className="text-sm text-foreground">
+                  Liberado para <strong>todos</strong> — o agente responde a qualquer número que
+                  mandar mensagem.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setServeAll(false)}
+                disabled={savingAllowed}
+              >
+                Limitar a números específicos
               </Button>
-              {allowedSaved && <span className="text-xs font-medium text-success">✓ Salvo</span>}
+              {allowedSaved && <span className="ml-2 text-xs font-medium text-success">✓ Salvo</span>}
             </div>
-          </form>
+          ) : (
+            <form onSubmit={saveAllowed} className="space-y-3">
+              <div className="space-y-2">
+                {allowedList.map((num, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <Input
+                      value={num}
+                      onChange={(e) => updateNumber(idx, e.target.value)}
+                      placeholder="21980828309"
+                      inputMode="tel"
+                      className="max-w-xs"
+                    />
+                    {(allowedList.length > 1 || num.trim() !== "") && (
+                      <button
+                        type="button"
+                        onClick={() => removeNumber(idx)}
+                        title="Remover número"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-danger"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={addNumber}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-strong hover:underline"
+              >
+                <Plus className="h-3.5 w-3.5" /> Outro número
+              </button>
+
+              <p className="text-[11px] text-muted-foreground">
+                O agente só responde a estes números. Com ou sem o 55 na frente — tanto faz.
+              </p>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="submit" size="sm" disabled={savingAllowed}>
+                  {savingAllowed ? "Salvando…" : "Salvar"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={liberarTodos}
+                  disabled={savingAllowed}
+                >
+                  Liberar para todos
+                </Button>
+                {allowedSaved && <span className="text-xs font-medium text-success">✓ Salvo</span>}
+              </div>
+            </form>
+          )}
         </Card>
       )}
     </div>
