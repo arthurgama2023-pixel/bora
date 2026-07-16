@@ -345,6 +345,8 @@ export function ConnectWhatsApp({
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="(11) 99999-8888"
                       inputMode="tel"
+                      autoComplete="off"
+                      name="whatsapp-agente-numero"
                     />
                     <span className="mt-1 block text-[11px] text-muted-foreground">
                       É o número que será o assistente — os clientes mandam mensagem para ele.
