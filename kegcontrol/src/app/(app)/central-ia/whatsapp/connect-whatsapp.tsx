@@ -289,7 +289,7 @@ export function ConnectWhatsApp({
             </div>
           ) : (
             <div className="space-y-4">
-              {mode === "code" && status?.pairingCode ? (
+              {status?.pairingCode ? (
                 <div className="rounded-xl border border-brand/40 bg-brand/5 p-4 text-center">
                   <p className="text-xs font-medium uppercase tracking-wide text-brand-strong">
                     Código de confirmação
@@ -314,7 +314,7 @@ export function ConnectWhatsApp({
                     <Loader2 className="h-3 w-3 animate-spin" /> Aguardando confirmação… (atualiza sozinho)
                   </p>
                 </div>
-              ) : mode === "qr" && status?.qrBase64 ? (
+              ) : status?.qrBase64 ? (
                 <div className="flex flex-col items-center gap-2">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -322,8 +322,16 @@ export function ConnectWhatsApp({
                     alt="QR code do WhatsApp"
                     className="h-56 w-56 rounded-lg border border-border bg-white p-1"
                   />
+                  {mode === "code" && (
+                    <p className="max-w-xs rounded-lg bg-warning/10 px-3 py-2 text-center text-[11px] text-warning">
+                      Este servidor não gerou o código de confirmação para esse número — use o QR:
+                      escaneie com o WhatsApp do número que será o agente
+                      {phone ? ` (${phone})` : ""}.
+                    </p>
+                  )}
                   <p className="text-center text-xs text-muted-foreground">
-                    WhatsApp → <span className="font-medium">Aparelhos conectados</span> → escaneie.
+                    WhatsApp → <span className="font-medium">Aparelhos conectados</span> →{" "}
+                    <span className="font-medium">Conectar um aparelho</span> → escaneie.
                   </p>
                   <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
                     <Loader2 className="h-3 w-3 animate-spin" /> Aguardando leitura…
