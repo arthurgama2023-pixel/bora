@@ -528,12 +528,25 @@ async function runGeminiLoop(
         toolConfig: {
           functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO },
         },
+        // Sem "thinking": resposta direta e rápida, e evita o retorno de texto
+        // vazio (causa do "(sem resposta)"). Teto de tokens curto força objetividade.
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 500,
       },
     });
 
     const calls = response.functionCalls;
     if (!calls || calls.length === 0) {
-      return { reply: (response.text ?? "").trim() || "(sem resposta)", toolsUsed };
+      const text = (response.text ?? "").trim();
+      if (text) return { reply: text, toolsUsed };
+      // Modelo devolveu vazio (acontece às vezes depois de uma ferramenta):
+      // cutuca uma resposta curta mais uma vez antes de desistir — o cliente
+      // NUNCA deve receber "(sem resposta)".
+      if (i < 5) {
+        contents.push({ role: "user", parts: [{ text: "Responda ao cliente agora, em 1-2 frases curtas." }] });
+        continue;
+      }
+      return { reply: "Desculpa, pode repetir? 😊", toolsUsed };
     }
 
     // Ecoa a resposta do modelo (com as chamadas de função) antes dos resultados.
