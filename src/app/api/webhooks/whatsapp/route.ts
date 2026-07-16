@@ -20,12 +20,14 @@ export async function POST(req: NextRequest) {
   const channel = getWhatsAppChannel();
   const raw = await req.json().catch(() => null);
 
-  // Evento de conexão: se a instância caiu, cutuca a reconexão na hora (sem esperar
-  // o keep-alive periódico). Reconexão usa as credenciais já pareadas — sem novo QR.
+  // Evento de conexão: só reconcilia quando a conexão CAIU de fato ("close"),
+  // usando as credenciais já pareadas (sem novo QR). Em "connecting" NÃO mexe —
+  // esse estado também acontece durante o pareamento (QR/código), e reconciliar
+  // ali resetaria o pareamento em andamento (a instância "desconectava sozinha").
   const event = (raw as { event?: string })?.event;
   if (event === "connection.update" || event === "CONNECTION_UPDATE") {
     const state = (raw as { data?: { state?: string } })?.data?.state;
-    if (state && state !== "open") {
+    if (state === "close") {
       channel.reconcile(companyId, process.env.APP_URL ?? "").catch((e) =>
         console.error("[whatsapp] reconcile falhou:", e),
       );
