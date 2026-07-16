@@ -274,9 +274,13 @@ export class WhatsAppEvolutionChannel {
     });
     const rewired = Boolean(setRes?.ok);
 
-    // Caiu mas ainda existe → cutuca a reconexão sem exigir novo pareamento.
+    // Caiu de fato ("close") → cutuca a reconexão com as credenciais já pareadas
+    // (sem novo QR). NÃO cutuca em "connecting": esse estado também ocorre DURANTE
+    // o pareamento (QR/código), e chamar /instance/connect ali RESETA o pareamento
+    // em andamento (gera outro código) — era o que fazia a instância "desconectar
+    // sozinha" e o código deixar de funcionar.
     let reconnected = false;
-    if (state === "close" || state === "connecting") {
+    if (state === "close") {
       const res = await this.api(cfg, "GET", `/instance/connect/${cfg.instance}`);
       reconnected = Boolean(res?.ok);
     }
