@@ -46,6 +46,16 @@ export default async function LoginPage() {
         <p className="mt-4 text-center text-xs text-zinc-400">
           Sem Google configurado? O modo demonstração usa uma agenda local completa.
         </p>
+
+        <p className="mt-6 text-center text-xs text-zinc-400">
+          <a href="/privacidade" className="hover:text-zinc-600 hover:underline">
+            Política de Privacidade
+          </a>
+          <span className="mx-2">·</span>
+          <a href="/termos" className="hover:text-zinc-600 hover:underline">
+            Termos de Uso
+          </a>
+        </p>
       </div>
     </main>
   );
