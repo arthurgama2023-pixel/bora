@@ -74,9 +74,12 @@ export class WhatsAppEvolutionChannel {
       console.warn("[whatsapp] Evolution não configurada — mensagem não enviada:", whatsappText);
       return;
     }
+    // delay: mostra "digitando..." por ~3s antes de entregar — parece humano
+    // (o Evolution segura a mensagem e exibe a presença "composing" nesse tempo).
     const res = await this.api(cfg, "POST", `/message/sendText/${cfg.instance}`, {
       number: externalId,
       text: whatsappText,
+      delay: 3000,
     });
     if (!res?.ok) {
       console.error("[whatsapp] falha ao enviar:", res?.status, await res?.text().catch(() => ""));
