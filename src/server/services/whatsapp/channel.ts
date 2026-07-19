@@ -1,5 +1,33 @@
+import { GoogleGenAI } from "@google/genai";
 import { normalizeBrPhone } from "@/lib/phone";
 import { getWhatsAppConfig, type WhatsAppConfig } from "./config";
+
+// Transcreve um áudio (base64) para texto em pt-BR usando o Gemini (multimodal).
+// Usado para o agente "ouvir" mensagens de voz do WhatsApp.
+async function transcribeWithGemini(base64: string, mimeType: string): Promise<string | null> {
+  if (!process.env.GEMINI_API_KEY) return null;
+  try {
+    const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const res = await client.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: "Transcreva este áudio em português do Brasil. Responda APENAS com a transcrição literal do que a pessoa falou — sem comentários, sem aspas, sem rótulos.",
+            },
+            { inlineData: { mimeType, data: base64 } },
+          ],
+        },
+      ],
+    });
+    return (res.text ?? "").trim() || null;
+  } catch (e) {
+    console.error("[whatsapp] transcrição de áudio falhou:", e);
+    return null;
+  }
+}
 
 // Evolution API (self-hosted, WhatsApp Web via QR code / código de pareamento — não é a
 // API oficial da Meta). Documentação: https://doc.evolution-api.com (formatos da v2).
@@ -16,9 +44,12 @@ interface EvolutionWebhookPayload {
   data?: {
     key?: EvolutionMessageKey;
     pushName?: string;
+    base64?: string; // alguns setups do Evolution já mandam a mídia aqui
     message?: {
       conversation?: string;
       extendedTextMessage?: { text?: string };
+      audioMessage?: { mimetype?: string };
+      base64?: string;
     };
   };
 }
@@ -39,6 +70,8 @@ export interface IncomingMessage {
   externalId: string; // número do remetente
   pushName?: string;
   text?: string;
+  // Mensagem de voz a ser transcrita (quando não é texto).
+  audio?: { key: EvolutionMessageKey; base64?: string; mimetype?: string };
 }
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -63,7 +96,52 @@ export class WhatsAppEvolutionChannel {
     const externalId = phoneFromJid(key.remoteJid);
     const text = data.message?.conversation ?? data.message?.extendedTextMessage?.text;
     if (text) return { externalId, pushName: data.pushName, text };
+    // Mensagem de voz: devolve a chave (e o base64, se já veio no webhook) para
+    // baixar e transcrever depois.
+    if (data.message?.audioMessage) {
+      return {
+        externalId,
+        pushName: data.pushName,
+        audio: {
+          key,
+          base64: data.message.base64 ?? data.base64,
+          mimetype: data.message.audioMessage.mimetype,
+        },
+      };
+    }
     return null;
+  }
+
+  // Baixa o áudio (se necessário) e transcreve para texto em pt-BR.
+  async transcribeAudio(
+    companyId: string,
+    audio: NonNullable<IncomingMessage["audio"]>,
+  ): Promise<string | null> {
+    const cfg = await getWhatsAppConfig(companyId);
+    if (!cfg) return null;
+
+    let base64 = audio.base64;
+    let mimetype = audio.mimetype;
+    if (!base64) {
+      // Pede o base64 da mídia ao Evolution (a mensagem já está no store dele).
+      const res = await this.api(cfg, "POST", `/chat/getBase64FromMediaMessage/${cfg.instance}`, {
+        message: { key: audio.key },
+        convertToMp4: false,
+      });
+      if (!res?.ok) {
+        console.error("[whatsapp] getBase64FromMediaMessage falhou:", res?.status);
+        return null;
+      }
+      const data = (await res.json().catch(() => null)) as
+        | { base64?: string; mimetype?: string }
+        | null;
+      base64 = data?.base64;
+      mimetype = mimetype ?? data?.mimetype;
+    }
+    if (!base64) return null;
+    // "audio/ogg; codecs=opus" -> "audio/ogg" (o Gemini quer só o mime base).
+    const mime = (mimetype ?? "audio/ogg").split(";")[0].trim();
+    return transcribeWithGemini(base64, mime);
   }
 
   async sendMessage(companyId: string, externalId: string, text: string): Promise<void> {
