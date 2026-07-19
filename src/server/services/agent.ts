@@ -439,6 +439,20 @@ export type ChatOptions = {
   channel?: string; // PLAYGROUND | WHATSAPP
 };
 
+// Sinal de reset: o cliente manda "comece de novo" e o agente zera o histórico
+// da conversa, voltando a atender como se fosse a primeira mensagem. Tolera
+// acento, caixa e pontuação ("Comece de novo!", "COMECE DE NOVO", etc.).
+export function isResetSignal(text: string): boolean {
+  const n = text
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return n === "comece de novo";
+}
+
 export async function chatWithAgent(
   companyId: string,
   sessionId: string,
@@ -449,6 +463,16 @@ export async function chatWithAgent(
   const userMessage = history.at(-1);
   const channel = opts.channel ?? "PLAYGROUND";
   const customerId = opts.identifiedCustomer?.id ?? null;
+
+  // "comece de novo" → zera o histórico salvo desta conversa e responde com a
+  // saudação, como se fosse o primeiro contato. Deixa o teste "sincero" (sem o
+  // agente lembrar das mensagens anteriores).
+  if (userMessage && isResetSignal(userMessage.content)) {
+    await prisma.agentMessage.deleteMany({ where: { companyId, sessionId } });
+    const greeting =
+      config.greeting?.trim() || "Oi! 🍺 Aqui é o atendimento da SS-Chopp. Como posso ajudar?";
+    return { reply: greeting, toolsUsed: [], simulated: false };
+  }
 
   // Contexto de identidade (só quando veio de um canal com número, ex.: WhatsApp).
   let contextBlock = "";

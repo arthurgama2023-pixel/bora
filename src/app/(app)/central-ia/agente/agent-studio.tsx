@@ -19,6 +19,19 @@ type ChatMessage = {
   simulated?: boolean;
 };
 
+// "comece de novo" → recomeça a conversa (tolera acento/caixa/pontuação).
+// Mesma regra do backend (agent.ts) para o comportamento bater nos dois lados.
+function isResetSignal(text: string): boolean {
+  const n = text
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return n === "comece de novo";
+}
+
 export function AgentStudio({
   initialConfig,
   hasKey,
@@ -69,6 +82,11 @@ export function AgentStudio({
     const text = input.trim();
     if (!text || sending) return;
     setInput("");
+    // Sinal "comece de novo": zera a conversa (mesmo efeito de "Nova conversa").
+    if (isResetSignal(text)) {
+      resetChat();
+      return;
+    }
     const history: ChatMessage[] = [...messages, { role: "user", content: text }];
     setMessages(history);
     setSending(true);
