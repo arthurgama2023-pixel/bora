@@ -37,13 +37,30 @@ export async function POST(req: NextRequest) {
 
   const incoming = raw ? channel.parseWebhook(raw) : null;
 
-  // Ignoramos tudo que não for uma mensagem de texto nova de um usuário.
-  if (!incoming?.text) return NextResponse.json({ ok: true });
+  // Ignoramos tudo que não for texto nem áudio (voz) de um usuário.
+  if (!incoming || (!incoming.text && !incoming.audio)) {
+    return NextResponse.json({ ok: true });
+  }
 
-  // Allowlist: fora da lista, ignora sem gastar chamada de IA.
+  // Allowlist: fora da lista, ignora sem gastar transcrição nem chamada de IA.
   if (!(await isWhatsAppNumberAllowed(companyId, incoming.externalId))) {
     return NextResponse.json({ ok: true });
   }
+
+  // Resolve o texto: mensagem de texto OU transcrição do áudio de voz.
+  let text = incoming.text;
+  if (!text && incoming.audio) {
+    text = (await channel.transcribeAudio(companyId, incoming.audio)) ?? undefined;
+    if (!text) {
+      await channel.sendMessage(
+        companyId,
+        incoming.externalId,
+        "Não consegui entender seu áudio 😅 pode repetir ou mandar por texto?",
+      );
+      return NextResponse.json({ ok: true });
+    }
+  }
+  if (!text) return NextResponse.json({ ok: true });
 
   const sessionId = `wa-${incoming.externalId}`;
 
@@ -60,7 +77,7 @@ export async function POST(req: NextRequest) {
   });
   const history: ChatTurn[] = [
     ...previous.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
-    { role: "user", content: incoming.text },
+    { role: "user", content: text },
   ];
 
   try {
