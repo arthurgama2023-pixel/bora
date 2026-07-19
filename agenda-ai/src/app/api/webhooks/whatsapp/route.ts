@@ -81,19 +81,58 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
+/** Gera o link mágico de conexão do Google (ou null se o Google não estiver configurado). */
+async function googleConnectLink(userId: string): Promise<string | null> {
+  if (!env.GOOGLE_CLIENT_ID) return null;
+  const linkToken = await createLinkToken({ uid: userId }, "google_connect");
+  return `${env.APP_URL}/api/auth/google?link=${linkToken}`;
+}
+
+/** Mensagem de boas-vindas no primeiro contato: já libera a agenda + oferece o Google. */
+async function buildWelcome(userId: string): Promise<string> {
+  let msg =
+    "👋 Oi! Sou seu assistente de agenda. Fale comigo naturalmente, por texto ou áudio — por exemplo:\n" +
+    "• “marca reunião com o João amanhã às 14h”\n" +
+    "• “tenho algo hoje?”\n" +
+    "• “cancela meu dentista”\n\n" +
+    "Já pode começar a marcar! 📅";
+
+  const link = await googleConnectLink(userId);
+  if (link) {
+    msg +=
+      "\n\nPara os compromissos irem direto pro seu *Google Agenda*, conecte aqui (uma vez só):\n" +
+      link;
+  }
+  return msg;
+}
+
+/** Saudação pura (oi, olá, bom dia…) — nesses casos a boas-vindas já é a resposta. */
+function isGreeting(text: string): boolean {
+  const n = normalize(text).replace(/[!?.…]+$/g, "").trim();
+  return /^(oi+|ola|eai|eae|opa|opaa|salve|bom dia|boa tarde|boa noite|tudo bem|tudo bom|menu|comecar|come[cç]ar|start|iniciar|inicio)$/.test(n);
+}
+
 /** Pipeline completo de uma mensagem: usuário → (transcrição) → intenção → resposta. */
 async function processIncoming(incoming: IncomingMessage): Promise<void> {
   const channel = getWhatsAppChannel();
 
-  const user = await db.user.upsert({
-    where: { phone: incoming.externalId },
-    update: {},
-    create: {
-      phone: incoming.externalId,
-      email: `${incoming.externalId}@whatsapp.local`, // placeholder — sem e-mail real via WhatsApp
-      name: "Usuário WhatsApp",
-    },
-  });
+  // findUnique + create em vez de upsert para saber se é o PRIMEIRO contato deste número.
+  const existing = await db.user.findUnique({ where: { phone: incoming.externalId } });
+  const user =
+    existing ??
+    (await db.user.create({
+      data: {
+        phone: incoming.externalId,
+        email: `${incoming.externalId}@whatsapp.local`, // placeholder — sem e-mail real via WhatsApp
+        name: "Usuário WhatsApp",
+      },
+    }));
+  const isFirstContact = !existing;
+
+  // Onboarding: no primeiro contato, dá boas-vindas e já oferece o Google.
+  if (isFirstContact) {
+    await channel.sendMessage(incoming.externalId, await buildWelcome(user.id));
+  }
 
   let text = incoming.text;
 
@@ -122,22 +161,19 @@ async function processIncoming(incoming: IncomingMessage): Promise<void> {
 
   if (!text) return;
 
+  // Se a primeira mensagem é só um "oi", a boas-vindas já respondeu — não duplica.
+  if (isFirstContact && isGreeting(text)) return;
+
   // Comando de sistema (não é intenção de agenda) — gera link de OAuth do Google
   // sob demanda, já que o WhatsApp não abre popup de consentimento diretamente.
   if (/conectar.*(google|calendario|calendário|agenda)/.test(normalize(text))) {
-    if (!env.GOOGLE_CLIENT_ID) {
-      await channel.sendMessage(
-        incoming.externalId,
-        "A conexão com o Google Calendar ainda não foi configurada pelo administrador.",
-      );
-    } else {
-      const linkToken = await createLinkToken({ uid: user.id }, "google_connect");
-      const url = `${env.APP_URL}/api/auth/google?link=${linkToken}`;
-      await channel.sendMessage(
-        incoming.externalId,
-        `Para conectar seu Google Calendar, abra este link no navegador do seu celular:\n${url}\n\nEle expira em 15 minutos.`,
-      );
-    }
+    const link = await googleConnectLink(user.id);
+    await channel.sendMessage(
+      incoming.externalId,
+      link
+        ? `Para conectar seu Google Agenda, abra este link no navegador do seu celular:\n${link}\n\nEle expira em 15 minutos.`
+        : "A conexão com o Google Agenda ainda não foi configurada pelo administrador.",
+    );
     return;
   }
 
