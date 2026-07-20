@@ -374,11 +374,12 @@ async function buildIdentityContext(
     }),
     prisma.customer.findUnique({
       where: { id: customer.id },
-      select: { contactName: true, neighborhood: true, city: true },
+      select: { contactName: true, neighborhood: true, city: true, address: true },
     }),
   ]);
 
   const contato = record?.contactName?.trim() || null;
+  const enderecoCadastrado = record?.address?.trim() || null;
 
   const kegs =
     balance.rows
@@ -400,6 +401,9 @@ async function buildIdentityContext(
     `- Estabelecimento: ${customer.name}`,
     contato ? `- Responsável (contato): ${contato}` : "",
     record?.neighborhood ? `- Bairro do cliente: ${record.neighborhood}${record.city ? ` · ${record.city}` : ""} (se ele perguntar preço/entrega, já use preco_por_bairro com este bairro sem precisar perguntar de novo)` : "",
+    enderecoCadastrado
+      ? `- Endereço de entrega JÁ CADASTRADO: ${enderecoCadastrado}. Ele já é cliente e esse é o endereço dele — ao fechar o pedido (finalizar_pedido), use este endereço automaticamente e NÃO peça o endereço de novo. Só pergunte se ele mencionar que quer entregar em outro lugar.`
+      : "",
     `- customerId: ${customer.id} (USE este id nas ferramentas situacao_cliente, extrato_cliente — não chame buscar_cliente para ele)`,
     `- WhatsApp: ${phone}`,
     `- Status: ${statusLabel} · Tipo: ${typeLabel}`,
