@@ -20,6 +20,9 @@ export async function GET(req: NextRequest) {
   });
   if (!user) return NextResponse.json({ found: false, normalized: phone });
 
+  // Conta Google efetivamente conectada (é a que o usuário deve conferir a agenda)
+  const connectedEmail = user.email.endsWith("@whatsapp.local") ? null : user.email;
+
   const google = user.integrations.find((i) => i.provider === "google");
   const events = await db.event.findMany({
     where: { userId: user.id },
@@ -44,6 +47,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     found: true,
     normalized: phone,
+    connectedGoogleAccount: connectedEmail,
     integration: google
       ? {
           status: google.status,
