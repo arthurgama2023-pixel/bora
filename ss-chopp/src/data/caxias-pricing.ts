@@ -1,137 +1,69 @@
-// Preços fixos para Duque de Caxias, São João de Meriti e região metropolitana
-// Estes preços substituem o sistema de desconto percentual
+// Tabela de preço fixo para as zonas marcadas com `fixed: true` em zones.ts
+// (Duque de Caxias, São João de Meriti e região metropolitana).
+// Estes preços substituem o sistema de desconto percentual.
+//
+// Fonte: tabela oficial SS-Chopp (1 barril / 2 barris / 3+ barris).
 
-export const caxiasPricing: Record<string, number> = {
-  "belco-30l": 398.0,
-  "belco-50l": 549.0,
-  "bramma-50l": 549.0,
-  "heineken-50l": 598.9,
-  "amstel-50l": 539.0,
-  "vinho-30l": 449.0,
-  "vinho-50l": 599.0,
-};
-
-// Bairros de Duque de Caxias e São João de Meriti que usam os preços fixos
-export const caxiasBairros = [
-  "caxias",
-  "sao-joao",
-  "belford-roxo",
-  "vilar-dos-teles",
-  "duque-de-caxias",
-  "vila-sao-luiz",
-  "laureano",
-  "lafayete",
-  "lote-xv",
-  "bras-de-pina",
-  "vista-alegre",
-  "cordovil",
-  "parada-de-lucas",
-  "penha",
-  "jardim-gramacho",
-  "jardim-primavera",
-  "saracuruna",
-  "parque-fluminense",
-  "suecia",
-  "pantanal",
-  "vila-rosario",
-  "sao-bento",
-  "pilar",
-  "wona",
-  "gramacho",
-  "jardim-leal",
-  "olavo-bilac",
-  "jardim-metropolis",
-  "centenario",
-  "periquito",
-  "lagunas",
-  "prainha",
-  "pq-araruama",
-  "25-de-agosto",
-  "jardim-rotsen",
-  "chacara-rio-petropolis",
-  "campos-eliseos",
-  "xerem",
-  "capivari",
-  "mesquita",
-  "vila-sao-jose",
-  "cangulo",
-  "cidade-dos-meninos",
-  "figueira",
-  "chacara-arcampo",
-  "eldorado",
-  "vila-ouro-preto",
-  "sarapui",
-  "vila-urussai",
-  "mangueirinha",
-  "santuario",
-  "bar-dos-cavaleiros",
-  "santa-catarina",
-  "jardim-panama",
-  "sao-vicente",
-  "sgt-roncali",
-  "bom-pastor",
-  "bairro-das-gracas",
-  "areia-branca",
-  "heliopolis",
-  "vila-sao-sebastiao",
-  "apollo11",
-  "boa-esperanca",
-  "agostinho-porto",
-  "engenheiro-belford",
-  "jardim-sumare",
-  "parque-analandia",
-  "parque-novo-rio",
-  "parque-tiete",
-  "vila-norma",
-  "vila-rosali",
-  "sao-mateus",
-  "tomazinho",
-  "vila-tiradentes",
-  "coelho-da-rocha",
-  "jardim-meriti",
-  "vigario-geral",
-  "amapa",
-  "jardim-america",
-  "ana-porto",
-  "senhor-do-bonfim",
-  "corte-8",
-  "olaria",
-  "ramos",
-  "vila-da-penha",
-  "vicente-de-carvalho",
-  "sao-matheus",
-  "sao-joao-de-meriti",
-  "itatiaia",
-  "andrade-de-araujo",
-  "parque-lafaiete",
-  "vale-do-ipe",
-  "eden",
-  "jardim-vila-nova",
-  "vila-operaria",
-  "sarapui-alt",
-  "jardim-metropoles",
-  "engenho-do-porto",
-  "jardim-redentor",
-  // São João de Meriti
-  "sao-joao-de-meriti",
-  "sao-joao",
-  "centro",
-  "vilar-dos-teles",
-  "parque-araruama",
-  "coelho-da-rocha",
-];
-
-export function isCaxiasBairro(bairroNome: string): boolean {
-  // Normaliza: remove acentos, converte para minúsculas, substitui espaços por hífen
-  const normalized = bairroNome
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, "-");
-
-  return caxiasBairros.includes(normalized);
+// Faixa de preço por quantidade: `min` barris ou mais → `unit` cada.
+// Lista em ordem DECRESCENTE de `min` (mais barris = mais barato).
+export interface PriceTier {
+  min: number;
+  unit: number;
 }
 
-export function getCaxiasPrice(productId: string): number | undefined {
+// Produtos com preço escalonado por quantidade.
+export const caxiasTiers: Record<string, PriceTier[]> = {
+  "belco-30l": [
+    { min: 3, unit: 360.0 },
+    { min: 2, unit: 400.0 },
+    { min: 1, unit: 450.0 },
+  ],
+  "belco-50l": [
+    { min: 3, unit: 500.0 },
+    { min: 2, unit: 550.0 },
+    { min: 1, unit: 600.0 },
+  ],
+  "bramma-50l": [
+    { min: 3, unit: 850.0 },
+    { min: 2, unit: 900.0 },
+    { min: 1, unit: 950.0 },
+  ],
+  "heineken-50l": [
+    { min: 3, unit: 900.0 },
+    { min: 2, unit: 950.0 },
+    { min: 1, unit: 1000.0 },
+  ],
+  "amstel-50l": [
+    { min: 3, unit: 700.0 },
+    { min: 2, unit: 750.0 },
+    { min: 1, unit: 800.0 },
+  ],
+};
+
+// Preço fixo por unidade (produtos sem faixa escalonada — Choppe de Vinho).
+export const caxiasPricing: Record<string, number> = {
+  "vinho-30l": 450.0,
+  "vinho-50l": 600.0,
+};
+
+// Preço unitário conforme a quantidade (aplica a faixa escalonada, se houver).
+export function getCaxiasUnitPrice(productId: string, qty: number): number | undefined {
+  const tiers = caxiasTiers[productId];
+  if (tiers?.length) {
+    const t = tiers.find((t) => qty >= t.min) ?? tiers[tiers.length - 1];
+    return t.unit;
+  }
   return caxiasPricing[productId];
+}
+
+// Menor preço da faixa ("a partir de") — para exibir no card.
+export function getCaxiasFromPrice(productId: string): number | undefined {
+  const tiers = caxiasTiers[productId];
+  if (tiers?.length) return Math.min(...tiers.map((t) => t.unit));
+  return caxiasPricing[productId];
+}
+
+// Preço unitário de 1 barril (compat com o uso antigo).
+export function getCaxiasPrice(productId: string): number | undefined {
+  return getCaxiasUnitPrice(productId, 1);
 }
