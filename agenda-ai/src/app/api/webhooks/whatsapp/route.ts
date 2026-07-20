@@ -180,14 +180,16 @@ async function processIncoming(incoming: IncomingMessage): Promise<void> {
   const result = await handleMessage(user.id, text);
   let reply = result.reply;
 
-  // Se mexeu na agenda mas o número ainda NÃO conectou o Google, avisa que salvou
-  // localmente e manda o link — resolve a confusão "por que não foi pro Google?".
+  // Ao mexer na agenda, deixa CLARO onde salvou: se o número conectou o Google,
+  // confirma a sincronização; se não, avisa que ficou na agenda local e manda o link.
   if (result.agendaChanged) {
     const connected = await db.integration.findFirst({
       where: { userId: user.id, provider: "google", status: "active" },
       select: { id: true },
     });
-    if (!connected) {
+    if (connected) {
+      reply += "\n\n_✔ Sincronizado com o seu Google Agenda._";
+    } else {
       const link = await googleConnectLink(user.id);
       if (link) {
         reply +=
