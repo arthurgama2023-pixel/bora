@@ -6,6 +6,10 @@ import type { CalendarEvent, CalendarProvider, EventInput, TimeSlot } from "./ty
 
 const API = "https://www.googleapis.com/calendar/v3/calendars/primary";
 
+// Fuso padrão do produto (PT-BR). Enviado explicitamente ao Google junto com o
+// instante em UTC, para o evento aparecer no horário certo na agenda do usuário.
+const TIMEZONE = "America/Sao_Paulo";
+
 interface GoogleEvent {
   id: string;
   summary?: string;
@@ -95,8 +99,8 @@ export class GoogleCalendarProvider implements CalendarProvider {
         summary: input.title,
         location: input.location,
         description: input.description,
-        start: { dateTime: input.start.toISOString() },
-        end: { dateTime: input.end.toISOString() },
+        start: { dateTime: input.start.toISOString(), timeZone: TIMEZONE },
+        end: { dateTime: input.end.toISOString(), timeZone: TIMEZONE },
         attendees: input.attendees?.map((email) => ({ email })),
       }),
     });
@@ -122,8 +126,8 @@ export class GoogleCalendarProvider implements CalendarProvider {
     if (patch.title) body.summary = patch.title;
     if (patch.location) body.location = patch.location;
     if (patch.description) body.description = patch.description;
-    if (patch.start) body.start = { dateTime: patch.start.toISOString() };
-    if (patch.end) body.end = { dateTime: patch.end.toISOString() };
+    if (patch.start) body.start = { dateTime: patch.start.toISOString(), timeZone: TIMEZONE };
+    if (patch.end) body.end = { dateTime: patch.end.toISOString(), timeZone: TIMEZONE };
     const g = await this.request<GoogleEvent>(`/events/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
