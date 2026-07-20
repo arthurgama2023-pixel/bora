@@ -132,21 +132,61 @@ const COVERED_BY_SLUG = new Map(COVERED.map((z) => [slug(z.bairro), z]));
 // Catálogo do SITE — fonte da verdade dos produtos do agente. Mesmos itens e
 // preços do site público (ss-chopp). O agente trabalha com base neste catálogo
 // e trata TUDO como disponível (não consulta o estoque físico do kegcontrol).
+// Faixa de preço por quantidade: `min` barris ou mais → `unit` cada.
+// Lista em ordem DECRESCENTE de `min` (mais barris primeiro = mais barato).
+export interface PriceTier {
+  min: number;
+  unit: number;
+}
+
 export interface CatalogItem {
   id: string;
   produto: string;
-  price: number;
+  price: number; // preço unitário (para tiered, o preço de 1 unidade)
+  tiers?: PriceTier[]; // preço escalonado por quantidade (Duque de Caxias)
 }
 
 export const SITE_CATALOG: CatalogItem[] = [
-  { id: "belco-30l", produto: "Belco 30L", price: 398.0 },
+  { id: "belco-30l", produto: "Belco 30L", price: 399.0 },
   { id: "belco-50l", produto: "Belco 50L", price: 549.0 },
-  { id: "brahma-50l", produto: "Brahma 50L", price: 549.0 },
+  {
+    id: "brahma-50l",
+    produto: "Brahma 50L",
+    price: 950.0,
+    tiers: [
+      { min: 3, unit: 800.0 },
+      { min: 2, unit: 900.0 },
+      { min: 1, unit: 950.0 },
+    ],
+  },
   { id: "heineken-50l", produto: "Heineken 50L", price: 598.9 },
   { id: "amstel-50l", produto: "Amstel 50L", price: 539.0 },
-  { id: "vinho-30l", produto: "Choppe de Vinho 30L", price: 449.0 },
+  { id: "vinho-30l", produto: "Choppe de Vinho 30L", price: 399.0 },
   { id: "vinho-50l", produto: "Choppe de Vinho 50L", price: 599.0 },
 ];
+
+// Preço unitário conforme a quantidade (aplica a faixa escalonada, se houver).
+export function unitPriceFor(item: CatalogItem, qty: number): number {
+  if (item.tiers?.length) {
+    const t = item.tiers.find((t) => qty >= t.min) ?? item.tiers[item.tiers.length - 1];
+    return t.unit;
+  }
+  return item.price;
+}
+
+// Texto curto descrevendo o preço escalonado, para o agente comunicar.
+export function tierText(item: CatalogItem): string | null {
+  if (!item.tiers?.length) return null;
+  // ordena crescente por min para ficar natural: 1un..., 2un..., 3+...
+  const asc = [...item.tiers].sort((a, b) => a.min - b.min);
+  return asc
+    .map((t, i) =>
+      i === asc.length - 1
+        ? `${t.min} ou mais: R$${t.unit} cada`
+        : `${t.min} un: R$${t.unit} cada`,
+    )
+    .join(" · ");
+}
 
 // Resolve um texto livre de produto (ex.: "belco 50", "chopp de vinho 30 litros",
 // "amstel", "heineken") para um item do catálogo do site.

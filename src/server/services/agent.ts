@@ -13,7 +13,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { getCustomerBalance, getCustomerPrices } from "./customers";
 import { getCustomerInsights, SEGMENT_LABELS } from "./crm";
 import { getCustomerStatement } from "./reports";
-import { findCoveredBairro, SITE_CATALOG, resolveProduct } from "../data/bairro-pricing";
+import { findCoveredBairro, SITE_CATALOG, resolveProduct, unitPriceFor, tierText } from "../data/bairro-pricing";
 
 // Cliente reconhecido pelo número de WhatsApp (ou null se o número não bate
 // com nenhum cadastro). Passado ao agente para ele "conectar os pontos".
@@ -247,11 +247,12 @@ async function runTool(
       // Baseia-se no catálogo do SITE e trata tudo como disponível.
       // (Não consulta o estoque físico do kegcontrol de propósito.)
       return JSON.stringify(
-        SITE_CATALOG.map((c) => ({
-          tipo: c.produto,
-          disponivel: true,
-          preco: c.price,
-        })),
+        SITE_CATALOG.map((c) => {
+          const t = tierText(c);
+          return t
+            ? { tipo: c.produto, disponivel: true, precoPorQuantidade: t }
+            : { tipo: c.produto, disponivel: true, preco: c.price };
+        }),
       );
     }
     case "clientes_para_reativar": {
@@ -280,12 +281,19 @@ async function runTool(
           mensagem: "Bairro fora da área de preço fixo. Não informe valores — diga que a equipe comercial confirma.",
         });
       }
-      // Catálogo do site, tudo disponível.
-      const precos = SITE_CATALOG.map((c) => ({
-        tipo: c.produto,
-        preco: c.price,
-        disponivel: true,
-      }));
+      // Catálogo do site, tudo disponível. Produtos com preço escalonado por
+      // quantidade (ex.: Brahma) vêm com as faixas — diga-as ao cliente.
+      const precos = SITE_CATALOG.map((c) => {
+        const t = tierText(c);
+        return t
+          ? {
+              tipo: c.produto,
+              disponivel: true,
+              precoPorQuantidade: t,
+              obs: "PREÇO POR QUANTIDADE — quanto mais barris, mais barato cada. Explique as faixas ao cliente; o total sai no finalizar_pedido.",
+            }
+          : { tipo: c.produto, preco: c.price, disponivel: true };
+      });
       return JSON.stringify({
         coberto: true,
         bairro: zona.bairro,
@@ -316,7 +324,9 @@ async function runTool(
           naoReconhecidos.push(produtoTxt);
           continue;
         }
-        itens.push({ produto: item.produto, quantidade: qtd, precoUnit: item.price, subtotal: item.price * qtd });
+        // Preço unitário conforme a quantidade (aplica faixa escalonada, ex.: Brahma).
+        const precoUnit = unitPriceFor(item, qtd);
+        itens.push({ produto: item.produto, quantidade: qtd, precoUnit, subtotal: precoUnit * qtd });
       }
       if (itens.length === 0) {
         return JSON.stringify({
