@@ -147,22 +147,58 @@ export interface CatalogItem {
 }
 
 export const SITE_CATALOG: CatalogItem[] = [
-  { id: "belco-30l", produto: "Belco 30L", price: 399.0 },
-  { id: "belco-50l", produto: "Belco 50L", price: 549.0 },
+  {
+    id: "belco-30l",
+    produto: "Belco 30L",
+    price: 450.0,
+    tiers: [
+      { min: 3, unit: 360.0 },
+      { min: 2, unit: 400.0 },
+      { min: 1, unit: 450.0 },
+    ],
+  },
+  {
+    id: "belco-50l",
+    produto: "Belco 50L",
+    price: 600.0,
+    tiers: [
+      { min: 3, unit: 500.0 },
+      { min: 2, unit: 550.0 },
+      { min: 1, unit: 600.0 },
+    ],
+  },
   {
     id: "brahma-50l",
     produto: "Brahma 50L",
     price: 950.0,
     tiers: [
-      { min: 3, unit: 800.0 },
+      { min: 3, unit: 850.0 },
       { min: 2, unit: 900.0 },
       { min: 1, unit: 950.0 },
     ],
   },
-  { id: "heineken-50l", produto: "Heineken 50L", price: 598.9 },
-  { id: "amstel-50l", produto: "Amstel 50L", price: 539.0 },
-  { id: "vinho-30l", produto: "Choppe de Vinho 30L", price: 399.0 },
-  { id: "vinho-50l", produto: "Choppe de Vinho 50L", price: 599.0 },
+  {
+    id: "heineken-50l",
+    produto: "Heineken 50L",
+    price: 1000.0,
+    tiers: [
+      { min: 3, unit: 900.0 },
+      { min: 2, unit: 950.0 },
+      { min: 1, unit: 1000.0 },
+    ],
+  },
+  {
+    id: "amstel-50l",
+    produto: "Amstel 50L",
+    price: 800.0,
+    tiers: [
+      { min: 3, unit: 700.0 },
+      { min: 2, unit: 750.0 },
+      { min: 1, unit: 800.0 },
+    ],
+  },
+  { id: "vinho-30l", produto: "Choppe de Vinho 30L", price: 450.0 },
+  { id: "vinho-50l", produto: "Choppe de Vinho 50L", price: 600.0 },
 ];
 
 // Preço unitário conforme a quantidade (aplica a faixa escalonada, se houver).
