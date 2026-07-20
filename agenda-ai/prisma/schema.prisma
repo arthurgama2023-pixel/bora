@@ -22,11 +22,15 @@ model User {
   conversations Conversation[]
   events        Event[]
   actionLogs    ActionLog[]
+  company       Company?
 }
 
+// Integração externa (Google). Pertence a UM dono: usuário (modo pessoal)
+// OU empresa (modo B2B) — nunca ambos.
 model Integration {
   id           String    @id @default(cuid())
-  userId       String
+  userId       String?
+  companyId    String?
   provider     String // "google"
   accessToken  String // criptografado (AES-256-GCM)
   refreshToken String? // criptografado
@@ -34,9 +38,93 @@ model Integration {
   scope        String?
   status       String    @default("active")
   createdAt    DateTime  @default(now())
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company      Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@unique([userId, provider])
+  @@unique([companyId, provider])
+}
+
+// ─── Modo Empresa (B2B) — cada empresa é um tenant totalmente isolado ───
+
+model Company {
+  id                String                @id @default(cuid())
+  ownerUserId       String                @unique
+  name              String
+  agentName         String                @default("Ana")
+  welcomeMessage    String?
+  timezone          String                @default("America/Sao_Paulo")
+  workdayStart      Int                   @default(8)
+  workdayEnd        Int                   @default(18)
+  defaultDurMin     Int                   @default(60)
+  evolutionInstance String                @unique // instância WhatsApp própria da empresa
+  createdAt         DateTime              @default(now())
+  owner             User                  @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  services          Service[]
+  clients           Client[]
+  appointments      Appointment[]
+  conversations     CompanyConversation[]
+  integrations      Integration[]
+}
+
+model Service {
+  id           String        @id @default(cuid())
+  companyId    String
+  name         String
+  durationMin  Int
+  description  String?
+  price        Float?
+  active       Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@index([companyId])
+}
+
+// Cliente final da empresa (quem manda mensagem no WhatsApp dela) — base do CRM futuro
+model Client {
+  id           String        @id @default(cuid())
+  companyId    String
+  phone        String // E.164 sem "+"
+  name         String?
+  createdAt    DateTime      @default(now())
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@unique([companyId, phone])
+}
+
+model Appointment {
+  id        String   @id @default(cuid())
+  companyId String
+  clientId  String
+  serviceId String?
+  title     String // "Nome do cliente - Serviço"
+  startsAt  DateTime
+  endsAt    DateTime
+  notes     String?
+  googleId  String? // id do evento espelhado no Google Agenda da empresa
+  status    String   @default("confirmed") // confirmed | canceled
+  createdAt DateTime @default(now())
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, startsAt])
+}
+
+// Conversa do atendente virtual com um cliente (histórico curto em JSON)
+model CompanyConversation {
+  id          String   @id @default(cuid())
+  companyId   String
+  clientPhone String
+  history     String   @default("[]") // [{role:"user"|"model", text}]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, clientPhone])
 }
 
 model Conversation {

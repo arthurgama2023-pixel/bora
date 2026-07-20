@@ -8,6 +8,7 @@ import { getWhatsAppChannel } from "@/modules/channels";
 import { isWhatsAppNumberAllowed } from "@/modules/channels/allowlist";
 import { getWhatsAppConfig } from "@/modules/channels/config";
 import type { IncomingMessage } from "@/modules/channels/types";
+import { processCompanyIncoming } from "@/modules/company/process";
 import { handleMessage } from "@/modules/conversation/service";
 import { getTranscriptionProvider } from "@/modules/transcription";
 import { normalize } from "@/modules/shared/dates";
@@ -51,6 +52,46 @@ export async function POST(req: NextRequest) {
 
   if (incoming.messageId && alreadySeen(incoming.messageId)) {
     return NextResponse.json({ ok: true });
+  }
+
+  // ── Modo Empresa (B2B): mensagem chegou na instância de uma empresa? ──
+  // Roteia para o atendente virtual dela. Allowlist NÃO se aplica (os clientes
+  // da empresa são o público). Tudo que não for de empresa segue o fluxo pessoal.
+  if (incoming.instanceName) {
+    const company = await db.company.findUnique({
+      where: { evolutionInstance: incoming.instanceName },
+      select: { id: true, evolutionInstance: true },
+    });
+    if (company) {
+      const withinCompanyLimit = rateLimit(
+        `wpp-co:${company.id}:${incoming.externalId}`,
+        40,
+        60 * 60 * 1000,
+      );
+      after(async () => {
+        try {
+          if (!withinCompanyLimit) {
+            await channel.sendMessage(
+              incoming.externalId,
+              "Recebemos muitas mensagens suas em pouco tempo. Aguarde um momento e tente de novo. 🙂",
+              company.evolutionInstance,
+            );
+            return;
+          }
+          await processCompanyIncoming(company.id, incoming);
+        } catch (err) {
+          console.error("[empresa] falha no processamento em background", err);
+          await channel
+            .sendMessage(
+              incoming.externalId,
+              "Tivemos um problema técnico aqui. Pode mandar sua mensagem de novo?",
+              company.evolutionInstance,
+            )
+            .catch(() => {});
+        }
+      });
+      return NextResponse.json({ ok: true });
+    }
   }
 
   // Allowlist: fora da lista, ignora sem criar usuário nem gastar chamada de IA.

@@ -4,6 +4,14 @@ Assistente que organiza sua agenda por conversa (texto ou voz), pela **web** ou 
 **WhatsApp**, integrado ao Google Calendar.
 Arquitetura completa em [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
 
+Dois modos de uso:
+
+- **Modo Pessoal (B2C)** — você conversa com o agente e ele organiza a SUA agenda.
+- **Modo Empresa (B2B)** — em `/empresa`: a empresa conecta o WhatsApp dela, conecta o
+  Google Agenda, dá um nome ao agente e cadastra os serviços; o atendente virtual passa a
+  atender os CLIENTES da empresa, consultando disponibilidade real e agendando sozinho
+  (multi-tenant: cada empresa tem instância WhatsApp, agenda, serviços e clientes próprios).
+
 - Conectar ao **WhatsApp**: [docs/WHATSAPP.md](docs/WHATSAPP.md)
 - Conectar ao **Google Calendar**: [docs/GOOGLE.md](docs/GOOGLE.md)
 

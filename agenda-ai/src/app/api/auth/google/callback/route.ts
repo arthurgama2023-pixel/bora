@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL("/login?error=oauth_invalido", env.APP_URL));
   }
   const linkUserId = typeof statePayload.linkUserId === "string" ? statePayload.linkUserId : undefined;
+  const companyCid = typeof statePayload.companyCid === "string" ? statePayload.companyCid : undefined;
 
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -41,6 +42,29 @@ export async function GET(req: NextRequest) {
     headers: { authorization: `Bearer ${tokens.access_token}` },
   });
   const info = (await infoRes.json()) as { email: string; name?: string; picture?: string };
+
+  // ── Modo Empresa: a integração pertence à EMPRESA (não mexe na conta do usuário) ──
+  if (companyCid) {
+    await db.integration.upsert({
+      where: { companyId_provider: { companyId: companyCid, provider: "google" } },
+      update: {
+        accessToken: encrypt(tokens.access_token),
+        ...(tokens.refresh_token ? { refreshToken: encrypt(tokens.refresh_token) } : {}),
+        expiresAt: new Date(Date.now() + tokens.expires_in * 1000),
+        scope: tokens.scope,
+        status: "active",
+      },
+      create: {
+        companyId: companyCid,
+        provider: "google",
+        accessToken: encrypt(tokens.access_token),
+        refreshToken: tokens.refresh_token ? encrypt(tokens.refresh_token) : null,
+        expiresAt: new Date(Date.now() + tokens.expires_in * 1000),
+        scope: tokens.scope,
+      },
+    });
+    return NextResponse.redirect(new URL("/empresa?google=conectado", env.APP_URL));
+  }
 
   let user: { id: string };
   if (linkUserId) {

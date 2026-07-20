@@ -5,6 +5,10 @@ import type { Channel, IncomingMessage } from "./types";
 // Evolution API (self-hosted, WhatsApp Web via QR code — não é a API oficial da Meta).
 // Documentação de referência: https://doc.evolution-api.com
 // Formatos abaixo são os da v2; instâncias v1 podem exigir pequenos ajustes de payload.
+//
+// Multi-instância: o servidor Evolution é um só (config global), mas cada linha de
+// WhatsApp é uma INSTÂNCIA. O modo pessoal usa a instância da config; cada empresa
+// (modo B2B) tem a sua própria — todos os métodos aceitam um override de instância.
 
 interface EvolutionMessageKey {
   remoteJid: string;
@@ -47,6 +51,13 @@ function phoneFromJid(jid: string): string {
 export class WhatsAppEvolutionChannel implements Channel {
   name = "whatsapp";
 
+  /** Config efetiva com a instância opcionalmente sobrescrita (empresas B2B). */
+  private async resolvedConfig(instance?: string): Promise<WhatsAppConfig | null> {
+    const cfg = await getWhatsAppConfig();
+    if (!cfg) return null;
+    return instance ? { ...cfg, instance } : cfg;
+  }
+
   // ---- Canal (mensagens) ----
 
   parseWebhook(raw: unknown): IncomingMessage | null {
@@ -57,15 +68,16 @@ export class WhatsAppEvolutionChannel implements Channel {
 
     const externalId = phoneFromJid(key.remoteJid);
     const messageId = key.id;
+    const instanceName = payload.instance;
     const text = data.message?.conversation ?? data.message?.extendedTextMessage?.text;
-    if (text) return { externalId, messageId, text };
+    if (text) return { externalId, messageId, instanceName, text };
 
-    if (data.message?.audioMessage) return { externalId, messageId, audioRef: key };
+    if (data.message?.audioMessage) return { externalId, messageId, instanceName, audioRef: key };
     return null;
   }
 
-  async fetchAudio(audioRef: unknown): Promise<Blob | null> {
-    const cfg = await getWhatsAppConfig();
+  async fetchAudio(audioRef: unknown, instance?: string): Promise<Blob | null> {
+    const cfg = await this.resolvedConfig(instance);
     if (!cfg) return null;
     const res = await this.api(cfg, "POST", `/chat/getBase64FromMediaMessage/${cfg.instance}`, {
       message: { key: audioRef },
@@ -77,10 +89,10 @@ export class WhatsAppEvolutionChannel implements Channel {
     return new Blob([Buffer.from(data.base64, "base64")], { type: "audio/ogg" });
   }
 
-  async sendMessage(externalId: string, text: string): Promise<void> {
+  async sendMessage(externalId: string, text: string, instance?: string): Promise<void> {
     // O núcleo gera **negrito** (markdown padrão do chat web); o WhatsApp usa *negrito*.
     const whatsappText = text.replace(/\*\*(.+?)\*\*/g, "*$1*");
-    const cfg = await getWhatsAppConfig();
+    const cfg = await this.resolvedConfig(instance);
     if (!cfg) {
       console.warn("[whatsapp] Evolution não configurada — mensagem não enviada:", whatsappText);
       return;
@@ -94,7 +106,7 @@ export class WhatsAppEvolutionChannel implements Channel {
     }
   }
 
-  // ---- Gerenciamento de instância (aba Conectar) ----
+  // ---- Gerenciamento de instância (aba Conectar / painel da empresa) ----
 
   private async api(
     cfg: WhatsAppConfig,
@@ -119,8 +131,8 @@ export class WhatsAppEvolutionChannel implements Channel {
   }
 
   /** Estado + QR + número. Cria nada — só lê. */
-  async status(appUrl: string): Promise<WhatsAppStatus> {
-    const cfg = await getWhatsAppConfig();
+  async status(appUrl: string, instance?: string): Promise<WhatsAppStatus> {
+    const cfg = await this.resolvedConfig(instance);
     if (!cfg) return { configured: false, state: "unknown" };
 
     const base: WhatsAppStatus = {
@@ -188,22 +200,22 @@ export class WhatsAppEvolutionChannel implements Channel {
   }
 
   /**
-   * Conecta o número do agente. Com `number`, usa CÓDIGO DE PAREAMENTO (digitado no
-   * celular em Aparelhos conectados → Conectar com número). Sem `number`, cai no QR.
+   * Conecta o número. Com `number`, usa CÓDIGO DE PAREAMENTO (digitado no celular em
+   * Aparelhos conectados → Conectar com número). Sem `number`, cai no QR.
    *
    * Para o pareamento ser válido, a instância precisa ser recriada do zero com o número
    * e estar pronta ANTES de pedir o código — por isso as esperas entre delete e create
    * (padrão validado no barberpro; sem elas o código sai inválido).
    */
-  async connect(appUrl: string, number?: string): Promise<WhatsAppStatus> {
-    const cfg = await getWhatsAppConfig();
+  async connect(appUrl: string, number?: string, instance?: string): Promise<WhatsAppStatus> {
+    const cfg = await this.resolvedConfig(instance);
     if (!cfg) return { configured: false, state: "unknown" };
 
     const webhookUrl = this.webhookUrl(cfg, appUrl);
     const publicUrlWarning = /localhost|127\.0\.0\.1/.test(appUrl);
     const num = number ? normalizeBrPhone(number) : null;
 
-    if ((await this.readState(cfg)) === "open") return this.status(appUrl);
+    if ((await this.readState(cfg)) === "open") return this.status(appUrl, instance);
 
     if (num) {
       // Recria a instância do zero com o número (fluxo de pairing code).
@@ -251,7 +263,7 @@ export class WhatsAppEvolutionChannel implements Channel {
       await wait(1500);
     }
 
-    const status = await this.status(appUrl);
+    const status = await this.status(appUrl, instance);
     if (status.state === "open") return status;
     return {
       ...status,
@@ -261,8 +273,8 @@ export class WhatsAppEvolutionChannel implements Channel {
   }
 
   /** Desconecta o WhatsApp (logout da instância). */
-  async disconnect(): Promise<void> {
-    const cfg = await getWhatsAppConfig();
+  async disconnect(instance?: string): Promise<void> {
+    const cfg = await this.resolvedConfig(instance);
     if (!cfg) return;
     await this.api(cfg, "DELETE", `/instance/logout/${cfg.instance}`);
   }

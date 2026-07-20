@@ -1,6 +1,8 @@
 export interface IncomingMessage {
   externalId: string; // identificador do usuário no canal (telefone, chat id, etc.)
   messageId?: string; // id da mensagem no provedor — usado para deduplicar reentregas
+  /** Instância/linha que recebeu a mensagem — roteia entre modo pessoal e empresas (B2B). */
+  instanceName?: string;
   text?: string;
   /** Presente quando a mensagem é de voz; dados específicos do provedor para buscar a mídia depois. */
   audioRef?: unknown;

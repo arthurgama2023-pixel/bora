@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
 import { env, hasGoogle } from "@/lib/env";
 import { createLinkToken, verifyLinkToken } from "@/lib/link";
+import { getSessionUserId } from "@/lib/session";
 
 const SCOPES = [
   "openid",
@@ -26,9 +28,26 @@ export async function GET(req: NextRequest) {
     linkUserId = payload.uid;
   }
 
+  // Fluxo do MODO EMPRESA: conecta o Google Agenda DA EMPRESA do usuário logado.
+  let companyCid: string | undefined;
+  if (req.nextUrl.searchParams.get("company") === "1") {
+    const uid = await getSessionUserId();
+    const company = uid
+      ? await db.company.findUnique({ where: { ownerUserId: uid }, select: { id: true } })
+      : null;
+    if (!company) {
+      return NextResponse.redirect(new URL("/empresa?error=sem_empresa", env.APP_URL));
+    }
+    companyCid = company.id;
+  }
+
   // `state` é assinado (não um cookie): sobrevive a webviews/navegadores que
   // descartam cookies no redirect de ida e volta para accounts.google.com.
-  const state = await createLinkToken(linkUserId ? { linkUserId } : {}, "google_oauth_state", "10m");
+  const state = await createLinkToken(
+    { ...(linkUserId ? { linkUserId } : {}), ...(companyCid ? { companyCid } : {}) },
+    "google_oauth_state",
+    "10m",
+  );
 
   const params = new URLSearchParams({
     client_id: env.GOOGLE_CLIENT_ID!,

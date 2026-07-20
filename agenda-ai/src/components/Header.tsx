@@ -44,6 +44,12 @@ export function Header({
           </span>
         )}
         <a
+          href="/empresa"
+          className="rounded-full border border-zinc-200 px-3 py-1.5 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-50"
+        >
+          Modo Empresa
+        </a>
+        <a
           href="/conectar"
           className="rounded-full border border-zinc-200 px-3 py-1.5 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-50"
         >

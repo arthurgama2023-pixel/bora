@@ -19,11 +19,15 @@ interface GoogleEvent {
   end?: { dateTime?: string; date?: string };
 }
 
-/** Google Calendar via REST, com refresh automático de token (server-side). */
+/**
+ * Google Calendar via REST, com refresh automático de token (server-side).
+ * `mirrorUserId`: quando presente (modo pessoal), espelha os eventos criados na
+ * tabela Event do usuário; ausente (modo empresa), o espelho é a tabela Appointment.
+ */
 export class GoogleCalendarProvider implements CalendarProvider {
   constructor(
-    private userId: string,
     private integrationId: string,
+    private mirrorUserId?: string,
   ) {}
 
   private async accessToken(): Promise<string> {
@@ -105,19 +109,21 @@ export class GoogleCalendarProvider implements CalendarProvider {
       }),
     });
     // Espelho local: permite resolver "cancela meu dentista" e auditar ações do app
-    await db.event.create({
-      data: {
-        userId: this.userId,
-        title: input.title,
-        startsAt: input.start,
-        endsAt: input.end,
-        location: input.location,
-        description: input.description,
-        source: "google",
-        googleId: g.id,
-        seriesId: input.seriesId,
-      },
-    });
+    if (this.mirrorUserId) {
+      await db.event.create({
+        data: {
+          userId: this.mirrorUserId,
+          title: input.title,
+          startsAt: input.start,
+          endsAt: input.end,
+          location: input.location,
+          description: input.description,
+          source: "google",
+          googleId: g.id,
+          seriesId: input.seriesId,
+        },
+      });
+    }
     return this.toEvent(g);
   }
 
@@ -132,16 +138,20 @@ export class GoogleCalendarProvider implements CalendarProvider {
       method: "PATCH",
       body: JSON.stringify(body),
     });
-    await db.event.updateMany({
-      where: { userId: this.userId, googleId: id },
-      data: { title: patch.title, startsAt: patch.start, endsAt: patch.end },
-    });
+    if (this.mirrorUserId) {
+      await db.event.updateMany({
+        where: { userId: this.mirrorUserId, googleId: id },
+        data: { title: patch.title, startsAt: patch.start, endsAt: patch.end },
+      });
+    }
     return this.toEvent(g);
   }
 
   async deleteEvent(id: string): Promise<void> {
     await this.request<void>(`/events/${id}`, { method: "DELETE" });
-    await db.event.deleteMany({ where: { userId: this.userId, googleId: id } });
+    if (this.mirrorUserId) {
+      await db.event.deleteMany({ where: { userId: this.mirrorUserId, googleId: id } });
+    }
   }
 
   async findConflicts(start: Date, end: Date, ignoreId?: string): Promise<CalendarEvent[]> {
