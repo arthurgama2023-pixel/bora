@@ -56,6 +56,38 @@ const TIMEZONES = [
 
 const dtFmt = new Intl.DateTimeFormat("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
+// Etapas do assistente de configuração inicial (só aparece na 1ª vez, até concluir).
+const WIZARD_STEPS = ["Configuração da Empresa", "Serviços", "WhatsApp", "Google Agenda"];
+
+function WizardProgress({ step, onBack }: { step: number; onBack?: () => void }) {
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2 text-xs text-zinc-400">
+        <span className="font-medium text-zinc-600">
+          Passo {step} de {WIZARD_STEPS.length}
+        </span>
+        <span>·</span>
+        <span>{WIZARD_STEPS[step - 1]}</span>
+      </div>
+      {onBack && (
+        <button type="button" onClick={onBack} className="text-xs font-medium text-zinc-400 hover:text-zinc-600 hover:underline">
+          ← Voltar
+        </button>
+      )}
+    </div>
+  );
+}
+
+function WizardNav({ onNext, nextLabel = "Próximo →" }: { onNext: () => void; nextLabel?: string }) {
+  return (
+    <div className="mt-4 flex justify-end border-t border-zinc-100 pt-4">
+      <button type="button" onClick={onNext} className={btn}>
+        {nextLabel}
+      </button>
+    </div>
+  );
+}
+
 export function EmpresaPanel({
   initialCompany,
   googleConnected,
@@ -66,6 +98,11 @@ export function EmpresaPanel({
   googleAvailable: boolean;
 }) {
   const [company, setCompany] = useState<CompanyData | null>(initialCompany);
+
+  // Assistente passo a passo: só ativo na criação (empresa nova). Quem já tem
+  // empresa configurada vê o painel completo direto, sem passar pelas etapas.
+  const [wizardStep, setWizardStep] = useState<number | null>(initialCompany ? null : 1);
+  const [justFinished, setJustFinished] = useState(false);
 
   // ── formulário de config (criação e edição usam os mesmos campos) ──
   const [form, setForm] = useState({
@@ -93,8 +130,12 @@ export function EmpresaPanel({
       if (res.ok) {
         const data = await res.json();
         setCompany((c) => ({ ...(c ?? { services: [] as ServiceRow[] }), ...data.company }));
-        setCfgSaved(true);
-        setTimeout(() => setCfgSaved(false), 2500);
+        if (wizardStep === 1) {
+          setWizardStep(2); // acabou de criar — avança pro próximo passo
+        } else {
+          setCfgSaved(true);
+          setTimeout(() => setCfgSaved(false), 2500);
+        }
       }
     } finally {
       setSavingCfg(false);
@@ -209,12 +250,12 @@ export function EmpresaPanel({
       .catch(() => {});
   }, [company?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─────────────────────────── render ───────────────────────────
+  // ─────────────────────────── seções (reutilizadas no assistente e no painel) ───────────────────────────
 
   const configCard = (
     <section className={card}>
       <h2 className="mb-3 text-sm font-semibold">
-        {company ? "Configuração da Empresa" : "Criar minha empresa"}
+        {company ? "Configuração da Empresa" : "Vamos criar sua empresa"}
       </h2>
       <form onSubmit={saveConfig} className="space-y-3">
         <div className="grid gap-3 sm:grid-cols-2">
@@ -262,7 +303,7 @@ export function EmpresaPanel({
         </label>
         <div className="flex items-center gap-2">
           <button type="submit" disabled={savingCfg} className={btn}>
-            {savingCfg ? "Salvando…" : company ? "Salvar" : "Criar empresa"}
+            {savingCfg ? "Salvando…" : wizardStep === 1 ? "Próximo →" : "Salvar"}
           </button>
           {cfgSaved && <span className="text-xs font-medium text-emerald-600">✓ Salvo</span>}
         </div>
@@ -270,170 +311,231 @@ export function EmpresaPanel({
     </section>
   );
 
-  if (!company) {
+  const servicesCard = (
+    <section className={card}>
+      <h2 className="mb-1 text-sm font-semibold">Serviços</h2>
+      <p className="mb-3 text-xs text-zinc-400">
+        O agente usa esta lista para atender: só oferece (e agenda) o que estiver aqui e ativo.
+      </p>
+
+      {(company?.services.length ?? 0) > 0 && (
+        <ul className="mb-4 divide-y divide-zinc-100">
+          {company!.services.map((s) => (
+            <li key={s.id} className="flex items-center justify-between gap-3 py-2">
+              <div className="min-w-0">
+                <p className={`truncate text-sm font-medium ${s.active ? "" : "text-zinc-400 line-through"}`}>
+                  {s.name}
+                </p>
+                <p className="text-xs text-zinc-400">
+                  {s.durationMin} min
+                  {s.price != null ? ` · R$ ${s.price.toFixed(2).replace(".", ",")}` : ""}
+                  {s.description ? ` · ${s.description}` : ""}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button onClick={() => toggleService(s)}
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${s.active ? "bg-emerald-50 text-emerald-600" : "bg-zinc-100 text-zinc-500"}`}>
+                  {s.active ? "Ativo" : "Inativo"}
+                </button>
+                <button onClick={() => removeService(s)} aria-label={`Excluir ${s.name}`}
+                  className="rounded-full border border-zinc-200 px-2 py-1 text-[11px] text-zinc-400 hover:bg-zinc-50">
+                  ✕
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form onSubmit={addService} className="grid gap-2 sm:grid-cols-[1fr_90px_110px_1fr_auto]">
+        <input className={input} required placeholder="Nome (ex.: Consulta)" value={svc.name}
+          onChange={(e) => setSvc({ ...svc, name: e.target.value })} />
+        <input className={input} type="number" min={5} max={480} title="Duração (min)" value={svc.durationMin}
+          onChange={(e) => setSvc({ ...svc, durationMin: Number(e.target.value) })} />
+        <input className={input} placeholder="R$ (opcional)" inputMode="decimal" value={svc.price}
+          onChange={(e) => setSvc({ ...svc, price: e.target.value })} />
+        <input className={input} placeholder="Descrição (opcional)" value={svc.description}
+          onChange={(e) => setSvc({ ...svc, description: e.target.value })} />
+        <button type="submit" disabled={addingSvc} className={`${btn} mt-1`}>
+          {addingSvc ? "…" : "Adicionar"}
+        </button>
+      </form>
+
+      {wizardStep === 2 && (
+        <>
+          {company?.services.length === 0 && (
+            <p className="mt-3 text-xs text-zinc-400">
+              Pode adicionar serviços depois também — não precisa cadastrar tudo agora.
+            </p>
+          )}
+          <WizardNav onNext={() => setWizardStep(3)} />
+        </>
+      )}
+    </section>
+  );
+
+  const whatsappCard = (
+    <section className={card}>
+      <h2 className="mb-1 text-sm font-semibold">WhatsApp da empresa</h2>
+      <p className="mb-3 text-xs text-zinc-400">
+        É o número que seus clientes vão chamar — o agente {form.agentName || "de IA"} responde por ele.
+      </p>
+
+      {wpp?.state === "open" ? (
+        <div className="rounded-xl bg-emerald-50 p-4 text-center">
+          <p className="text-sm font-medium text-emerald-800">
+            ✅ WhatsApp conectado{wpp.number ? ` — +${wpp.number}` : ""}
+          </p>
+          <p className="mt-1 text-xs text-emerald-700">O atendente virtual já está respondendo os clientes.</p>
+          <button
+            onClick={async () => {
+              await fetch("/api/empresa/whatsapp", { method: "DELETE" });
+              refreshWpp();
+            }}
+            className="mt-3 rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
+          >
+            Desconectar
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {wpp?.pairingCode ? (
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4 text-center">
+              <p className="text-xs font-medium uppercase tracking-wide text-indigo-500">Código de conexão</p>
+              <p className="mt-1 font-mono text-3xl font-bold tracking-widest text-indigo-700">{wpp.pairingCode}</p>
+              <p className="mt-2 text-xs text-zinc-600">
+                No celular do número da empresa: WhatsApp → <strong>Aparelhos conectados</strong> →{" "}
+                <strong>Conectar com número de telefone</strong> → digite o código.
+              </p>
+              <p className="mt-1 text-[11px] text-zinc-400">Aguardando confirmação… (atualiza sozinho)</p>
+            </div>
+          ) : (
+            <label className="block sm:w-2/3">
+              <span className="text-xs font-medium text-zinc-600">Número do WhatsApp da empresa (com DDD)</span>
+              <input className={input} inputMode="tel" placeholder="(11) 99999-8888" value={phone}
+                onChange={(e) => setPhone(e.target.value)} />
+            </label>
+          )}
+          <button onClick={connectWpp} disabled={connecting || phone.replace(/\D/g, "").length < 10} className={btn}>
+            {connecting ? "Gerando…" : wpp?.pairingCode ? "Gerar novo código" : "Gerar código de conexão"}
+          </button>
+          {wpp?.publicUrlWarning && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              ⚠️ App em localhost — para receber mensagens é preciso a URL pública (produção).
+            </p>
+          )}
+        </div>
+      )}
+
+      {wizardStep === 3 && (
+        <>
+          {wpp?.state !== "open" && (
+            <p className="mt-3 text-xs text-zinc-400">
+              Pode conectar depois também — o código continua disponível na próxima vez que você abrir esta tela.
+            </p>
+          )}
+          <WizardNav onNext={() => setWizardStep(4)} />
+        </>
+      )}
+    </section>
+  );
+
+  const googleCard = (
+    <section className={card}>
+      <h2 className="mb-1 text-sm font-semibold">Google Agenda da empresa</h2>
+      <p className="mb-3 text-xs text-zinc-400">
+        Os agendamentos feitos pelo atendente entram direto nesta agenda.
+      </p>
+      {googleConnected ? (
+        <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-600">
+          ● Google Agenda conectado
+        </span>
+      ) : googleAvailable ? (
+        <a href="/api/auth/google?company=1" className={`${btn} inline-block`}>
+          Conectar Google Agenda
+        </a>
+      ) : (
+        <span className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-500">
+          Google não configurado no servidor — agendamentos ficam só no painel
+        </span>
+      )}
+
+      {wizardStep === 4 && (
+        <>
+          {!googleConnected && (
+            <p className="mt-3 text-xs text-zinc-400">
+              Pode conectar depois também — sem o Google, os agendamentos ficam só no painel.
+            </p>
+          )}
+          <WizardNav
+            nextLabel="Concluir configuração 🎉"
+            onNext={() => {
+              setWizardStep(null);
+              setJustFinished(true);
+              setTimeout(() => setJustFinished(false), 6000);
+            }}
+          />
+        </>
+      )}
+    </section>
+  );
+
+  const appointmentsCard = (
+    <section className={card}>
+      <h2 className="mb-3 text-sm font-semibold">Próximos agendamentos (14 dias)</h2>
+      {appointments.length === 0 ? (
+        <p className="text-sm text-zinc-400">
+          Nenhum agendamento ainda. Assim que um cliente marcar pelo WhatsApp, aparece aqui.
+        </p>
+      ) : (
+        <ul className="divide-y divide-zinc-100">
+          {appointments.map((a) => (
+            <li key={a.id} className="flex items-center justify-between gap-3 py-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{a.title}</p>
+                <p className="text-xs text-zinc-400">
+                  {dtFmt.format(new Date(a.startsAt))} · +{a.clientPhone}
+                  {a.googleSynced ? " · ✔ Google" : ""}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+
+  // ─────────────────────────── render ───────────────────────────
+
+  // Assistente passo a passo (só na configuração inicial): revela 1 etapa por vez.
+  if (wizardStep !== null) {
     return (
       <div className="space-y-4">
-        {configCard}
-        <p className="text-center text-xs text-zinc-400">
-          Depois de criar, você cadastra os serviços, conecta o WhatsApp e o Google Agenda — em menos de 5 minutos.
-        </p>
+        <WizardProgress
+          step={wizardStep}
+          onBack={wizardStep > 1 ? () => setWizardStep((s) => Math.max(1, (s ?? 1) - 1)) : undefined}
+        />
+        {wizardStep === 1 && configCard}
+        {wizardStep === 2 && servicesCard}
+        {wizardStep === 3 && whatsappCard}
+        {wizardStep === 4 && googleCard}
       </div>
     );
   }
 
+  // Painel completo (empresa já configurada).
   return (
     <div className="space-y-4">
+      {justFinished && (
+        <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          🎉 Configuração concluída! Sua empresa já pode atender pelo WhatsApp.
+        </div>
+      )}
       {configCard}
-
-      {/* Serviços */}
-      <section className={card}>
-        <h2 className="mb-1 text-sm font-semibold">Serviços</h2>
-        <p className="mb-3 text-xs text-zinc-400">
-          O agente usa esta lista para atender: só oferece (e agenda) o que estiver aqui e ativo.
-        </p>
-
-        {company.services.length > 0 && (
-          <ul className="mb-4 divide-y divide-zinc-100">
-            {company.services.map((s) => (
-              <li key={s.id} className="flex items-center justify-between gap-3 py-2">
-                <div className="min-w-0">
-                  <p className={`truncate text-sm font-medium ${s.active ? "" : "text-zinc-400 line-through"}`}>
-                    {s.name}
-                  </p>
-                  <p className="text-xs text-zinc-400">
-                    {s.durationMin} min
-                    {s.price != null ? ` · R$ ${s.price.toFixed(2).replace(".", ",")}` : ""}
-                    {s.description ? ` · ${s.description}` : ""}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <button onClick={() => toggleService(s)}
-                    className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${s.active ? "bg-emerald-50 text-emerald-600" : "bg-zinc-100 text-zinc-500"}`}>
-                    {s.active ? "Ativo" : "Inativo"}
-                  </button>
-                  <button onClick={() => removeService(s)} aria-label={`Excluir ${s.name}`}
-                    className="rounded-full border border-zinc-200 px-2 py-1 text-[11px] text-zinc-400 hover:bg-zinc-50">
-                    ✕
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <form onSubmit={addService} className="grid gap-2 sm:grid-cols-[1fr_90px_110px_1fr_auto]">
-          <input className={input} required placeholder="Nome (ex.: Consulta)" value={svc.name}
-            onChange={(e) => setSvc({ ...svc, name: e.target.value })} />
-          <input className={input} type="number" min={5} max={480} title="Duração (min)" value={svc.durationMin}
-            onChange={(e) => setSvc({ ...svc, durationMin: Number(e.target.value) })} />
-          <input className={input} placeholder="R$ (opcional)" inputMode="decimal" value={svc.price}
-            onChange={(e) => setSvc({ ...svc, price: e.target.value })} />
-          <input className={input} placeholder="Descrição (opcional)" value={svc.description}
-            onChange={(e) => setSvc({ ...svc, description: e.target.value })} />
-          <button type="submit" disabled={addingSvc} className={`${btn} mt-1`}>
-            {addingSvc ? "…" : "Adicionar"}
-          </button>
-        </form>
-      </section>
-
-      {/* WhatsApp da empresa */}
-      <section className={card}>
-        <h2 className="mb-1 text-sm font-semibold">WhatsApp da empresa</h2>
-        <p className="mb-3 text-xs text-zinc-400">
-          É o número que seus clientes vão chamar — o agente {form.agentName || "de IA"} responde por ele.
-        </p>
-
-        {wpp?.state === "open" ? (
-          <div className="rounded-xl bg-emerald-50 p-4 text-center">
-            <p className="text-sm font-medium text-emerald-800">
-              ✅ WhatsApp conectado{wpp.number ? ` — +${wpp.number}` : ""}
-            </p>
-            <p className="mt-1 text-xs text-emerald-700">O atendente virtual já está respondendo os clientes.</p>
-            <button
-              onClick={async () => {
-                await fetch("/api/empresa/whatsapp", { method: "DELETE" });
-                refreshWpp();
-              }}
-              className="mt-3 rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
-            >
-              Desconectar
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {wpp?.pairingCode ? (
-              <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4 text-center">
-                <p className="text-xs font-medium uppercase tracking-wide text-indigo-500">Código de conexão</p>
-                <p className="mt-1 font-mono text-3xl font-bold tracking-widest text-indigo-700">{wpp.pairingCode}</p>
-                <p className="mt-2 text-xs text-zinc-600">
-                  No celular do número da empresa: WhatsApp → <strong>Aparelhos conectados</strong> →{" "}
-                  <strong>Conectar com número de telefone</strong> → digite o código.
-                </p>
-                <p className="mt-1 text-[11px] text-zinc-400">Aguardando confirmação… (atualiza sozinho)</p>
-              </div>
-            ) : (
-              <label className="block sm:w-2/3">
-                <span className="text-xs font-medium text-zinc-600">Número do WhatsApp da empresa (com DDD)</span>
-                <input className={input} inputMode="tel" placeholder="(11) 99999-8888" value={phone}
-                  onChange={(e) => setPhone(e.target.value)} />
-              </label>
-            )}
-            <button onClick={connectWpp} disabled={connecting || phone.replace(/\D/g, "").length < 10} className={btn}>
-              {connecting ? "Gerando…" : wpp?.pairingCode ? "Gerar novo código" : "Gerar código de conexão"}
-            </button>
-            {wpp?.publicUrlWarning && (
-              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                ⚠️ App em localhost — para receber mensagens é preciso a URL pública (produção).
-              </p>
-            )}
-          </div>
-        )}
-      </section>
-
-      {/* Google Agenda da empresa */}
-      <section className={card}>
-        <h2 className="mb-1 text-sm font-semibold">Google Agenda da empresa</h2>
-        <p className="mb-3 text-xs text-zinc-400">
-          Os agendamentos feitos pelo atendente entram direto nesta agenda.
-        </p>
-        {googleConnected ? (
-          <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-600">
-            ● Google Agenda conectado
-          </span>
-        ) : googleAvailable ? (
-          <a href="/api/auth/google?company=1" className={`${btn} inline-block`}>
-            Conectar Google Agenda
-          </a>
-        ) : (
-          <span className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-500">
-            Google não configurado no servidor — agendamentos ficam só no painel
-          </span>
-        )}
-      </section>
-
-      {/* Agendamentos */}
-      <section className={card}>
-        <h2 className="mb-3 text-sm font-semibold">Próximos agendamentos (14 dias)</h2>
-        {appointments.length === 0 ? (
-          <p className="text-sm text-zinc-400">
-            Nenhum agendamento ainda. Assim que um cliente marcar pelo WhatsApp, aparece aqui.
-          </p>
-        ) : (
-          <ul className="divide-y divide-zinc-100">
-            {appointments.map((a) => (
-              <li key={a.id} className="flex items-center justify-between gap-3 py-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{a.title}</p>
-                  <p className="text-xs text-zinc-400">
-                    {dtFmt.format(new Date(a.startsAt))} · +{a.clientPhone}
-                    {a.googleSynced ? " · ✔ Google" : ""}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {servicesCard}
+      {whatsappCard}
+      {googleCard}
+      {appointmentsCard}
     </div>
   );
 }
