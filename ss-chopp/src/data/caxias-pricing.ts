@@ -67,3 +67,14 @@ export function getCaxiasFromPrice(productId: string): number | undefined {
 export function getCaxiasPrice(productId: string): number | undefined {
   return getCaxiasUnitPrice(productId, 1);
 }
+
+// Quanto o cliente economiza no total, comparado ao preço de 1 barril,
+// comprando `qty` unidades (só produtos com faixa escalonada têm economia).
+export function getCaxiasSavings(productId: string, qty: number): number {
+  const tiers = caxiasTiers[productId];
+  if (!tiers?.length || qty < 1) return 0;
+  const base = tiers.find((t) => t.min === 1)?.unit ?? Math.max(...tiers.map((t) => t.unit));
+  const current = getCaxiasUnitPrice(productId, qty) ?? base;
+  const savings = (base - current) * qty;
+  return savings > 0 ? savings : 0;
+}

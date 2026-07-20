@@ -314,7 +314,7 @@ async function runTool(
         });
       }
       const rawItens = Array.isArray(input.itens) ? (input.itens as Array<Record<string, unknown>>) : [];
-      const itens: Array<{ produto: string; quantidade: number; precoUnit: number; subtotal: number }> = [];
+      const itens: Array<{ produto: string; quantidade: number; precoUnit: number; subtotal: number; economia: number }> = [];
       const naoReconhecidos: string[] = [];
       for (const it of rawItens) {
         const produtoTxt = String(it.produto ?? "");
@@ -325,8 +325,10 @@ async function runTool(
           continue;
         }
         // Preço unitário conforme a quantidade (aplica faixa escalonada, ex.: Brahma).
+        // economia: quanto o cliente economizou no total vs. o preço de 1 unidade.
         const precoUnit = unitPriceFor(item, qtd);
-        itens.push({ produto: item.produto, quantidade: qtd, precoUnit, subtotal: precoUnit * qtd });
+        const economia = item.tiers?.length ? Math.max(0, (item.price - precoUnit) * qtd) : 0;
+        itens.push({ produto: item.produto, quantidade: qtd, precoUnit, subtotal: precoUnit * qtd, economia });
       }
       if (itens.length === 0) {
         return JSON.stringify({
@@ -336,6 +338,7 @@ async function runTool(
         });
       }
       const total = itens.reduce((s, i) => s + i.subtotal, 0);
+      const economiaTotal = itens.reduce((s, i) => s + i.economia, 0);
       // PIX real vem do Setting (pix_key/pix_nome). Enquanto não configurado,
       // usa um PIX de TESTE — seguro porque esta ferramenta só roda no
       // playground (channel === PLAYGROUND). Ao configurar o PIX real, ele assume.
@@ -347,9 +350,10 @@ async function runTool(
         cidade: zona.city,
         entrega: String(input.entrega ?? ""),
         endereco: input.endereco ? String(input.endereco) : null,
-        itens: itens.map((i) => ({ produto: i.produto, quantidade: i.quantidade, precoUnit: i.precoUnit, subtotal: i.subtotal })),
+        itens: itens.map((i) => ({ produto: i.produto, quantidade: i.quantidade, precoUnit: i.precoUnit, subtotal: i.subtotal, economia: i.economia || undefined })),
         freteGratis: true,
         total,
+        economiaTotal: economiaTotal > 0 ? economiaTotal : undefined,
         naoReconhecidos: naoReconhecidos.length ? naoReconhecidos : undefined,
         pagamento: {
           forma: "PIX",
@@ -357,7 +361,10 @@ async function runTool(
           favorecido: pixNome ?? undefined,
         },
         instrucao:
-          "Apresente o resumo (itens, total, frete grátis, forma de entrega), envie a chave PIX e o favorecido, e peça para o cliente mandar o comprovante. Avise que a equipe confirma o pedido assim que o pagamento cair. Você NÃO dá baixa no estoque — isso é a equipe que faz.",
+          "Apresente o resumo (itens, total, frete grátis, forma de entrega), envie a chave PIX e o favorecido, e peça para o cliente mandar o comprovante. Avise que a equipe confirma o pedido assim que o pagamento cair. Você NÃO dá baixa no estoque — isso é a equipe que faz." +
+          (economiaTotal > 0
+            ? ` Diga também que ele ECONOMIZOU ${formatCurrency(economiaTotal)} comprando essa quantidade (comparado ao preço de 1 unidade) — celebre isso, é uma boa notícia pro cliente.`
+            : ""),
       });
     }
     default:

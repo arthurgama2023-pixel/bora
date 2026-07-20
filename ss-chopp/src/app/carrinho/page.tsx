@@ -5,6 +5,7 @@ import Link from "next/link";
 import { getProductById } from "@/data/products";
 import { useCart, formatPrice } from "@/lib/cart-context";
 import { useLocation } from "@/lib/location-context";
+import { getCaxiasSavings } from "@/data/caxias-pricing";
 
 const WHATSAPP_NUMBER = "5521993765465";
 
@@ -120,7 +121,7 @@ export default function CarrinhoPage() {
     const lines = items.map((item) => {
       const product = getProductById(item.productId);
       if (!product) return "";
-      const lineTotal = unitPrice(item.productId) * item.quantity;
+      const lineTotal = unitPrice(item.productId, item.quantity) * item.quantity;
       return `    ${product.emoji} ${product.name}\n       ${item.quantity}x = ${formatPrice(lineTotal)}`;
     });
 
@@ -175,7 +176,8 @@ export default function CarrinhoPage() {
         {items.map((item) => {
           const product = getProductById(item.productId);
           if (!product) return null;
-          const lineTotal = unitPrice(item.productId) * item.quantity;
+          const lineTotal = unitPrice(item.productId, item.quantity) * item.quantity;
+          const savings = zone?.fixed ? getCaxiasSavings(item.productId, item.quantity) : 0;
 
           return (
             <div
@@ -195,7 +197,7 @@ export default function CarrinhoPage() {
               </div>
               <div className="flex-1">
                 <p className="font-bold text-brand-black">{product.name}</p>
-                <p className="text-sm text-gray-500">{formatPrice(unitPrice(item.productId))}/un.</p>
+                <p className="text-sm text-gray-500">{formatPrice(unitPrice(item.productId, item.quantity))}/un.</p>
                 <div className="mt-1 flex items-center gap-2">
                   <button
                     onClick={() => updateQuantity(item.productId, Math.max(0, item.quantity - 1))}
@@ -214,6 +216,11 @@ export default function CarrinhoPage() {
               </div>
               <div className="flex flex-col items-end gap-2">
                 <p className="font-bold text-brand-amber">{formatPrice(lineTotal)}</p>
+                {savings > 0 && (
+                  <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-bold text-green-700">
+                    economizou {formatPrice(savings)}
+                  </span>
+                )}
                 <button
                   onClick={() => removeItem(item.productId)}
                   className="text-xs text-gray-400 hover:text-brand-amber"

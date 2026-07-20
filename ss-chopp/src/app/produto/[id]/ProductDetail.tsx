@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCart, formatPrice } from "@/lib/cart-context";
 import { useLocation } from "@/lib/location-context";
-import { isCaxiasBairro, getCaxiasPrice } from "@/data/caxias-pricing";
+import { getCaxiasUnitPrice, caxiasTiers, getCaxiasSavings } from "@/data/caxias-pricing";
 import type { Product } from "@/lib/types";
 
 export default function ProductDetail({ product }: { product: Product }) {
@@ -15,15 +15,19 @@ export default function ProductDetail({ product }: { product: Product }) {
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
 
-  // Se é Duque de Caxias, usa preço fixo
+  // Produto com preço escalonado por quantidade (ex.: Brahma) na região fixa
+  const tiers = zone?.fixed ? caxiasTiers[product.id] : undefined;
+
+  // Zona com tabela de preço fixo — preço unitário conforme a quantidade.
   let unit = product.price * priceFactor;
-  if (zone && isCaxiasBairro(zone.name)) {
-    const fixedPrice = getCaxiasPrice(product.id);
+  if (zone?.fixed) {
+    const fixedPrice = getCaxiasUnitPrice(product.id, quantity);
     if (fixedPrice !== undefined) {
       unit = fixedPrice;
     }
   }
   const price = unit * quantity;
+  const savings = zone?.fixed ? getCaxiasSavings(product.id, quantity) : 0;
 
   function handleAddToCart() {
     addItem(product.id, quantity);
@@ -66,17 +70,34 @@ export default function ProductDetail({ product }: { product: Product }) {
           )}
 
           <div className="mt-4 flex items-baseline gap-2">
-            {discountPercent > 0 && (
+            {discountPercent > 0 && !tiers && (
               <span className="text-sm text-gray-400 line-through">{formatPrice(product.price)}</span>
             )}
             <span className="text-2xl font-extrabold text-brand-amber">{formatPrice(unit)}</span>
             <span className="text-sm text-gray-500">/ un.</span>
-            {discountPercent > 0 && (
+            {discountPercent > 0 && !tiers && (
               <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-bold text-green-700">
                 −{discountPercent}% hoje
               </span>
             )}
           </div>
+          {tiers && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {[...tiers].sort((a, b) => a.min - b.min).map((t, i, arr) => (
+                <span
+                  key={t.min}
+                  className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                    quantity >= t.min && (i === arr.length - 1 || quantity < arr[i + 1].min)
+                      ? "bg-brand-amber text-white"
+                      : "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  {t.min}
+                  {i === arr.length - 1 ? "+" : " un"}: {formatPrice(t.unit)} cada
+                </span>
+              ))}
+            </div>
+          )}
           {zone && (
             <p className="mt-1 text-xs font-semibold text-green-700">
               🚚 Frete grátis para {zone.name} · {zone.city} — entrega {zone.eta.toLowerCase()}
@@ -105,6 +126,12 @@ export default function ProductDetail({ product }: { product: Product }) {
           <p className="mt-4 text-xs text-gray-400">
             * Combine a entrega com pelo menos 24h de antecedência para garantir o barril gelado.
           </p>
+
+          {savings > 0 && (
+            <p className="mt-3 inline-flex w-fit items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-sm font-bold text-green-700">
+              🎉 Você economizou {formatPrice(savings)}!
+            </p>
+          )}
 
           <div className="mt-6 flex items-center gap-4">
             <p className="text-xl font-extrabold text-brand-black">{formatPrice(price)}</p>
