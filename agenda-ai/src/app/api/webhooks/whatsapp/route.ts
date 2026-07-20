@@ -178,5 +178,24 @@ async function processIncoming(incoming: IncomingMessage): Promise<void> {
   }
 
   const result = await handleMessage(user.id, text);
-  await channel.sendMessage(incoming.externalId, result.reply);
+  let reply = result.reply;
+
+  // Se mexeu na agenda mas o número ainda NÃO conectou o Google, avisa que salvou
+  // localmente e manda o link — resolve a confusão "por que não foi pro Google?".
+  if (result.agendaChanged) {
+    const connected = await db.integration.findFirst({
+      where: { userId: user.id, provider: "google", status: "active" },
+      select: { id: true },
+    });
+    if (!connected) {
+      const link = await googleConnectLink(user.id);
+      if (link) {
+        reply +=
+          "\n\n_Salvei aqui na sua agenda. Para os compromissos irem direto pro seu Google Agenda, conecte uma vez:_\n" +
+          link;
+      }
+    }
+  }
+
+  await channel.sendMessage(incoming.externalId, reply);
 }
