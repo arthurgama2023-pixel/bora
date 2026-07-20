@@ -2,7 +2,7 @@ import { hasClaude, hasGemini } from "@/lib/env";
 import { FallbackParser } from "./fallback";
 import type { IntentParser } from "./types";
 
-export type { Intent, IntentParser, ParserContext } from "./types";
+export type { EventItem, Intent, IntentParser, ParserContext } from "./types";
 
 let parser: IntentParser | null = null;
 

@@ -1,7 +1,17 @@
 import { db } from "@/lib/db";
 import { getCalendarForUser, type CalendarEvent, type CalendarProvider } from "@/modules/calendar";
-import { getIntentParser, type Intent } from "@/modules/ai";
-import { addDays, addMinutes, fmtDateTime, fmtDay, fmtTime, normalize, sameDay, startOfDay } from "@/modules/shared/dates";
+import { getIntentParser, type EventItem, type Intent } from "@/modules/ai";
+import {
+  addDays,
+  addMinutes,
+  fmtDateTime,
+  fmtDay,
+  fmtTime,
+  normalize,
+  reconcileTimeOfDay,
+  sameDay,
+  startOfDay,
+} from "@/modules/shared/dates";
 
 interface PendingAction {
   kind: "create" | "delete" | "update";
@@ -40,6 +50,14 @@ export async function handleMessage(userId: string, text: string): Promise<ChatR
       .map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
     pendingAction: Boolean(conversation.pendingAction),
   });
+
+  // Rede de segurança: corrige manhã/tarde/noite se a IA inverteu o AM/PM,
+  // comparando o horário absoluto que ela devolveu com o texto original do usuário.
+  if (intent.type === "create_event") {
+    intent.events = intent.events.map((e) => ({ ...e, start: reconcileTimeOfDay(text, e.start) }));
+  } else if (intent.type === "update_event" && intent.newStart) {
+    intent.newStart = reconcileTimeOfDay(text, intent.newStart);
+  }
 
   const calendar = await getCalendarForUser(userId);
   const pending: PendingAction | null = conversation.pendingAction
@@ -136,39 +154,37 @@ async function runPending(ctx: ExecContext): Promise<ExecResult> {
   return { reply: `🔁 Remarcado: **${title}** — ${fmtDateTime(new Date(start))}.`, agendaChanged: true, newPending: null };
 }
 
-async function createEvent(
-  intent: Extract<Intent, { type: "create_event" }>,
-  ctx: ExecContext,
-): Promise<ExecResult> {
-  const durationMin = intent.durationMin ?? ctx.defaultDurMin;
-  const start = new Date(intent.start);
+/** Um único compromisso: fluxo com confirmação de conflito (permite "sim"/"não"). */
+async function createSingleEvent(item: EventItem, ctx: ExecContext): Promise<ExecResult> {
+  const durationMin = item.durationMin ?? ctx.defaultDurMin;
+  const start = new Date(item.start);
   if (isNaN(start.getTime())) {
     return { reply: "Não consegui entender a data. Pode repetir? Ex.: “amanhã às 14h”.", agendaChanged: false };
   }
 
   // Recorrente: cria ocorrências nas próximas 2 semanas
-  if (intent.recurringWeekdays?.length) {
+  if (item.recurringWeekdays?.length) {
     const seriesId = crypto.randomUUID();
     const created: Date[] = [];
     for (let d = 0; d < 14; d++) {
       const day = addDays(startOfDay(new Date()), d);
-      if (!intent.recurringWeekdays.includes(day.getDay())) continue;
+      if (!item.recurringWeekdays.includes(day.getDay())) continue;
       const s = new Date(day);
       s.setHours(start.getHours(), start.getMinutes(), 0, 0);
       if (s < new Date()) continue;
       await ctx.calendar.createEvent({
-        title: intent.title,
+        title: item.title,
         start: s,
         end: addMinutes(s, durationMin),
-        location: intent.location,
-        description: intent.description,
+        location: item.location,
+        description: item.description,
         seriesId,
       });
       created.push(s);
     }
     const days = [...new Set(created.map((d) => fmtDay(d).split(",")[0]))].join(", ");
     return {
-      reply: `✅ Criei **${intent.title}** recorrente às ${fmtTime(start)} (${days}) — ${created.length} ocorrências nas próximas 2 semanas.`,
+      reply: `✅ Criei **${item.title}** recorrente às ${fmtTime(start)} (${days}) — ${created.length} ocorrências nas próximas 2 semanas.`,
       agendaChanged: true,
     };
   }
@@ -182,31 +198,135 @@ async function createEvent(
     const slots = await ctx.calendar.findFreeSlots(end, addDays(startOfDay(start), 1), durationMin, ctx.workday);
     const alt = slots[0]?.start ?? null;
     const pendingPayload = {
-      title: intent.title,
+      title: item.title,
       start: (alt ?? start).toISOString(),
       end: addMinutes(alt ?? start, durationMin).toISOString(),
-      location: intent.location,
-      description: intent.description,
+      location: item.location,
+      description: item.description,
     };
     const question = alt
-      ? `⚠️ Você já tem **${other.title}** às ${fmtTime(other.start)}. Posso marcar **${intent.title}** às ${fmtTime(alt)}?`
+      ? `⚠️ Você já tem **${other.title}** às ${fmtTime(other.start)}. Posso marcar **${item.title}** às ${fmtTime(alt)}?`
       : `⚠️ Você já tem **${other.title}** às ${fmtTime(other.start)} e não encontrei outro horário livre no dia. Quer marcar mesmo assim ou escolher outro dia?`;
     return {
       reply: question,
       agendaChanged: false,
-      newPending: { kind: "create", payload: pendingPayload, summary: intent.title },
+      newPending: { kind: "create", payload: pendingPayload, summary: item.title },
     };
   }
 
   const ev = await ctx.calendar.createEvent({
-    title: intent.title,
+    title: item.title,
     start,
     end,
-    location: intent.location,
-    description: intent.description,
-    attendees: intent.attendees,
+    location: item.location,
+    description: item.description,
+    attendees: item.attendees,
   });
   return { reply: `✅ Agendado: **${ev.title}** — ${fmtDateTime(ev.start)}.`, agendaChanged: true };
+}
+
+/**
+ * Um item dentro de um lote (2+ compromissos na mesma mensagem). Sem pausa para
+ * confirmar cada conflito individualmente — não escala por texto/WhatsApp; em vez
+ * disso resolve automaticamente para o próximo horário livre e relata o que fez.
+ */
+async function createBatchItem(
+  item: EventItem,
+  ctx: ExecContext,
+): Promise<{ ok: true; summary: string } | { ok: false; reason: string }> {
+  const durationMin = item.durationMin ?? ctx.defaultDurMin;
+  const start = new Date(item.start);
+  if (isNaN(start.getTime())) return { ok: false, reason: `${item.title} (não entendi a data/hora)` };
+
+  if (item.recurringWeekdays?.length) {
+    const seriesId = crypto.randomUUID();
+    const created: Date[] = [];
+    for (let d = 0; d < 14; d++) {
+      const day = addDays(startOfDay(new Date()), d);
+      if (!item.recurringWeekdays.includes(day.getDay())) continue;
+      const s = new Date(day);
+      s.setHours(start.getHours(), start.getMinutes(), 0, 0);
+      if (s < new Date()) continue;
+      await ctx.calendar.createEvent({
+        title: item.title,
+        start: s,
+        end: addMinutes(s, durationMin),
+        location: item.location,
+        description: item.description,
+        seriesId,
+      });
+      created.push(s);
+    }
+    if (!created.length) return { ok: false, reason: `${item.title} (recorrência sem próxima ocorrência)` };
+    const days = [...new Set(created.map((d) => fmtDay(d).split(",")[0]))].join(", ");
+    return {
+      ok: true,
+      summary: `**${item.title}** recorrente às ${fmtTime(start)} (${days}) — ${created.length} ocorrências`,
+    };
+  }
+
+  let finalStart = start;
+  let note = "";
+  const end = addMinutes(start, durationMin);
+  const conflicts = await ctx.calendar.findConflicts(start, end);
+  if (conflicts.length > 0) {
+    const slots = await ctx.calendar.findFreeSlots(end, addDays(startOfDay(start), 1), durationMin, ctx.workday);
+    const alt = slots[0]?.start;
+    if (!alt) {
+      return {
+        ok: false,
+        reason: `${item.title} (conflito com **${conflicts[0].title}**, sem outro horário livre no dia)`,
+      };
+    }
+    finalStart = alt;
+    note = " _(ajustado por conflito de horário)_";
+  }
+
+  const ev = await ctx.calendar.createEvent({
+    title: item.title,
+    start: finalStart,
+    end: addMinutes(finalStart, durationMin),
+    location: item.location,
+    description: item.description,
+    attendees: item.attendees,
+  });
+  return { ok: true, summary: `**${ev.title}** — ${fmtDateTime(ev.start)}${note}` };
+}
+
+async function createEvent(
+  intent: Extract<Intent, { type: "create_event" }>,
+  ctx: ExecContext,
+): Promise<ExecResult> {
+  // Caso comum (a grande maioria das mensagens): 1 compromisso — preserva o fluxo
+  // de confirmação de conflito exatamente como antes.
+  if (intent.events.length === 1) {
+    return createSingleEvent(intent.events[0], ctx);
+  }
+
+  // Vários compromissos na mesma mensagem (texto ou áudio): cria cada um, em
+  // sequência (não em paralelo — para o 2º já enxergar o 1º ao checar conflito).
+  const created: string[] = [];
+  const skipped: string[] = [];
+  for (const item of intent.events) {
+    const r = await createBatchItem(item, ctx);
+    if (r.ok) created.push(r.summary);
+    else skipped.push(r.reason);
+  }
+
+  const parts: string[] = [];
+  if (created.length) {
+    parts.push(
+      `✅ Agendei ${created.length} compromisso${created.length > 1 ? "s" : ""}:\n` +
+        created.map((c) => `• ${c}`).join("\n"),
+    );
+  }
+  if (skipped.length) {
+    parts.push(`⚠️ Não consegui agendar:\n${skipped.map((s) => `• ${s}`).join("\n")}`);
+  }
+  return {
+    reply: parts.join("\n\n") || "Não entendi nenhum compromisso para agendar.",
+    agendaChanged: created.length > 0,
+  };
 }
 
 /** Encontra o evento mais provável para uma referência do usuário ("dentista", "reunião de terça"). */

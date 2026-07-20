@@ -86,7 +86,20 @@ function extractWhen(norm: string, now: Date): ParsedWhen {
   consume(/\b(?:as |às )?(\d{1,2})(?::(\d{2})|h(\d{2})?)?\s*(?:horas?|hrs?)?\b(?=\s|$|\.)/, (m) => {
     const h = parseInt(m[1], 10);
     if (h >= 0 && h <= 23 && (norm.includes(`as ${m[1]}`) || norm.includes(`${m[1]}h`) || norm.includes(`${m[1]} horas`) || norm.includes(`${m[1]}:`))) {
-      hour = h;
+      let hh = h;
+      // "10 da manhã"/"8 da noite"/"2 da tarde" — número + período explícito nunca pode
+      // dar AM/PM errado: olha logo depois do match por "da/de manhã|tarde|noite".
+      const idx = (m.index ?? 0) + m[0].length;
+      const tail = norm.slice(idx, idx + 16);
+      if (/^\s*(da |de )?manha\b/.test(tail)) {
+        if (hh === 12) hh = 0;
+      } else if (/^\s*(da |de )?tarde\b/.test(tail)) {
+        if (hh >= 1 && hh <= 11) hh += 12;
+      } else if (/^\s*(da |de )?noite\b/.test(tail)) {
+        if (hh >= 1 && hh <= 11) hh += 12;
+        else if (hh === 12) hh = 0;
+      }
+      hour = hh;
       minute = parseInt(m[2] ?? m[3] ?? "0", 10) || 0;
     }
   });
@@ -214,7 +227,8 @@ export class FallbackParser implements IntentParser {
       return { type: "update_event", query, newStart };
     }
 
-    // criação
+    // criação (o parser local trata 1 compromisso por mensagem; múltiplos na mesma
+    // mensagem são suportados pelo Gemini/Claude, que é o parser ativo em produção)
     const isCreate =
       /\b(marca|marque|marcar|agenda|agende|agendar|cria|crie|criar|adiciona|adicione|coloca|coloque|lembra|lembre|me lembra)\b/.test(norm) ||
       when.hour !== null;
@@ -226,9 +240,13 @@ export class FallbackParser implements IntentParser {
       }
       return {
         type: "create_event",
-        title,
-        start: (start ?? startOfDay(addDays(now, 1))).toISOString(),
-        recurringWeekdays: when.weekdays.length >= 2 ? when.weekdays : undefined,
+        events: [
+          {
+            title,
+            start: (start ?? startOfDay(addDays(now, 1))).toISOString(),
+            recurringWeekdays: when.weekdays.length >= 2 ? when.weekdays : undefined,
+          },
+        ],
       };
     }
 

@@ -1,10 +1,9 @@
 import { z } from "zod";
 
-// Uma intenção por mensagem. O parser (Claude ou fallback local) SEMPRE devolve
-// uma destas estruturas; datas são ISO absolutas — nunca "amanhã" ou "às 14".
+// Uma intenção por mensagem. O parser (Gemini/Claude ou fallback local) SEMPRE
+// devolve uma destas estruturas; datas são ISO absolutas — nunca "amanhã" ou "às 14".
 
-export const createEventSchema = z.object({
-  type: z.literal("create_event"),
+export const eventItemSchema = z.object({
   title: z.string().min(1),
   start: z.string(), // ISO
   durationMin: z.number().int().positive().optional(),
@@ -12,6 +11,13 @@ export const createEventSchema = z.object({
   description: z.string().optional(),
   attendees: z.array(z.string()).optional(),
   recurringWeekdays: z.array(z.number().int().min(0).max(6)).optional(),
+});
+export type EventItem = z.infer<typeof eventItemSchema>;
+
+export const createEventSchema = z.object({
+  type: z.literal("create_event"),
+  // Um item por compromisso — permite "marca dentista terça e reunião quinta" numa só mensagem.
+  events: z.array(eventItemSchema).min(1),
 });
 
 export const updateEventSchema = z.object({
