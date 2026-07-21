@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Loader2,
   ScrollText,
+  Tags,
   Users,
   UserCog,
   Warehouse,
@@ -37,6 +38,12 @@ const NAV = [
   },
   { href: "/usuarios", label: "Usuários", icon: UserCog, roles: ["ADMIN"] },
   { href: "/auditoria", label: "Auditoria", icon: ScrollText, roles: ["ADMIN"] },
+  {
+    href: "/precos-site",
+    label: "Preços do Site",
+    icon: Tags,
+    roles: ["ADMIN", "MANAGER"],
+  },
 ] as const;
 
 // Spinner que aparece SÓ no item em transição. useLinkStatus só funciona dentro
