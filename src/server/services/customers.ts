@@ -125,6 +125,77 @@ export async function createCustomer(session: Session, data: CustomerData) {
   return customer;
 }
 
+// "Pedido de costume" guardado dentro de `notes` com este prefixo (evita
+// migração de schema). Ex.: "Pedido de costume: Belco 50L, Heineken".
+const USUAL_PREFIX = "Pedido de costume:";
+function mergeUsualOrder(notes: string | null, usual: string): string {
+  const clean = usual.trim();
+  const line = `${USUAL_PREFIX} ${clean}`;
+  const others = (notes ?? "")
+    .split("\n")
+    .filter((l) => !l.trim().startsWith(USUAL_PREFIX))
+    .join("\n")
+    .trim();
+  return others ? `${line}\n${others}` : line;
+}
+
+/**
+ * Upsert ESPONTÂNEO usado pelo AGENTE de IA no WhatsApp. Reconhece o cliente
+ * pelo número; se existir, COMPLETA só o que falta (nunca sobrescreve dado que
+ * o admin já preencheu, exceto `usualOrder` que é sempre atualizado); se não
+ * existir, CRIA com os pilares (nome, whatsapp, endereço, pedido de costume).
+ * Não passa pelo customerSchema (o agente coleta aos poucos, sem exigir tudo).
+ */
+export async function upsertCustomerFromAgent(
+  companyId: string,
+  phone: string,
+  fields: {
+    name?: string;
+    address?: string;
+    neighborhood?: string;
+    city?: string;
+    usualOrder?: string;
+  },
+): Promise<{ id: string; created: boolean; name: string }> {
+  const existing = await findCustomerByPhone(companyId, phone);
+  const val = (s?: string) => (s && s.trim() ? s.trim() : undefined);
+
+  if (existing) {
+    const patch: Record<string, unknown> = {};
+    // completa só campos VAZIOS (não pisa no que o admin já cadastrou)
+    const fillIfEmpty = (key: "name" | "address" | "neighborhood" | "city", v?: string) => {
+      const cur = (existing as Record<string, unknown>)[key];
+      if (v && (!cur || !String(cur).trim())) patch[key] = v;
+    };
+    fillIfEmpty("name", val(fields.name));
+    fillIfEmpty("address", val(fields.address));
+    fillIfEmpty("neighborhood", val(fields.neighborhood));
+    fillIfEmpty("city", val(fields.city));
+    if (!existing.whatsapp || !existing.whatsapp.trim()) patch.whatsapp = phone;
+    if (val(fields.usualOrder)) patch.notes = mergeUsualOrder(existing.notes, fields.usualOrder!);
+    if (Object.keys(patch).length > 0) {
+      await prisma.customer.update({ where: { id: existing.id }, data: patch });
+    }
+    return { id: existing.id, created: false, name: existing.name };
+  }
+
+  const name = val(fields.name) ?? `Cliente ${phone}`;
+  const customer = await prisma.customer.create({
+    data: {
+      companyId,
+      name,
+      whatsapp: phone,
+      address: val(fields.address) ?? null,
+      neighborhood: val(fields.neighborhood) ?? null,
+      city: val(fields.city) ?? null,
+      notes: val(fields.usualOrder) ? mergeUsualOrder(null, fields.usualOrder!) : null,
+      type: "COMERCIO",
+      status: "ACTIVE",
+    },
+  });
+  return { id: customer.id, created: true, name };
+}
+
 // Preços por tipo de barril: lista TODOS os tipos ativos da empresa, já com o
 // preço deste cliente (0 quando ainda não foi definido) — pronto para o form
 // exibir uma linha por tipo, pré-selecionado, sem precisar "adicionar" nada.

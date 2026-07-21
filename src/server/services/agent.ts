@@ -10,7 +10,7 @@ import {
 import { phoneMatchKey } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { getCustomerBalance, getCustomerPrices } from "./customers";
+import { getCustomerBalance, getCustomerPrices, upsertCustomerFromAgent } from "./customers";
 import { getCustomerInsights, SEGMENT_LABELS } from "./crm";
 import { getCustomerStatement } from "./reports";
 import {
@@ -50,6 +50,16 @@ Regras:
 - Se o cliente estiver bloqueado, oriente a falar com o financeiro — não prometa entrega.
 - Não confirme preços (a tabela ainda não está no sistema) — diga que o comercial confirma.
 - Responda em português brasileiro, mensagens curtas no estilo WhatsApp.`;
+
+// Regras SEMPRE injetadas (independem da personalidade editável no banco).
+// Governam o cadastro espontâneo e natural do cliente.
+const NATURAL_CUSTOMER_RULES = `# Cadastro natural (regras invioláveis)
+- NUNCA diga que o cliente "não tem cadastro", "não está cadastrado", "não te encontrei aqui" ou algo do tipo. Trate TODO mundo como cliente conhecido, mesmo que seja o primeiro contato.
+- NUNCA diga que está "cadastrando", "salvando", "atualizando o cadastro" ou "anotando seus dados". Isso é feito nos bastidores, de forma invisível — o cliente não vê.
+- Conforme o cliente for te contando as coisas (o nome dele, o endereço, o bairro, ou o que ele quer/costuma pedir), use a ferramenta salvar_cliente para guardar — de forma silenciosa, sem comentar nada.
+- Se você precisar de uma informação que ainda não tem (ex.: o endereço pra entrega), pergunte de forma leve e natural ("Me passa o endereço pra entrega?") e siga a conversa. Quando o cliente responder, guarde com salvar_cliente. Se ele já tiver endereço no cadastro, use-o e NÃO pergunte de novo.
+- Os pilares que você vai montando aos poucos: nome do cliente, endereço, e o que ele costuma pedir (ex.: "Belco 50L, Heineken"). Salve cada um assim que souber.
+- Nunca fique "perdido" por falta de informação: se faltar algo, pergunte com naturalidade uma coisa por vez e continue.`;
 
 export async function getAgentConfig(companyId: string) {
   const existing = await prisma.agentConfig.findUnique({ where: { companyId } });
@@ -137,6 +147,24 @@ const TOOLS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "salvar_cliente",
+    description:
+      "Guarda/atualiza SILENCIOSAMENTE o cadastro do cliente com o que você descobriu na conversa (nome, endereço, bairro, cidade e o que ele costuma pedir). Chame de forma NATURAL e INVISÍVEL sempre que o cliente informar uma dessas coisas — por exemplo, ao dizer o endereço, o nome, ou o que quer/costuma pedir. Funciona para número novo (cria o cadastro) e para cliente já existente (completa só o que falta). NUNCA avise o cliente que está cadastrando/salvando — apenas siga a conversa normalmente. Não é preciso ter tudo de uma vez; salve o que tiver.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        nome: { type: Type.STRING, description: "Nome do cliente, se informado" },
+        endereco: { type: Type.STRING, description: "Endereço (rua, número), se informado" },
+        bairro: { type: Type.STRING, description: "Bairro, se informado" },
+        cidade: { type: Type.STRING, description: "Cidade, se informada" },
+        pedido_costume: {
+          type: Type.STRING,
+          description: "O que o cliente costuma pedir, ex.: 'Belco 50L, Heineken'",
+        },
+      },
+    },
+  },
+  {
     name: "finalizar_pedido",
     description:
       "Fecha o pedido do cliente e retorna o resumo com total e a chave PIX para pagamento. Use SOMENTE quando o cliente já confirmou o que quer: o(s) produto(s), a quantidade, o bairro e se é entrega ou retirada (e o endereço, se for entrega). A ferramenta calcula o total pela tabela de preço fixo e devolve a chave PIX. Não use se ainda faltar alguma dessas informações.",
@@ -173,11 +201,13 @@ async function getSetting(companyId: string, key: string): Promise<string | null
   return row?.value?.trim() || null;
 }
 
+type ToolCtx = { channel?: string; phone?: string; customerId?: string | null };
+
 async function runTool(
   companyId: string,
   name: string,
   input: Record<string, unknown>,
-  channel: string = "PLAYGROUND",
+  ctx: ToolCtx = {},
 ): Promise<string> {
   switch (name) {
     case "buscar_cliente": {
@@ -381,6 +411,30 @@ async function runTool(
             : ""),
       });
     }
+    case "salvar_cliente": {
+      // Cadastro/atualização espontânea (silenciosa). Só grava quando há um
+      // número (WhatsApp) — no playground não há número, então não grava.
+      if (!ctx.phone) {
+        return JSON.stringify({
+          ok: true,
+          nota: "Sem número (modo teste) — nada gravado. Siga a conversa naturalmente.",
+        });
+      }
+      const res = await upsertCustomerFromAgent(companyId, ctx.phone, {
+        name: input.nome ? String(input.nome) : undefined,
+        address: input.endereco ? String(input.endereco) : undefined,
+        neighborhood: input.bairro ? String(input.bairro) : undefined,
+        city: input.cidade ? String(input.cidade) : undefined,
+        usualOrder: input.pedido_costume ? String(input.pedido_costume) : undefined,
+      });
+      return JSON.stringify({
+        ok: true,
+        salvo: true,
+        instrucao:
+          "Informação guardada nos bastidores. NÃO comente que salvou/cadastrou nem que o cliente 'não tinha cadastro' — apenas continue a conversa de forma natural, como se já conhecesse o cliente.",
+        _customerId: res.id,
+      });
+    }
     default:
       return `Ferramenta desconhecida: ${name}`;
   }
@@ -405,12 +459,19 @@ async function buildIdentityContext(
     }),
     prisma.customer.findUnique({
       where: { id: customer.id },
-      select: { contactName: true, neighborhood: true, city: true, address: true },
+      select: { contactName: true, neighborhood: true, city: true, address: true, notes: true },
     }),
   ]);
 
   const contato = record?.contactName?.trim() || null;
   const enderecoCadastrado = record?.address?.trim() || null;
+  // "Pedido de costume" fica dentro de notes com o prefixo (ver customers.ts)
+  const pedidoCostume =
+    (record?.notes ?? "")
+      .split("\n")
+      .find((l) => l.trim().startsWith("Pedido de costume:"))
+      ?.replace("Pedido de costume:", "")
+      .trim() || null;
 
   const kegs =
     balance.rows
@@ -434,7 +495,10 @@ async function buildIdentityContext(
     record?.neighborhood ? `- Bairro do cliente: ${record.neighborhood}${record.city ? ` · ${record.city}` : ""} (se ele perguntar preço/entrega, já use preco_por_bairro com este bairro sem precisar perguntar de novo)` : "",
     enderecoCadastrado
       ? `- Endereço de entrega JÁ CADASTRADO: ${enderecoCadastrado}. Ele já é cliente e esse é o endereço dele — ao fechar o pedido (finalizar_pedido), use este endereço automaticamente e NÃO peça o endereço de novo. Só pergunte se ele mencionar que quer entregar em outro lugar.`
-      : "",
+      : `- SEM endereço no cadastro ainda. Se ele pedir entrega, pergunte o endereço de forma natural ("Me passa o endereço pra entrega?") — NÃO fique procurando/travado, e NÃO diga que não achou o cadastro. Quando ele responder, guarde com salvar_cliente (silenciosamente) e siga.`,
+    pedidoCostume
+      ? `- Pedido de costume dele: ${pedidoCostume} (pode sugerir "o de sempre?" quando fizer sentido).`
+      : `- Ainda não sabemos o que ele costuma pedir. Quando ele disser o que quer, guarde com salvar_cliente (pedido_costume).`,
     `- customerId: ${customer.id} (USE este id nas ferramentas situacao_cliente, extrato_cliente — não chame buscar_cliente para ele)`,
     `- WhatsApp: ${phone}`,
     `- Status: ${statusLabel} · Tipo: ${typeLabel}`,
@@ -457,10 +521,11 @@ async function buildIdentityContext(
 
 function buildUnknownContext(phone: string): string {
   return [
-    "CONTEXTO — NÚMERO NÃO CADASTRADO:",
-    `O WhatsApp ${phone} não corresponde a nenhum cliente cadastrado.`,
-    "Pode ser um contato novo. Se a pessoa mencionar um nome ou empresa, use buscar_cliente para tentar localizar antes de assumir que é novo.",
-    "Se for realmente novo, seja acolhedor, colete nome e cidade, mas avise que o cadastro é finalizado pela equipe.",
+    "CONTEXTO — PRIMEIRO CONTATO DESTE NÚMERO:",
+    `WhatsApp: ${phone}. É provavelmente um contato novo — mas trate-o como cliente normal desde já. NUNCA diga que ele "não tem cadastro".`,
+    "Se ele mencionar um nome ou empresa, você pode usar buscar_cliente para ver se já existe. Se não existir, tudo bem — apenas siga a conversa.",
+    "Vá coletando os pilares de forma natural, uma coisa por vez, no ritmo da conversa: o NOME dele, o ENDEREÇO (quando for falar de entrega) e o que ele QUER/COSTUMA pedir (ex.: 'Belco 50L, Heineken').",
+    "Assim que souber cada informação, guarde SILENCIOSAMENTE com salvar_cliente (o número já entra automático). NÃO anuncie que está cadastrando — aja como se já conhecesse a pessoa.",
   ].join("\n");
 }
 
@@ -516,9 +581,9 @@ export async function chatWithAgent(
       ? await buildIdentityContext(companyId, opts.identifiedCustomer, opts.phone)
       : buildUnknownContext(opts.phone);
   }
-  const systemInstruction = contextBlock
-    ? `${config.personality}\n\n---\n${contextBlock}`
-    : config.personality;
+  const systemInstruction = [config.personality, NATURAL_CUSTOMER_RULES, contextBlock]
+    .filter(Boolean)
+    .join("\n\n---\n");
 
   if (userMessage) {
     await prisma.agentMessage.create({
@@ -538,7 +603,11 @@ export async function chatWithAgent(
   let simulated = false;
 
   if (process.env.GEMINI_API_KEY) {
-    const result = await runGeminiLoop(companyId, systemInstruction, history, channel);
+    const result = await runGeminiLoop(companyId, systemInstruction, history, {
+      channel,
+      phone: opts.phone,
+      customerId,
+    });
     reply = result.reply;
     toolsUsed = result.toolsUsed;
   } else {
@@ -565,7 +634,7 @@ async function runGeminiLoop(
   companyId: string,
   systemInstruction: string,
   history: ChatTurn[],
-  channel: string,
+  ctx: ToolCtx,
 ): Promise<{ reply: string; toolsUsed: string[] }> {
   const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const toolsUsed: string[] = [];
@@ -618,7 +687,7 @@ async function runGeminiLoop(
       toolsUsed.push(name);
       let output: string;
       try {
-        output = await runTool(companyId, name, (call.args ?? {}) as Record<string, unknown>, channel);
+        output = await runTool(companyId, name, (call.args ?? {}) as Record<string, unknown>, ctx);
       } catch (e) {
         output = `Erro ao consultar: ${e instanceof Error ? e.message : "desconhecido"}`;
       }

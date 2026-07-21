@@ -233,6 +233,16 @@ export function CustomerForm({
       setLoading(false);
       return;
     }
+    if (!payload.whatsapp) {
+      setError("WhatsApp é obrigatório — é ele que o agente usa pra reconhecer o cliente.");
+      setLoading(false);
+      return;
+    }
+    if (!payload.address) {
+      setError("Endereço é obrigatório — necessário pra entrega.");
+      setLoading(false);
+      return;
+    }
     try {
       const res = await fetch(
         initial?.id ? `/api/v1/customers/${initial.id}` : "/api/v1/customers",
@@ -300,14 +310,24 @@ export function CustomerForm({
           <Field label="Telefone">
             <Input name="phone" defaultValue={initial?.phone ?? ""} />
           </Field>
-          <Field label="WhatsApp">
-            <Input name="whatsapp" defaultValue={initial?.whatsapp ?? ""} />
+          <Field label="WhatsApp *">
+            <Input
+              name="whatsapp"
+              defaultValue={initial?.whatsapp ?? ""}
+              placeholder="(21) 9....."
+              required
+            />
           </Field>
           <Field label="E-mail">
             <Input name="email" type="email" defaultValue={initial?.email ?? ""} />
           </Field>
-          <Field label="Endereço" className="lg:col-span-2">
-            <Input name="address" defaultValue={initial?.address ?? ""} />
+          <Field label="Endereço *" className="lg:col-span-2">
+            <Input
+              name="address"
+              defaultValue={initial?.address ?? ""}
+              placeholder="Rua, número"
+              required
+            />
           </Field>
           <Field label="Bairro">
             <Input name="neighborhood" defaultValue={initial?.neighborhood ?? ""} />
