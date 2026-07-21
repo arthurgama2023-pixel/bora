@@ -48,7 +48,7 @@ Suas funções:
 Regras:
 - NUNCA invente dados: use sempre as ferramentas para consultar clientes e estoque.
 - Se o cliente estiver bloqueado, oriente a falar com o financeiro — não prometa entrega.
-- Não confirme preços (a tabela ainda não está no sistema) — diga que o comercial confirma.
+- Informe preços SEMPRE pela ferramenta preco_por_bairro (preços do site por bairro). Só diga que o comercial confirma se o bairro estiver fora da área de entrega.
 - Responda em português brasileiro, mensagens curtas no estilo WhatsApp.`;
 
 // Regras SEMPRE injetadas (independem da personalidade editável no banco).
@@ -59,7 +59,12 @@ const NATURAL_CUSTOMER_RULES = `# Cadastro natural (regras invioláveis)
 - Conforme o cliente for te contando as coisas (o nome dele, o endereço, o bairro, ou o que ele quer/costuma pedir), use a ferramenta salvar_cliente para guardar — de forma silenciosa, sem comentar nada.
 - Se você precisar de uma informação que ainda não tem (ex.: o endereço pra entrega), pergunte de forma leve e natural ("Me passa o endereço pra entrega?") e siga a conversa. Quando o cliente responder, guarde com salvar_cliente. Se ele já tiver endereço no cadastro, use-o e NÃO pergunte de novo.
 - Os pilares que você vai montando aos poucos: nome do cliente, endereço, e o que ele costuma pedir (ex.: "Belco 50L, Heineken"). Salve cada um assim que souber.
-- Nunca fique "perdido" por falta de informação: se faltar algo, pergunte com naturalidade uma coisa por vez e continue.`;
+- Nunca fique "perdido" por falta de informação: se faltar algo, pergunte com naturalidade uma coisa por vez e continue.
+
+# Preço — sempre pelo site, por localidade (regra inviolável)
+- O preço vem SEMPRE da ferramenta preco_por_bairro (preços do site, por bairro) — e do finalizar_pedido pra fechar. Com o bairro em mãos, DIGA o preço na hora.
+- NUNCA diga que "a equipe comercial vai passar o preço" / "o comercial confirma" quando o bairro é coberto. Isso só vale se preco_por_bairro disser que o bairro está FORA da área de entrega.
+- Se o cliente perguntar preço e você ainda não tem o bairro, peça SÓ o bairro e então responda o preço — não empurre pro comercial.`;
 
 export async function getAgentConfig(companyId: string) {
   const existing = await prisma.agentConfig.findUnique({ where: { companyId } });
@@ -480,7 +485,7 @@ async function buildIdentityContext(
   const priced = prices.filter((p) => p.price > 0);
   const priceLines = priced.length
     ? priced.map((p) => `${p.name} (${p.code}) = ${formatCurrency(p.price)}`).join("; ")
-    : "não cadastrados (não invente preços — diga que o comercial confirma)";
+    : "sem preço negociado próprio — use os PREÇOS DO SITE por localidade (preco_por_bairro com o bairro dele)";
   const lastMovTxt = lastMov
     ? `${MOVEMENT_TYPE_LABELS[lastMov.type as MovementType] ?? lastMov.type} em ${formatDate(lastMov.occurredAt)}`
     : "nenhuma movimentação registrada ainda";
@@ -508,8 +513,8 @@ async function buildIdentityContext(
     `- Última movimentação: ${lastMovTxt}`,
     `- Preços que ESTE cliente paga: ${priceLines}`,
     priced.length
-      ? `Você PODE informar a este cliente os preços listados acima — são os preços JÁ CADASTRADOS dele (isso tem prioridade sobre qualquer regra genérica de "não confirmar preços"). Para tipos SEM preço cadastrado, aí sim diga que o comercial confirma. Nunca invente valores.`
-      : "",
+      ? `Você PODE informar a este cliente os preços NEGOCIADOS listados acima (têm prioridade). Para os itens que ele NÃO tem preço negociado, use os PREÇOS DO SITE por localidade (preco_por_bairro com o bairro dele) — NÃO diga que o comercial confirma. Nunca invente valores.`
+      : `Este cliente não tem preço negociado próprio. SEMPRE use os PREÇOS DO SITE por localidade (preco_por_bairro com o bairro dele) para responder preço. NUNCA diga que "a equipe comercial confirma o preço" quando o bairro está coberto — só defira ao comercial se o bairro estiver realmente FORA da área de entrega.`,
     customer.status === "BLOCKED"
       ? `- ATENÇÃO: cliente BLOQUEADO — não prometa entrega; oriente a procurar o financeiro.`
       : "",
