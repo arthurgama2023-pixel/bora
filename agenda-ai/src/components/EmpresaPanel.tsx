@@ -488,6 +488,19 @@ export function EmpresaPanel({
       {configCard}
       {servicesCard}
       {whatsappCard}
+      <div className="flex justify-center pt-1">
+        <button
+          type="button"
+          onClick={() => {
+            setJustFinished(false);
+            setWizardStep(1);
+            if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          className="text-xs font-medium text-zinc-400 hover:text-zinc-600 hover:underline"
+        >
+          ↻ Refazer a configuração passo a passo
+        </button>
+      </div>
     </div>
   );
 }
