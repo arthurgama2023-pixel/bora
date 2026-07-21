@@ -146,6 +146,12 @@ function mergeUsualOrder(notes: string | null, usual: string): string {
  * existir, CRIA com os pilares (nome, whatsapp, endereço, pedido de costume).
  * Não passa pelo customerSchema (o agente coleta aos poucos, sem exigir tudo).
  */
+// Nome-placeholder gerado quando ainda não sabemos o nome de verdade (ex.:
+// "Cliente 5521999999999"). Tratado como "vazio" pra poder ser substituído
+// depois pelo nome real ou pelo nome de exibição do WhatsApp (pushName).
+const PLACEHOLDER_NAME = /^Cliente \+?\d+$/;
+const isPlaceholderName = (n?: string | null) => !!n && PLACEHOLDER_NAME.test(n.trim());
+
 export async function upsertCustomerFromAgent(
   companyId: string,
   phone: string,
@@ -155,19 +161,24 @@ export async function upsertCustomerFromAgent(
     neighborhood?: string;
     city?: string;
     usualOrder?: string;
+    pushName?: string; // nome de exibição do WhatsApp — fallback quando não há nome ainda
   },
 ): Promise<{ id: string; created: boolean; name: string }> {
   const existing = await findCustomerByPhone(companyId, phone);
   const val = (s?: string) => (s && s.trim() ? s.trim() : undefined);
+  const nameOrPushName = val(fields.name) ?? val(fields.pushName);
 
   if (existing) {
     const patch: Record<string, unknown> = {};
-    // completa só campos VAZIOS (não pisa no que o admin já cadastrou)
-    const fillIfEmpty = (key: "name" | "address" | "neighborhood" | "city", v?: string) => {
+    // completa só campos VAZIOS (não pisa no que o admin já cadastrou). O
+    // nome-placeholder conta como "vazio" — pode virar o nome real depois.
+    const fillIfEmpty = (key: "address" | "neighborhood" | "city", v?: string) => {
       const cur = (existing as Record<string, unknown>)[key];
       if (v && (!cur || !String(cur).trim())) patch[key] = v;
     };
-    fillIfEmpty("name", val(fields.name));
+    if (nameOrPushName && (!existing.name?.trim() || isPlaceholderName(existing.name))) {
+      patch.name = nameOrPushName;
+    }
     fillIfEmpty("address", val(fields.address));
     fillIfEmpty("neighborhood", val(fields.neighborhood));
     fillIfEmpty("city", val(fields.city));
@@ -176,10 +187,10 @@ export async function upsertCustomerFromAgent(
     if (Object.keys(patch).length > 0) {
       await prisma.customer.update({ where: { id: existing.id }, data: patch });
     }
-    return { id: existing.id, created: false, name: existing.name };
+    return { id: existing.id, created: false, name: (patch.name as string) ?? existing.name };
   }
 
-  const name = val(fields.name) ?? `Cliente ${phone}`;
+  const name = nameOrPushName ?? `Cliente ${phone}`;
   const customer = await prisma.customer.create({
     data: {
       companyId,
