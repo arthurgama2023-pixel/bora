@@ -26,9 +26,11 @@ export const customerSchema = z.object({
     .nullable()
     .refine((v) => !v || isValidCpfCnpj(v), "CPF/CNPJ inválido"),
   phone: z.string().trim().optional().nullable(),
-  whatsapp: z.string().trim().optional().nullable(),
+  // WhatsApp e Endereço são OBRIGATÓRIOS no cadastro — são a base pro agente
+  // reconhecer o cliente pelo número e fechar entrega.
+  whatsapp: z.string().trim().min(8, "WhatsApp é obrigatório"),
   email: z.string().trim().optional().nullable(),
-  address: z.string().trim().optional().nullable(),
+  address: z.string().trim().min(3, "Endereço é obrigatório"),
   neighborhood: z.string().trim().optional().nullable(),
   city: z.string().trim().optional().nullable(),
   state: z.string().trim().max(2, "Use a sigla da UF").optional().nullable(),
