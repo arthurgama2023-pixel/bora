@@ -148,12 +148,30 @@ function AppointmentsList({ refreshKey }: { refreshKey: number }) {
 
 // Chat de teste: o dono conversa com o próprio agente como se fosse um cliente.
 // Reusa o mesmo cérebro do WhatsApp (runAttendant) — inclusive agenda de verdade.
+/** Mesma renderização leve do chat do Modo Pessoal: **negrito** e quebras de linha. */
+function renderChatText(text: string) {
+  return text.split("\n").map((line, i) => (
+    <p key={i} className="min-h-[1em]">
+      {line.split(/(\*\*[^*]+\*\*)/g).map((part, j) =>
+        part.startsWith("**") && part.endsWith("**") ? (
+          <strong key={j}>{part.slice(2, -2)}</strong>
+        ) : (
+          <span key={j}>{part}</span>
+        ),
+      )}
+    </p>
+  ));
+}
+
+// Mesmo design do chat do Modo Pessoal (componente Chat.tsx): header, bolhas
+// com canto assimétrico, indicador de "digitando" com 3 pontinhos, input em
+// pílula e botão de enviar circular. Só a lógica é diferente (agente da empresa).
 function AgentTestChat({ agentName, onActivity }: { agentName: string; onActivity: () => void }) {
   const [msgs, setMsgs] = useState<{ role: "user" | "model"; text: string }[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const boxRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch("/api/empresa/chat")
@@ -164,7 +182,7 @@ function AgentTestChat({ agentName, onActivity }: { agentName: string; onActivit
   }, []);
 
   useEffect(() => {
-    boxRef.current?.scrollTo({ top: boxRef.current.scrollHeight });
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [msgs, sending]);
 
   async function send(e: React.FormEvent) {
@@ -181,10 +199,13 @@ function AgentTestChat({ agentName, onActivity }: { agentName: string; onActivit
         body: JSON.stringify({ text }),
       });
       const data = await res.json();
-      setMsgs((m) => [...m, { role: "model", text: data.reply ?? "…" }]);
+      setMsgs((m) => [...m, { role: "model", text: data.reply ?? "Algo deu errado. Tente novamente." }]);
       onActivity(); // pode ter criado um agendamento → atualiza a lista ao lado
     } catch {
-      setMsgs((m) => [...m, { role: "model", text: "Erro ao falar com o agente. Tente de novo." }]);
+      setMsgs((m) => [
+        ...m,
+        { role: "model", text: "Não consegui falar com o servidor. Verifique a conexão." },
+      ]);
     } finally {
       setSending(false);
     }
@@ -196,11 +217,11 @@ function AgentTestChat({ agentName, onActivity }: { agentName: string; onActivit
   }
 
   return (
-    <section className={`${card} flex flex-col`}>
-      <div className="mb-2 flex items-center justify-between">
+    <section className="flex flex-col rounded-2xl border border-zinc-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-3.5">
         <div>
           <h2 className="text-sm font-semibold">Testar o agente {agentName}</h2>
-          <p className="text-xs text-zinc-400">Escreva como se fosse um cliente.</p>
+          <p className="text-xs text-zinc-400">Converse como se fosse um cliente</p>
         </div>
         {msgs.length > 0 && (
           <button
@@ -213,39 +234,55 @@ function AgentTestChat({ agentName, onActivity }: { agentName: string; onActivit
         )}
       </div>
 
-      <div ref={boxRef} className="mb-3 h-72 space-y-2 overflow-y-auto rounded-xl bg-zinc-50 p-3">
+      <div ref={scrollRef} className="chat-scroll h-72 space-y-3 overflow-y-auto px-5 py-4">
         {loaded && msgs.length === 0 && (
-          <p className="mt-24 text-center text-xs text-zinc-400">
-            Diga um “oi” para o agente começar o atendimento.
+          <p className="pt-20 text-center text-xs text-zinc-400">
+            Diga um “oi” para o agente {agentName} começar o atendimento.
           </p>
         )}
         {msgs.map((m, i) => (
-          <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
-            <span
-              className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm ${
-                m.role === "user" ? "bg-zinc-900 text-white" : "bg-white text-zinc-800 shadow-sm"
+          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div
+              className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                m.role === "user"
+                  ? "rounded-br-md bg-zinc-900 text-white"
+                  : "rounded-bl-md bg-zinc-100 text-zinc-800"
               }`}
             >
-              {m.text}
-            </span>
+              {renderChatText(m.text)}
+            </div>
           </div>
         ))}
         {sending && (
           <div className="flex justify-start">
-            <span className="rounded-2xl bg-white px-3 py-2 text-sm text-zinc-400 shadow-sm">digitando…</span>
+            <div className="rounded-2xl rounded-bl-md bg-zinc-100 px-4 py-3">
+              <span className="inline-flex gap-1">
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400 [animation-delay:0ms]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400 [animation-delay:120ms]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400 [animation-delay:240ms]" />
+              </span>
+            </div>
           </div>
         )}
       </div>
 
-      <form onSubmit={send} className="flex gap-2">
+      <form onSubmit={send} className="flex items-center gap-2 border-t border-zinc-100 px-4 py-3">
         <input
-          className={`${input} mt-0 flex-1`}
-          placeholder="Ex.: quero marcar um horário amanhã"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
+          placeholder="Ex.: quero marcar um horário amanhã"
+          disabled={sending}
+          className="h-10 flex-1 rounded-full border border-zinc-200 bg-zinc-50 px-4 text-sm outline-none transition focus:border-zinc-400 focus:bg-white disabled:opacity-60"
         />
-        <button type="submit" disabled={sending || !draft.trim()} className={btn}>
-          Enviar
+        <button
+          type="submit"
+          disabled={sending || !draft.trim()}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition hover:bg-zinc-700 disabled:opacity-40"
+          aria-label="Enviar"
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+            <path d="M3.4 20.4 20.85 12 3.4 3.6l-.01 6.53L15 12 3.39 13.87l.01 6.53Z" />
+          </svg>
         </button>
       </form>
     </section>
