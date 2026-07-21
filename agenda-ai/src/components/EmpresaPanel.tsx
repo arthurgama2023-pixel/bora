@@ -48,6 +48,13 @@ const TIMEZONES = [
 // Etapas do assistente de configuração inicial (só aparece na 1ª vez, até concluir).
 const WIZARD_STEPS = ["Configuração da Empresa", "Serviços", "WhatsApp", "Google Agenda"];
 
+// Onde guardamos o passo atual do assistente. Necessário porque o wizardStep é
+// estado efêmero de React: qualquer remontagem do componente (re-render do
+// /empresa, redirect do OAuth Google, reload, hydration mismatch de extensão)
+// reinicializa `useState(initialCompany ? null : 1)` para null quando a empresa
+// já existe — e o assistente "volta" sozinho para o painel completo.
+const SETUP_KEY = "agendaai.empresa.setupStep";
+
 function WizardProgress({ step, onBack }: { step: number; onBack?: () => void }) {
   return (
     <div className="flex items-center justify-between">
@@ -93,6 +100,24 @@ export function EmpresaPanel({
   const [wizardStep, setWizardStep] = useState<number | null>(initialCompany ? null : 1);
   const [justFinished, setJustFinished] = useState(false);
 
+  // Avança/sai do assistente persistindo o passo, para sobreviver a remontagens.
+  // Toda troca de etapa passa por aqui (nunca chamar setWizardStep direto).
+  const goToStep = useCallback((step: number | null) => {
+    setWizardStep(step);
+    if (typeof window === "undefined") return;
+    if (step === null) sessionStorage.removeItem(SETUP_KEY);
+    else sessionStorage.setItem(SETUP_KEY, String(step));
+  }, []);
+
+  // Retoma o assistente onde parou após uma remontagem (empresa já existente).
+  useEffect(() => {
+    if (!initialCompany || typeof window === "undefined") return;
+    const saved = sessionStorage.getItem(SETUP_KEY);
+    if (saved === null) return;
+    const n = Number(saved);
+    if (Number.isInteger(n) && n >= 1 && n <= WIZARD_STEPS.length) setWizardStep(n);
+  }, [initialCompany]);
+
   // ── formulário de config (criação e edição usam os mesmos campos) ──
   const [form, setForm] = useState({
     name: initialCompany?.name ?? "",
@@ -120,7 +145,7 @@ export function EmpresaPanel({
         const data = await res.json();
         setCompany((c) => ({ ...(c ?? { services: [] as ServiceRow[] }), ...data.company }));
         if (wizardStep === 1) {
-          setWizardStep(2); // acabou de criar — avança pro próximo passo
+          goToStep(2); // acabou de criar — avança pro próximo passo
         } else {
           setCfgSaved(true);
           setTimeout(() => setCfgSaved(false), 2500);
@@ -347,7 +372,7 @@ export function EmpresaPanel({
               Pode adicionar serviços depois também — não precisa cadastrar tudo agora.
             </p>
           )}
-          <WizardNav onNext={() => setWizardStep(3)} />
+          <WizardNav onNext={() => goToStep(3)} />
         </>
       )}
     </section>
@@ -413,7 +438,7 @@ export function EmpresaPanel({
               Pode conectar depois também — o código continua disponível na próxima vez que você abrir esta tela.
             </p>
           )}
-          <WizardNav onNext={() => setWizardStep(4)} />
+          <WizardNav onNext={() => goToStep(4)} />
         </>
       )}
     </section>
@@ -449,7 +474,7 @@ export function EmpresaPanel({
           <WizardNav
             nextLabel="Concluir configuração 🎉"
             onNext={() => {
-              setWizardStep(null);
+              goToStep(null);
               setJustFinished(true);
               setTimeout(() => setJustFinished(false), 6000);
             }}
@@ -467,7 +492,7 @@ export function EmpresaPanel({
       <div className="space-y-4">
         <WizardProgress
           step={wizardStep}
-          onBack={wizardStep > 1 ? () => setWizardStep((s) => Math.max(1, (s ?? 1) - 1)) : undefined}
+          onBack={wizardStep > 1 ? () => goToStep(Math.max(1, wizardStep - 1)) : undefined}
         />
         {wizardStep === 1 && configCard}
         {wizardStep === 2 && servicesCard}
@@ -493,7 +518,7 @@ export function EmpresaPanel({
           type="button"
           onClick={() => {
             setJustFinished(false);
-            setWizardStep(1);
+            goToStep(1);
             if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
           }}
           className="text-xs font-medium text-zinc-400 hover:text-zinc-600 hover:underline"
