@@ -32,15 +32,6 @@ interface WppStatus {
   publicUrlWarning?: boolean;
 }
 
-interface AppointmentRow {
-  id: string;
-  title: string;
-  startsAt: string;
-  serviceName: string | null;
-  clientPhone: string;
-  googleSynced: boolean;
-}
-
 const input =
   "mt-1 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm outline-none focus:border-zinc-400 focus:bg-white";
 const btn =
@@ -53,8 +44,6 @@ const TIMEZONES = [
   ["America/Cuiaba", "Cuiabá"],
   ["America/Rio_Branco", "Rio Branco"],
 ];
-
-const dtFmt = new Intl.DateTimeFormat("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
 // Etapas do assistente de configuração inicial (só aparece na 1ª vez, até concluir).
 const WIZARD_STEPS = ["Configuração da Empresa", "Serviços", "WhatsApp", "Google Agenda"];
@@ -239,16 +228,6 @@ export function EmpresaPanel({
       setConnecting(false);
     }
   }
-
-  // ── agendamentos ──
-  const [appointments, setAppointments] = useState<AppointmentRow[]>([]);
-  useEffect(() => {
-    if (!company) return;
-    fetch("/api/empresa/agendamentos")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => d && setAppointments(d.appointments))
-      .catch(() => {});
-  }, [company?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─────────────────────────── seções (reutilizadas no assistente e no painel) ───────────────────────────
 
@@ -480,31 +459,6 @@ export function EmpresaPanel({
     </section>
   );
 
-  const appointmentsCard = (
-    <section className={card}>
-      <h2 className="mb-3 text-sm font-semibold">Próximos agendamentos (14 dias)</h2>
-      {appointments.length === 0 ? (
-        <p className="text-sm text-zinc-400">
-          Nenhum agendamento ainda. Assim que um cliente marcar pelo WhatsApp, aparece aqui.
-        </p>
-      ) : (
-        <ul className="divide-y divide-zinc-100">
-          {appointments.map((a) => (
-            <li key={a.id} className="flex items-center justify-between gap-3 py-2">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{a.title}</p>
-                <p className="text-xs text-zinc-400">
-                  {dtFmt.format(new Date(a.startsAt))} · +{a.clientPhone}
-                  {a.googleSynced ? " · ✔ Google" : ""}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-
   // ─────────────────────────── render ───────────────────────────
 
   // Assistente passo a passo (só na configuração inicial): revela 1 etapa por vez.
@@ -534,8 +488,6 @@ export function EmpresaPanel({
       {configCard}
       {servicesCard}
       {whatsappCard}
-      {googleCard}
-      {appointmentsCard}
     </div>
   );
 }

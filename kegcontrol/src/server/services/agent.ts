@@ -64,7 +64,15 @@ const NATURAL_CUSTOMER_RULES = `# Cadastro natural (regras invioláveis)
 # Preço — sempre pelo site, por localidade (regra inviolável)
 - O preço vem SEMPRE da ferramenta preco_por_bairro (preços do site, por bairro) — e do finalizar_pedido pra fechar. Com o bairro em mãos, DIGA o preço na hora.
 - NUNCA diga que "a equipe comercial vai passar o preço" / "o comercial confirma" quando o bairro é coberto. Isso só vale se preco_por_bairro disser que o bairro está FORA da área de entrega.
-- Se o cliente perguntar preço e você ainda não tem o bairro, peça SÓ o bairro e então responda o preço — não empurre pro comercial.`;
+- Se o cliente perguntar preço e você ainda não tem o bairro, peça SÓ o bairro e então responda o preço — não empurre pro comercial.
+
+# Como mostrar a tabela de preços (organizada, mostrando a vantagem de levar mais)
+- Quando o cliente pedir os preços de VÁRIOS produtos ("me manda a tabela", "quais os preços", "me envie de todos"), NÃO despeje tudo em texto corrido nem em lista crua com asterisco solto. Organize por produto, um bloco por linha, e SEMPRE que houver preço por quantidade, mostre 1 un / 2 un / 3+ un nessa ordem.
+- Em cada produto com faixa de preço, destaque quanto o cliente ECONOMIZA por barril levando 3 ou mais (calcule: preço de 1 un menos preço de 3+ un). Isso é o incentivo pra ele pedir mais — deixe claro e visível, não escondido no meio do texto.
+- Formato sugerido (adapte o tom à conversa, mas mantenha essa estrutura clara):
+  🍺 *Belco 50L* — R$600 (1un) · R$550 (2un) · R$500 (3+un) → economize R$100/barril levando 3+
+- Pode usar emoji simples (🍺 pro item, 💰 ou 🔥 pra destacar economia) pra ficar visualmente organizado — sem exagerar.
+- Essa mesma lógica (mostrar a faixa completa + destacar a economia de levar mais) vale também quando é UM produto só, não apenas na tabela cheia.`;
 
 export async function getAgentConfig(companyId: string) {
   const existing = await prisma.agentConfig.findUnique({ where: { companyId } });
@@ -206,7 +214,7 @@ async function getSetting(companyId: string, key: string): Promise<string | null
   return row?.value?.trim() || null;
 }
 
-type ToolCtx = { channel?: string; phone?: string; customerId?: string | null };
+type ToolCtx = { channel?: string; phone?: string; customerId?: string | null; pushName?: string };
 
 async function runTool(
   companyId: string,
@@ -431,6 +439,7 @@ async function runTool(
         neighborhood: input.bairro ? String(input.bairro) : undefined,
         city: input.cidade ? String(input.cidade) : undefined,
         usualOrder: input.pedido_costume ? String(input.pedido_costume) : undefined,
+        pushName: ctx.pushName,
       });
       return JSON.stringify({
         ok: true,
@@ -449,10 +458,15 @@ async function runTool(
 
 // Monta um bloco de contexto com quem é o cliente e sua situação atual, para o
 // agente "conectar os pontos" já na primeira mensagem, sem pedir identificação.
+// Nome-placeholder criado quando o agente cadastra um cliente sem saber o
+// nome ainda (ver upsertCustomerFromAgent). Não é um nome de verdade.
+const PLACEHOLDER_NAME = /^Cliente \+?\d+$/;
+
 async function buildIdentityContext(
   companyId: string,
   customer: NonNullable<IdentifiedCustomer>,
   phone: string,
+  pushName?: string,
 ): Promise<string> {
   const [balance, prices, lastMov, record] = await Promise.all([
     getCustomerBalance(companyId, customer.id),
@@ -492,10 +506,21 @@ async function buildIdentityContext(
   const statusLabel = CUSTOMER_STATUS_LABELS[customer.status as CustomerStatus] ?? customer.status;
   const typeLabel = CUSTOMER_TYPE_LABELS[customer.type as CustomerType] ?? customer.type;
 
+  // O nome cadastrado pode ser um placeholder (ex.: "Cliente 5521999999999",
+  // criado quando o agente ainda não sabia o nome de verdade). Nesse caso,
+  // usa o nome de exibição do WhatsApp (pushName) pra chamar a pessoa —
+  // NUNCA chame ninguém pelo número de telefone.
+  const isPlaceholder = PLACEHOLDER_NAME.test(customer.name.trim());
+  const displayName = isPlaceholder && pushName ? pushName : customer.name;
+
   return [
     "CONTEXTO — CLIENTE IDENTIFICADO PELO NÚMERO DE WHATSAPP:",
     `Você está conversando com um cliente JÁ CADASTRADO. Cumprimente-o pelo nome logo na primeira resposta (siga a regra "# Cumprimento pelo nome") e não peça para ele se identificar de novo.`,
-    `- Estabelecimento: ${customer.name}`,
+    isPlaceholder
+      ? pushName
+        ? `- Ainda não sabemos o nome real dele no cadastro. O WhatsApp mostra o nome "${pushName}" — chame-o por esse nome (ex.: "Oi, ${pushName}!"). NUNCA o chame pelo número de telefone. Quando ele confirmar/disser o nome numa mensagem, guarde com salvar_cliente.`
+        : `- Ainda não sabemos o nome dele (nem pelo WhatsApp). NÃO o chame pelo número de telefone — cumprimente de forma neutra (ex.: "Oi! Tudo bem?") e pergunte o nome com naturalidade assim que fizer sentido. Ao saber, guarde com salvar_cliente.`
+      : `- Estabelecimento: ${displayName}`,
     contato ? `- Responsável (contato): ${contato}` : "",
     record?.neighborhood ? `- Bairro do cliente: ${record.neighborhood}${record.city ? ` · ${record.city}` : ""} (se ele perguntar preço/entrega, já use preco_por_bairro com este bairro sem precisar perguntar de novo)` : "",
     enderecoCadastrado
@@ -524,12 +549,15 @@ async function buildIdentityContext(
     .join("\n");
 }
 
-function buildUnknownContext(phone: string): string {
+function buildUnknownContext(phone: string, pushName?: string): string {
   return [
     "CONTEXTO — PRIMEIRO CONTATO DESTE NÚMERO:",
-    `WhatsApp: ${phone}. É provavelmente um contato novo — mas trate-o como cliente normal desde já. NUNCA diga que ele "não tem cadastro".`,
+    `WhatsApp: ${phone}. É provavelmente um contato novo — mas trate-o como cliente normal desde já. NUNCA diga que ele "não tem cadastro" e NUNCA o chame pelo número de telefone.`,
+    pushName
+      ? `- O WhatsApp mostra o nome "${pushName}" pra esse número — pode chamá-lo por esse nome desde a primeira resposta (ex.: "Oi, ${pushName}! Tudo bem?"), sem precisar perguntar o nome dele.`
+      : `- Não temos nome nenhum ainda (nem pelo WhatsApp). Cumprimente de forma neutra (ex.: "Oi! Tudo bem?") e pergunte o nome com naturalidade quando fizer sentido na conversa.`,
     "Se ele mencionar um nome ou empresa, você pode usar buscar_cliente para ver se já existe. Se não existir, tudo bem — apenas siga a conversa.",
-    "Vá coletando os pilares de forma natural, uma coisa por vez, no ritmo da conversa: o NOME dele, o ENDEREÇO (quando for falar de entrega) e o que ele QUER/COSTUMA pedir (ex.: 'Belco 50L, Heineken').",
+    "Vá coletando os pilares de forma natural, uma coisa por vez, no ritmo da conversa: o NOME dele (confirme/registre o nome certo, mesmo que já esteja chamando pelo pushName), o ENDEREÇO (quando for falar de entrega) e o que ele QUER/COSTUMA pedir (ex.: 'Belco 50L, Heineken').",
     "Assim que souber cada informação, guarde SILENCIOSAMENTE com salvar_cliente (o número já entra automático). NÃO anuncie que está cadastrando — aja como se já conhecesse a pessoa.",
   ].join("\n");
 }
@@ -542,6 +570,7 @@ export type ChatOptions = {
   identifiedCustomer?: IdentifiedCustomer;
   phone?: string; // número do WhatsApp do interlocutor (quando via WhatsApp)
   channel?: string; // PLAYGROUND | WHATSAPP
+  pushName?: string; // nome de exibição do perfil do WhatsApp (Evolution: data.pushName)
 };
 
 // Sinal de reset: o cliente manda "comece de novo" e o agente zera o histórico
@@ -583,8 +612,8 @@ export async function chatWithAgent(
   let contextBlock = "";
   if (opts.phone) {
     contextBlock = opts.identifiedCustomer
-      ? await buildIdentityContext(companyId, opts.identifiedCustomer, opts.phone)
-      : buildUnknownContext(opts.phone);
+      ? await buildIdentityContext(companyId, opts.identifiedCustomer, opts.phone, opts.pushName)
+      : buildUnknownContext(opts.phone, opts.pushName);
   }
   const systemInstruction = [config.personality, NATURAL_CUSTOMER_RULES, contextBlock]
     .filter(Boolean)
@@ -612,6 +641,7 @@ export async function chatWithAgent(
       channel,
       phone: opts.phone,
       customerId,
+      pushName: opts.pushName,
     });
     reply = result.reply;
     toolsUsed = result.toolsUsed;
