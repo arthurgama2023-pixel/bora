@@ -13,7 +13,15 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { getCustomerBalance, getCustomerPrices } from "./customers";
 import { getCustomerInsights, SEGMENT_LABELS } from "./crm";
 import { getCustomerStatement } from "./reports";
-import { findCoveredBairro, SITE_CATALOG, resolveProduct, unitPriceFor, tierText } from "../data/bairro-pricing";
+import {
+  getSitePricing,
+  findCoveredBairro,
+  effectiveProductsForCity,
+  unitPriceFor,
+  fromPriceFor,
+  tierTextFor,
+  resolveProductByText,
+} from "./site-pricing";
 
 // Cliente reconhecido pelo número de WhatsApp (ou null se o número não bate
 // com nenhum cadastro). Passado ao agente para ele "conectar os pontos".
@@ -244,14 +252,16 @@ async function runTool(
       );
     }
     case "estoque_disponivel": {
-      // Baseia-se no catálogo do SITE e trata tudo como disponível.
-      // (Não consulta o estoque físico do kegcontrol de propósito.)
+      // Baseia-se no catálogo do SITE (fonte única — mesma da aba "Preços do
+      // Site") e trata tudo como disponível. (Não consulta o estoque físico
+      // do kegcontrol de propósito.)
+      const pricing = await getSitePricing(companyId);
       return JSON.stringify(
-        SITE_CATALOG.map((c) => {
-          const t = tierText(c);
+        pricing.products.map((p) => {
+          const t = tierTextFor(p);
           return t
-            ? { tipo: c.produto, disponivel: true, precoPorQuantidade: t }
-            : { tipo: c.produto, disponivel: true, preco: c.price };
+            ? { tipo: p.name, disponivel: true, precoPorQuantidade: t }
+            : { tipo: p.name, disponivel: true, preco: fromPriceFor(p) };
         }),
       );
     }
@@ -272,27 +282,29 @@ async function runTool(
     }
     case "preco_por_bairro": {
       // Liberado para todos os canais (inclusive WhatsApp): o agente informa o
-      // preço fixo por bairro conforme o catálogo do site.
+      // preço fixo por bairro conforme a fonte única (aba "Preços do Site").
       const bairro = String(input.bairro ?? "");
-      const zona = findCoveredBairro(bairro);
+      const pricing = await getSitePricing(companyId);
+      const zona = findCoveredBairro(pricing, bairro);
       if (!zona) {
         return JSON.stringify({
           coberto: false,
           mensagem: "Bairro fora da área de preço fixo. Não informe valores — diga que a equipe comercial confirma.",
         });
       }
-      // Catálogo do site, tudo disponível. Produtos com preço escalonado por
-      // quantidade (ex.: Brahma) vêm com as faixas — diga-as ao cliente.
-      const precos = SITE_CATALOG.map((c) => {
-        const t = tierText(c);
+      // Catálogo da região (override, se houver), tudo disponível. Produtos
+      // com preço escalonado por quantidade (ex.: Brahma) vêm com as faixas.
+      const products = effectiveProductsForCity(pricing, zona.city);
+      const precos = products.map((p) => {
+        const t = tierTextFor(p);
         return t
           ? {
-              tipo: c.produto,
+              tipo: p.name,
               disponivel: true,
               precoPorQuantidade: t,
               obs: "PREÇO POR QUANTIDADE — quanto mais barris, mais barato cada. Explique as faixas ao cliente; o total sai no finalizar_pedido.",
             }
-          : { tipo: c.produto, preco: c.price, disponivel: true };
+          : { tipo: p.name, preco: fromPriceFor(p), disponivel: true };
       });
       return JSON.stringify({
         coberto: true,
@@ -306,20 +318,22 @@ async function runTool(
       // Liberado em todos os canais (inclusive WhatsApp): fecha o pedido e envia
       // o PIX. A chave PIX vem do Setting (pix_key/pix_nome), com fallback de teste.
       const bairro = String(input.bairro ?? "");
-      const zona = findCoveredBairro(bairro);
+      const pricing = await getSitePricing(companyId);
+      const zona = findCoveredBairro(pricing, bairro);
       if (!zona) {
         return JSON.stringify({
           ok: false,
           motivo: "Bairro fora da área de entrega/preço fixo. Não feche o pedido nem envie PIX — diga que a equipe comercial confirma valores e disponibilidade.",
         });
       }
+      const products = effectiveProductsForCity(pricing, zona.city);
       const rawItens = Array.isArray(input.itens) ? (input.itens as Array<Record<string, unknown>>) : [];
       const itens: Array<{ produto: string; quantidade: number; precoUnit: number; subtotal: number; economia: number }> = [];
       const naoReconhecidos: string[] = [];
       for (const it of rawItens) {
         const produtoTxt = String(it.produto ?? "");
         const qtd = Math.max(1, Number(it.quantidade ?? 1));
-        const item = resolveProduct(produtoTxt);
+        const item = resolveProductByText(products, produtoTxt);
         if (!item) {
           naoReconhecidos.push(produtoTxt);
           continue;
@@ -327,8 +341,8 @@ async function runTool(
         // Preço unitário conforme a quantidade (aplica faixa escalonada, ex.: Brahma).
         // economia: quanto o cliente economizou no total vs. o preço de 1 unidade.
         const precoUnit = unitPriceFor(item, qtd);
-        const economia = item.tiers?.length ? Math.max(0, (item.price - precoUnit) * qtd) : 0;
-        itens.push({ produto: item.produto, quantidade: qtd, precoUnit, subtotal: precoUnit * qtd, economia });
+        const economia = item.tiers ? Math.max(0, (item.tiers[0] - precoUnit) * qtd) : 0;
+        itens.push({ produto: item.name, quantidade: qtd, precoUnit, subtotal: precoUnit * qtd, economia });
       }
       if (itens.length === 0) {
         return JSON.stringify({

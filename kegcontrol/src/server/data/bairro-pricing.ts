@@ -1,3 +1,7 @@
+// OBSOLETO — sem uso desde que agent.ts passou a ler de site-pricing.ts
+// (fonte única compartilhada com o site e a aba "Preços do Site"). Mantido
+// só para referência histórica; pode ser apagado com segurança.
+//
 // Tabela de preço fixo por bairro — MESMA tabela usada no site público
 // (ss-chopp/src/data/zones.ts + caxias-pricing.ts). Duque de Caxias, São
 // João de Meriti e região. Fonte da verdade é o site; ao mudar preço lá,

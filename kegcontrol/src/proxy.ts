@@ -4,7 +4,7 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/session-token";
 const PUBLIC_PATHS = ["/login", "/api/v1/auth/login"];
 // Rotas de integração externa: sem cookie de sessão, autenticadas pelo próprio
 // token (webhook do Evolution via ?token=; keep-alive via KEEPALIVE_TOKEN opcional).
-const PUBLIC_PREFIXES = ["/api/webhooks/", "/api/whatsapp/keepalive"];
+const PUBLIC_PREFIXES = ["/api/webhooks/", "/api/whatsapp/keepalive", "/api/public/"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
