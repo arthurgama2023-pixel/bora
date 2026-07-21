@@ -93,7 +93,13 @@ interface AppointmentRow {
   googleSynced: boolean;
 }
 
-// Lista dos próximos agendamentos criados pelo agente (WhatsApp ou chat de teste).
+const TZ = "America/Sao_Paulo";
+const dayKeyFmt = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
+const dayLabelFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: TZ, weekday: "long", day: "numeric", month: "short" });
+const timeFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
+
+// Mesmo visual do AgendaPanel (Modo Pessoal): header fixo, lista agrupada por
+// dia com "Hoje" em destaque, rolagem própria — ocupa a coluna esquerda (380px).
 function AppointmentsList({ refreshKey }: { refreshKey: number }) {
   const [items, setItems] = useState<AppointmentRow[] | null>(null);
   useEffect(() => {
@@ -107,41 +113,67 @@ function AppointmentsList({ refreshKey }: { refreshKey: number }) {
     };
   }, [refreshKey]);
 
-  const fmt = (iso: string) =>
-    new Intl.DateTimeFormat("pt-BR", {
-      day: "2-digit",
-      month: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: "America/Sao_Paulo",
-    }).format(new Date(iso));
+  const todayKey = dayKeyFmt.format(new Date());
+  const groups = new Map<string, AppointmentRow[]>();
+  for (const a of items ?? []) {
+    const k = dayKeyFmt.format(new Date(a.startsAt));
+    groups.set(k, [...(groups.get(k) ?? []), a]);
+  }
+  const sortedDays = [...groups.keys()].sort();
 
   return (
-    <section className={card}>
-      <h2 className="mb-1 text-sm font-semibold">Agendamentos</h2>
-      <p className="mb-3 text-xs text-zinc-400">Próximos 14 dias.</p>
-      {items === null ? (
-        <p className="text-xs text-zinc-400">Carregando…</p>
-      ) : items.length === 0 ? (
-        <p className="rounded-xl bg-zinc-50 px-3 py-6 text-center text-xs text-zinc-400">
-          Nenhum agendamento ainda. Converse com o agente ao lado (ou pelo WhatsApp) para criar um.
+    <section className="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white shadow-sm">
+      <div className="border-b border-zinc-100 px-5 py-3.5">
+        <h2 className="text-sm font-semibold">Agendamentos</h2>
+        <p className="text-xs text-zinc-400">
+          {items === null
+            ? "Carregando…"
+            : `${items.length} nos próximos 14 dias`}
         </p>
-      ) : (
-        <ul className="divide-y divide-zinc-100">
-          {items.map((a) => (
-            <li key={a.id} className="py-2">
-              <div className="flex items-baseline justify-between gap-2">
-                <p className="truncate text-sm font-medium">{a.clientName}</p>
-                <span className="shrink-0 text-xs font-medium text-zinc-500">{fmt(a.startsAt)}</span>
-              </div>
-              <p className="text-xs text-zinc-400">
-                {a.serviceName ?? a.title}
-                {a.googleSynced ? " · ✔ Google" : ""}
+      </div>
+
+      <div className="chat-scroll flex-1 space-y-5 overflow-y-auto px-5 py-4">
+        {items !== null && items.length === 0 && (
+          <p className="pt-8 text-center text-sm text-zinc-400">
+            Nenhum agendamento ainda.
+            <br />
+            <span className="italic">Converse com o agente ao lado para criar um.</span>
+          </p>
+        )}
+
+        {sortedDays.map((k) => {
+          const date = new Date(`${k}T12:00:00`);
+          const isToday = k === todayKey;
+          return (
+            <div key={k}>
+              <p
+                className={`mb-2 text-xs font-medium uppercase tracking-wide ${
+                  isToday ? "text-indigo-600" : "text-zinc-400"
+                }`}
+              >
+                {isToday ? "Hoje" : dayLabelFmt.format(date)}
               </p>
-            </li>
-          ))}
-        </ul>
-      )}
+              <div className="space-y-2">
+                {groups.get(k)!.map((a) => (
+                  <div
+                    key={a.id}
+                    className={`rounded-xl border px-3.5 py-2.5 ${
+                      isToday ? "border-indigo-100 bg-indigo-50/50" : "border-zinc-100 bg-zinc-50/60"
+                    }`}
+                  >
+                    <p className="text-sm font-medium leading-snug">{a.clientName}</p>
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      {timeFmt.format(new Date(a.startsAt))}
+                      {a.serviceName ? ` · ${a.serviceName}` : ` · ${a.title}`}
+                      {a.googleSynced ? " · ✔ Google" : ""}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }
@@ -217,7 +249,7 @@ function AgentTestChat({ agentName, onActivity }: { agentName: string; onActivit
   }
 
   return (
-    <section className="flex flex-col rounded-2xl border border-zinc-200 bg-white shadow-sm">
+    <section className="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-3.5">
         <div>
           <h2 className="text-sm font-semibold">Testar o agente {agentName}</h2>
@@ -234,11 +266,13 @@ function AgentTestChat({ agentName, onActivity }: { agentName: string; onActivit
         )}
       </div>
 
-      <div ref={scrollRef} className="chat-scroll h-72 space-y-3 overflow-y-auto px-5 py-4">
+      <div ref={scrollRef} className="chat-scroll flex-1 space-y-3 overflow-y-auto px-5 py-4">
         {loaded && msgs.length === 0 && (
-          <p className="pt-20 text-center text-xs text-zinc-400">
-            Diga um “oi” para o agente {agentName} começar o atendimento.
-          </p>
+          <div className="flex h-full items-center justify-center">
+            <p className="text-center text-xs text-zinc-400">
+              Diga um “oi” para o agente {agentName} começar o atendimento.
+            </p>
+          </div>
         )}
         {msgs.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -289,7 +323,9 @@ function AgentTestChat({ agentName, onActivity }: { agentName: string; onActivit
   );
 }
 
-// Painel de uso da empresa já configurada: chat de teste + agendamentos.
+// Painel de uso da empresa já configurada: mesmo shell do Modo Pessoal —
+// coluna esquerda fixa (380px, lista) + coluna direita flexível (chat),
+// preenchendo a altura toda da tela.
 function EmpresaDashboard({
   company,
   justFinished,
@@ -301,17 +337,17 @@ function EmpresaDashboard({
 }) {
   const [refreshKey, setRefreshKey] = useState(0);
   return (
-    <div className="space-y-4">
+    <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3">
       {justFinished && (
         <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
           🎉 Configuração concluída! Sua empresa já pode atender pelo WhatsApp.
         </div>
       )}
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-semibold">{company.name}</h2>
-          <p className="text-xs text-zinc-400">Agente {company.agentName} atendendo</p>
-        </div>
+        <p className="text-xs text-zinc-400">
+          <span className="font-medium text-zinc-600">{company.name}</span> · Agente {company.agentName}{" "}
+          atendendo
+        </p>
         <button
           type="button"
           onClick={onEdit}
@@ -320,10 +356,10 @@ function EmpresaDashboard({
           Configurar / Editar
         </button>
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <AgentTestChat agentName={company.agentName} onActivity={() => setRefreshKey((k) => k + 1)} />
+      <main className="grid min-h-0 flex-1 gap-4 md:grid-cols-[380px_1fr]">
         <AppointmentsList refreshKey={refreshKey} />
-      </div>
+        <AgentTestChat agentName={company.agentName} onActivity={() => setRefreshKey((k) => k + 1)} />
+      </main>
     </div>
   );
 }
@@ -733,16 +769,18 @@ export function EmpresaPanel({
   // Assistente passo a passo (só na configuração inicial): revela 1 etapa por vez.
   if (wizardStep !== null) {
     return (
-      <div className="space-y-4">
-        <WizardProgress
-          step={wizardStep}
-          onBack={wizardStep > 1 ? () => goToStep(Math.max(1, wizardStep - 1)) : undefined}
-        />
-        {wizardStep === 1 && configCard}
-        {wizardStep === 2 && servicesCard}
-        {wizardStep === 3 && whatsappCard}
-        {wizardStep === 4 && googleCard}
-      </div>
+      <main className="chat-scroll mt-4 min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-2xl space-y-4 pb-10">
+          <WizardProgress
+            step={wizardStep}
+            onBack={wizardStep > 1 ? () => goToStep(Math.max(1, wizardStep - 1)) : undefined}
+          />
+          {wizardStep === 1 && configCard}
+          {wizardStep === 2 && servicesCard}
+          {wizardStep === 3 && whatsappCard}
+          {wizardStep === 4 && googleCard}
+        </div>
+      </main>
     );
   }
 

@@ -21,21 +21,32 @@ export default async function EmpresaPage() {
     : null;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6">
-      <div className="mb-5 flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight">Modo Empresa</h1>
-          <p className="text-sm text-zinc-500">
-            Atendente virtual que agenda os clientes da sua empresa pelo WhatsApp.
-          </p>
+    <div className="mx-auto flex h-screen max-w-6xl flex-col px-4 py-4">
+      <header className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-white px-5 py-3 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 text-lg text-white">
+            ✦
+          </div>
+          <div>
+            <h1 className="text-sm font-semibold leading-tight">Agenda AI</h1>
+            <p className="text-xs text-zinc-400">{company ? company.name : "Modo Empresa"}</p>
+          </div>
         </div>
-        <a
-          href="/"
-          className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-50"
-        >
-          ← Modo Pessoal
-        </a>
-      </div>
+        <div className="flex items-center gap-2">
+          <a
+            href="/"
+            className="rounded-full border border-zinc-200 px-3 py-1.5 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-50"
+          >
+            ← Modo Pessoal
+          </a>
+          <a
+            href="/api/auth/logout"
+            className="rounded-full border border-zinc-200 px-3 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-50"
+          >
+            Sair
+          </a>
+        </div>
+      </header>
 
       <EmpresaPanel
         initialCompany={
