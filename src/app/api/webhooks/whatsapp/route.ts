@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { chatWithAgent, type ChatTurn } from "@/server/services/agent";
-import { findCustomerByPhone } from "@/server/services/customers";
+import { findCustomerByPhone, upsertCustomerFromAgent } from "@/server/services/customers";
 import { getWhatsAppChannel, isWhatsAppNumberAllowed } from "@/server/services/whatsapp/channel";
 import { findCompanyByWebhookToken } from "@/server/services/whatsapp/config";
 
@@ -64,6 +64,17 @@ export async function POST(req: NextRequest) {
 
   const sessionId = `wa-${incoming.externalId}`;
 
+  // Cria/atualiza o nome a partir do pushName do WhatsApp de forma
+  // DETERMINÍSTICA (não depende do LLM decidir chamar salvar_cliente) — evita
+  // o agente chamar o cliente pelo número quando ainda não sabe o nome real.
+  // Não sobrescreve nome já cadastrado; só cria (número novo) ou substitui o
+  // nome-placeholder ("Cliente <telefone>").
+  if (incoming.pushName) {
+    await upsertCustomerFromAgent(companyId, incoming.externalId, {
+      pushName: incoming.pushName,
+    }).catch((e) => console.error("[whatsapp] upsertCustomerFromAgent (pushName) falhou:", e));
+  }
+
   // Reconhece o cliente pelo número (tolerando formatos) para o agente já saber
   // com quem fala e conectar o contexto dele. null = número não cadastrado.
   const customer = await findCustomerByPhone(companyId, incoming.externalId);
@@ -84,6 +95,7 @@ export async function POST(req: NextRequest) {
     const { reply } = await chatWithAgent(companyId, sessionId, history, {
       channel: "WHATSAPP",
       phone: incoming.externalId,
+      pushName: incoming.pushName,
       identifiedCustomer: customer
         ? { id: customer.id, name: customer.name, status: customer.status, type: customer.type }
         : null,
