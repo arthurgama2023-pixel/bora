@@ -84,6 +84,213 @@ function WizardNav({ onNext, nextLabel = "Próximo →" }: { onNext: () => void;
   );
 }
 
+interface AppointmentRow {
+  id: string;
+  title: string;
+  startsAt: string;
+  clientName: string;
+  serviceName: string | null;
+  googleSynced: boolean;
+}
+
+// Lista dos próximos agendamentos criados pelo agente (WhatsApp ou chat de teste).
+function AppointmentsList({ refreshKey }: { refreshKey: number }) {
+  const [items, setItems] = useState<AppointmentRow[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/empresa/agendamentos")
+      .then((r) => (r.ok ? r.json() : { appointments: [] }))
+      .then((d) => alive && setItems(d.appointments ?? []))
+      .catch(() => alive && setItems([]));
+    return () => {
+      alive = false;
+    };
+  }, [refreshKey]);
+
+  const fmt = (iso: string) =>
+    new Intl.DateTimeFormat("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "America/Sao_Paulo",
+    }).format(new Date(iso));
+
+  return (
+    <section className={card}>
+      <h2 className="mb-1 text-sm font-semibold">Agendamentos</h2>
+      <p className="mb-3 text-xs text-zinc-400">Próximos 14 dias.</p>
+      {items === null ? (
+        <p className="text-xs text-zinc-400">Carregando…</p>
+      ) : items.length === 0 ? (
+        <p className="rounded-xl bg-zinc-50 px-3 py-6 text-center text-xs text-zinc-400">
+          Nenhum agendamento ainda. Converse com o agente ao lado (ou pelo WhatsApp) para criar um.
+        </p>
+      ) : (
+        <ul className="divide-y divide-zinc-100">
+          {items.map((a) => (
+            <li key={a.id} className="py-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="truncate text-sm font-medium">{a.clientName}</p>
+                <span className="shrink-0 text-xs font-medium text-zinc-500">{fmt(a.startsAt)}</span>
+              </div>
+              <p className="text-xs text-zinc-400">
+                {a.serviceName ?? a.title}
+                {a.googleSynced ? " · ✔ Google" : ""}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// Chat de teste: o dono conversa com o próprio agente como se fosse um cliente.
+// Reusa o mesmo cérebro do WhatsApp (runAttendant) — inclusive agenda de verdade.
+function AgentTestChat({ agentName, onActivity }: { agentName: string; onActivity: () => void }) {
+  const [msgs, setMsgs] = useState<{ role: "user" | "model"; text: string }[]>([]);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch("/api/empresa/chat")
+      .then((r) => (r.ok ? r.json() : { history: [] }))
+      .then((d) => Array.isArray(d.history) && setMsgs(d.history))
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, []);
+
+  useEffect(() => {
+    boxRef.current?.scrollTo({ top: boxRef.current.scrollHeight });
+  }, [msgs, sending]);
+
+  async function send(e: React.FormEvent) {
+    e.preventDefault();
+    const text = draft.trim();
+    if (!text || sending) return;
+    setDraft("");
+    setMsgs((m) => [...m, { role: "user", text }]);
+    setSending(true);
+    try {
+      const res = await fetch("/api/empresa/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const data = await res.json();
+      setMsgs((m) => [...m, { role: "model", text: data.reply ?? "…" }]);
+      onActivity(); // pode ter criado um agendamento → atualiza a lista ao lado
+    } catch {
+      setMsgs((m) => [...m, { role: "model", text: "Erro ao falar com o agente. Tente de novo." }]);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function reset() {
+    await fetch("/api/empresa/chat", { method: "DELETE" }).catch(() => {});
+    setMsgs([]);
+  }
+
+  return (
+    <section className={`${card} flex flex-col`}>
+      <div className="mb-2 flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold">Testar o agente {agentName}</h2>
+          <p className="text-xs text-zinc-400">Escreva como se fosse um cliente.</p>
+        </div>
+        {msgs.length > 0 && (
+          <button
+            type="button"
+            onClick={reset}
+            className="text-xs text-zinc-400 hover:text-zinc-600 hover:underline"
+          >
+            Limpar
+          </button>
+        )}
+      </div>
+
+      <div ref={boxRef} className="mb-3 h-72 space-y-2 overflow-y-auto rounded-xl bg-zinc-50 p-3">
+        {loaded && msgs.length === 0 && (
+          <p className="mt-24 text-center text-xs text-zinc-400">
+            Diga um “oi” para o agente começar o atendimento.
+          </p>
+        )}
+        {msgs.map((m, i) => (
+          <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
+            <span
+              className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm ${
+                m.role === "user" ? "bg-zinc-900 text-white" : "bg-white text-zinc-800 shadow-sm"
+              }`}
+            >
+              {m.text}
+            </span>
+          </div>
+        ))}
+        {sending && (
+          <div className="flex justify-start">
+            <span className="rounded-2xl bg-white px-3 py-2 text-sm text-zinc-400 shadow-sm">digitando…</span>
+          </div>
+        )}
+      </div>
+
+      <form onSubmit={send} className="flex gap-2">
+        <input
+          className={`${input} mt-0 flex-1`}
+          placeholder="Ex.: quero marcar um horário amanhã"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <button type="submit" disabled={sending || !draft.trim()} className={btn}>
+          Enviar
+        </button>
+      </form>
+    </section>
+  );
+}
+
+// Painel de uso da empresa já configurada: chat de teste + agendamentos.
+function EmpresaDashboard({
+  company,
+  justFinished,
+  onEdit,
+}: {
+  company: CompanyData;
+  justFinished: boolean;
+  onEdit: () => void;
+}) {
+  const [refreshKey, setRefreshKey] = useState(0);
+  return (
+    <div className="space-y-4">
+      {justFinished && (
+        <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          🎉 Configuração concluída! Sua empresa já pode atender pelo WhatsApp.
+        </div>
+      )}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold">{company.name}</h2>
+          <p className="text-xs text-zinc-400">Agente {company.agentName} atendendo</p>
+        </div>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-50"
+        >
+          Configurar / Editar
+        </button>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <AgentTestChat agentName={company.agentName} onActivity={() => setRefreshKey((k) => k + 1)} />
+        <AppointmentsList refreshKey={refreshKey} />
+      </div>
+    </div>
+  );
+}
+
 export function EmpresaPanel({
   initialCompany,
   googleConnected,
@@ -502,30 +709,18 @@ export function EmpresaPanel({
     );
   }
 
-  // Painel completo (empresa já configurada).
+  // Empresa já configurada (fluxo concluído): painel de uso — chat de teste com
+  // o agente + agendamentos. A configuração fica atrás de "Configurar / Editar".
+  if (!company) return null; // guarda: só ocorre se não houver empresa
   return (
-    <div className="space-y-4">
-      {justFinished && (
-        <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
-          🎉 Configuração concluída! Sua empresa já pode atender pelo WhatsApp.
-        </div>
-      )}
-      {configCard}
-      {servicesCard}
-      {whatsappCard}
-      <div className="flex justify-center pt-1">
-        <button
-          type="button"
-          onClick={() => {
-            setJustFinished(false);
-            goToStep(1);
-            if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
-          }}
-          className="text-xs font-medium text-zinc-400 hover:text-zinc-600 hover:underline"
-        >
-          ↻ Refazer a configuração passo a passo
-        </button>
-      </div>
-    </div>
+    <EmpresaDashboard
+      company={company}
+      justFinished={justFinished}
+      onEdit={() => {
+        setJustFinished(false);
+        goToStep(1);
+        if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+      }}
+    />
   );
 }
