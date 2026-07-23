@@ -164,6 +164,35 @@ export class WhatsAppEvolutionChannel {
     }
   }
 
+  // Envia uma imagem por URL pública (ex.: foto do barril publicada no site).
+  async sendMedia(
+    companyId: string,
+    externalId: string,
+    mediaUrl: string,
+    caption?: string,
+  ): Promise<void> {
+    const cfg = await getWhatsAppConfig(companyId);
+    if (!cfg) {
+      console.warn("[whatsapp] Evolution não configurada — mídia não enviada:", mediaUrl);
+      return;
+    }
+    const ext = mediaUrl.split(".").pop()?.toLowerCase();
+    const mimetype =
+      ext === "png" ? "image/png" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/webp";
+    const res = await this.api(cfg, "POST", `/message/sendMedia/${cfg.instance}`, {
+      number: externalId,
+      mediatype: "image",
+      mimetype,
+      media: mediaUrl,
+      caption,
+      fileName: mediaUrl.split("/").pop(),
+      delay: 1000,
+    });
+    if (!res?.ok) {
+      console.error("[whatsapp] falha ao enviar mídia:", res?.status, await res?.text().catch(() => ""));
+    }
+  }
+
   // ---- Gerenciamento de instância (aba Conectar) ----
 
   private async api(

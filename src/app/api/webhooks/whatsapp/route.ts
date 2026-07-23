@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { chatWithAgent, type ChatTurn } from "@/server/services/agent";
+import { chatWithAgent, ORDER_PHOTO_FOLLOWUP, type ChatTurn } from "@/server/services/agent";
 import { findCustomerByPhone, upsertCustomerFromAgent } from "@/server/services/customers";
 import { getWhatsAppChannel, isWhatsAppNumberAllowed } from "@/server/services/whatsapp/channel";
 import { findCompanyByWebhookToken } from "@/server/services/whatsapp/config";
@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
   ];
 
   try {
-    const { reply } = await chatWithAgent(companyId, sessionId, history, {
+    const { reply, photos } = await chatWithAgent(companyId, sessionId, history, {
       channel: "WHATSAPP",
       phone: incoming.externalId,
       pushName: incoming.pushName,
@@ -101,6 +101,14 @@ export async function POST(req: NextRequest) {
         : null,
     });
     await channel.sendMessage(companyId, incoming.externalId, reply);
+    // Pedido fechado (finalizar_pedido): manda a foto do(s) barril(is) pedido(s)
+    // e, na sequência, um empurrãozinho pra confirmar o PIX.
+    for (const photo of photos) {
+      await channel.sendMedia(companyId, incoming.externalId, photo.url, photo.label);
+    }
+    if (photos.length > 0) {
+      await channel.sendMessage(companyId, incoming.externalId, ORDER_PHOTO_FOLLOWUP);
+    }
   } catch (err) {
     console.error("[whatsapp]", err);
     await channel.sendMessage(
