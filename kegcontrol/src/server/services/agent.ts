@@ -1,4 +1,5 @@
 import { FunctionCallingConfigMode, GoogleGenAI, Type, type Content, type FunctionDeclaration, type Part } from "@google/genai";
+import * as Sentry from "@sentry/nextjs";
 import {
   CUSTOMER_STATUS_LABELS,
   CUSTOMER_TYPE_LABELS,
@@ -724,6 +725,10 @@ async function runGeminiLoop(
       try {
         output = await runTool(companyId, name, (call.args ?? {}) as Record<string, unknown>, ctx);
       } catch (e) {
+        // Antes: erro só virava texto pro cliente, o Sentry nunca ficava sabendo
+        // que uma ferramenta do agente falhou. Mantém a mensagem amigável E
+        // reporta — falha silenciosa em produção não pode ficar invisível.
+        Sentry.captureException(e, { tags: { companyId, tool: name }, extra: { args: call.args } });
         output = `Erro ao consultar: ${e instanceof Error ? e.message : "desconhecido"}`;
       }
       resultParts.push({

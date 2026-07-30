@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { chatWithAgent, type ChatTurn } from "@/server/services/agent";
 import { findCustomerByPhone, upsertCustomerFromAgent } from "@/server/services/customers";
@@ -28,9 +29,10 @@ export async function POST(req: NextRequest) {
   if (event === "connection.update" || event === "CONNECTION_UPDATE") {
     const state = (raw as { data?: { state?: string } })?.data?.state;
     if (state === "close") {
-      channel.reconcile(companyId, process.env.APP_URL ?? "").catch((e) =>
-        console.error("[whatsapp] reconcile falhou:", e),
-      );
+      channel.reconcile(companyId, process.env.APP_URL ?? "").catch((e) => {
+        console.error("[whatsapp] reconcile falhou:", e);
+        Sentry.captureException(e, { tags: { companyId, whatsapp: "reconcile" } });
+      });
     }
     return NextResponse.json({ ok: true });
   }
@@ -72,7 +74,10 @@ export async function POST(req: NextRequest) {
   if (incoming.pushName) {
     await upsertCustomerFromAgent(companyId, incoming.externalId, {
       pushName: incoming.pushName,
-    }).catch((e) => console.error("[whatsapp] upsertCustomerFromAgent (pushName) falhou:", e));
+    }).catch((e) => {
+      console.error("[whatsapp] upsertCustomerFromAgent (pushName) falhou:", e);
+      Sentry.captureException(e, { tags: { companyId, whatsapp: "upsert-pushname" } });
+    });
   }
 
   // Reconhece o cliente pelo número (tolerando formatos) para o agente já saber
@@ -103,6 +108,11 @@ export async function POST(req: NextRequest) {
     await channel.sendMessage(companyId, incoming.externalId, reply);
   } catch (err) {
     console.error("[whatsapp]", err);
+    // Este catch envolve a conversa INTEIRA (Gemini + ferramentas) — sem o
+    // report abaixo, uma falha aqui (ex.: Gemini fora do ar) nunca chegava
+    // ao Sentry, porque a resposta HTTP volta 200 mesmo assim (ok pro
+    // Evolution API não reenviar o webhook, mas escondia o erro de nós).
+    Sentry.captureException(err, { tags: { companyId, whatsapp: "chat" } });
     await channel.sendMessage(
       companyId,
       incoming.externalId,
