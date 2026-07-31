@@ -39,6 +39,12 @@ jobs:
       - name: Gerar cliente Prisma
         run: npx prisma generate
 
+      # ── GATE DE VERDADE: testes. Diferente do lint/typecheck (dívida antiga),
+      # os testes são novos e passam — então travam o merge se quebrarem. Cobrem
+      # o proxy de autenticação: quem passa e quem é barrado em cada rota.
+      - name: Testes
+        run: npm test
+
       # ── Checagens ADVISORY: aparecem no log mas NÃO travam o merge ──────────
       # O projeto tem dívida pré-existente (erros de tipo e lint em arquivos não
       # relacionados a mudanças novas). Se travassem o merge, nada poderia ser
