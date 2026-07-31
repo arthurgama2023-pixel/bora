@@ -1,0 +1,59 @@
+name: CI kegcontrol
+
+# Roda a cada Pull Request pra main. O objetivo é pescar qualquer falha ANTES
+# do merge — em especial, provar que o build (o mesmo comando que o Render roda
+# no deploy) passa. Se falhar aqui, teria falhado em produção.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch: # permite rodar manualmente pela aba Actions
+
+# O app vive em kegcontrol/ dentro deste monorepo — todos os `run` rodam lá.
+defaults:
+  run:
+    working-directory: kegcontrol
+
+jobs:
+  ci-kegcontrol:
+    name: ci-kegcontrol
+    runs-on: ubuntu-latest
+    env:
+      # Valores fictícios só para o build compilar — NÃO são segredos e NÃO são
+      # usados em runtime. O build não conecta no banco (as páginas são
+      # server-rendered on demand, não geradas estaticamente no build).
+      DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci?schema=kegcontrol"
+      AUTH_SECRET: "valor-ficticio-de-ci-nao-usar-em-producao"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Instalar dependências
+        # npm install (não `npm ci`): o package-lock gerado no Windows omite
+        # binários opcionais que o Linux do runner espera — mesma razão
+        # documentada no render.yaml.
+        run: npm install --no-audit --no-fund
+
+      - name: Gerar cliente Prisma
+        run: npx prisma generate
+
+      # ── Checagens ADVISORY: aparecem no log mas NÃO travam o merge ──────────
+      # O projeto tem dívida pré-existente (erros de tipo e lint em arquivos não
+      # relacionados a mudanças novas). Se travassem o merge, nada poderia ser
+      # mesclado até a dívida zerar. Ficam visíveis aqui; quando forem para zero,
+      # é só remover o `continue-on-error` e promovê-los a gate de verdade.
+      - name: Typecheck (advisory)
+        run: npx tsc --noEmit
+        continue-on-error: true
+
+      - name: Lint (advisory)
+        run: npm run lint
+        continue-on-error: true
+
+      # ── GATE DE VERDADE: se o build falhar, o job falha e o merge é bloqueado.
+      # É o mesmo comando (`prisma generate && next build`) que o Render roda no
+      # deploy — passar aqui é a prova de que não sobe quebrado para produção.
+      - name: Build (mesmo comando do Render)
+        run: npm run build
