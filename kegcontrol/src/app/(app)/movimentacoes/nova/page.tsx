@@ -1,5 +1,6 @@
+import { History } from "lucide-react";
 import { redirect } from "next/navigation";
-import { PageHeader } from "@/components/ui";
+import { ButtonLink, PageHeader } from "@/components/ui";
 import { getSession } from "@/lib/auth";
 import { MOVEMENT_TYPES, type MovementType } from "@/lib/enums";
 import { prisma } from "@/lib/prisma";
@@ -38,6 +39,11 @@ export default async function NewMovementPage({
       <PageHeader
         title="Nova movimentação"
         subtitle="O estoque é atualizado automaticamente ao registrar"
+        actions={
+          <ButtonLink variant="outline" href="/movimentacoes/historico">
+            <History className="h-4 w-4" /> Ver histórico
+          </ButtonLink>
+        }
       />
       <MovementForm
         kegTypes={kegTypes}

@@ -91,7 +91,7 @@ export default async function DashboardPage() {
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-semibold">Últimas movimentações</h2>
             <Link
-              href="/movimentacoes"
+              href="/movimentacoes/historico"
               className="text-sm font-medium text-brand-strong hover:underline"
             >
               ver todas →

@@ -164,6 +164,45 @@ export class WhatsAppEvolutionChannel {
     }
   }
 
+  // Envia uma imagem por URL pública (ex.: foto do barril publicada no site).
+  // `mimetype`/`fileName` podem ser passados explicitamente: a tabela de preços
+  // vem de uma URL com query-string (/api/tabela-precos?cidade=...), então o
+  // palpite por extensão de arquivo não funciona e cairia no webp por engano.
+  // Retorna `true` se a Evolution aceitou a mídia. O chamador pode usar isso
+  // para cair num fallback em texto (ex.: mandar a tabela de preços escrita se
+  // a imagem não foi entregue) — assim o cliente nunca fica sem a informação.
+  async sendMedia(
+    companyId: string,
+    externalId: string,
+    mediaUrl: string,
+    caption?: string,
+    opts?: { mimetype?: string; fileName?: string },
+  ): Promise<boolean> {
+    const cfg = await getWhatsAppConfig(companyId);
+    if (!cfg) {
+      console.warn("[whatsapp] Evolution não configurada — mídia não enviada:", mediaUrl);
+      return false;
+    }
+    const ext = mediaUrl.split("?")[0].split(".").pop()?.toLowerCase();
+    const mimetype =
+      opts?.mimetype ??
+      (ext === "png" ? "image/png" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/webp");
+    const res = await this.api(cfg, "POST", `/message/sendMedia/${cfg.instance}`, {
+      number: externalId,
+      mediatype: "image",
+      mimetype,
+      media: mediaUrl,
+      caption,
+      fileName: opts?.fileName ?? mediaUrl.split("?")[0].split("/").pop(),
+      delay: 1000,
+    });
+    if (!res?.ok) {
+      console.error("[whatsapp] falha ao enviar mídia:", res?.status, await res?.text().catch(() => ""));
+      return false;
+    }
+    return true;
+  }
+
   // ---- Gerenciamento de instância (aba Conectar) ----
 
   private async api(

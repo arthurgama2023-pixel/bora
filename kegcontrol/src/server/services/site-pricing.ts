@@ -226,6 +226,34 @@ export function tierTextFor(prod: Prod): string | null {
   return `1 un: R$${um} cada · 2 un: R$${dois} cada · 3 ou mais: R$${tresMais} cada`;
 }
 
+// Bloco de texto PRONTO pra mandar no WhatsApp — nome, faixa de preço e a
+// economia JÁ CALCULADA. O agente (LLM) só copia este texto verbatim em vez
+// de formatar/calcular na hora, o que evita ele errar ou inventar número ao
+// montar a tabela com vários produtos.
+export function priceBlockFor(prod: Prod): string {
+  if (prod.tiers) {
+    const [um, dois, tresMais] = prod.tiers;
+    const economia = um - tresMais;
+    return [
+      `${prod.emoji} *${prod.name}*`,
+      `1 un R$${um} · 2 un R$${dois} · 3+ un R$${tresMais}`,
+      `💰 economize R$${economia}/barril levando 3+`,
+    ].join("\n");
+  }
+  return `${prod.emoji} *${prod.name}* — R$${prod.fixed ?? 0}`;
+}
+
+// Tabela de preços dos CHOPPS inteira, já MONTADA e formatada (blocos + linha
+// em branco entre eles). Montada em CÓDIGO — o texto vai pro cliente sem passar
+// pela "mão" do LLM, então os números/emojis/economia saem sempre certos.
+// Filtra equipamentos (kit-*): a tabela é só de chopp.
+export function fullPriceTableText(products: Prod[]): string {
+  return products
+    .filter((p) => !p.id.startsWith("kit"))
+    .map((p) => priceBlockFor(p))
+    .join("\n\n");
+}
+
 // Resolve um texto livre de produto (ex.: "belco 50", "chopp de vinho 30
 // litros", "amstel", "heineken") para um item do catálogo da cidade dada.
 // Retorna null se não reconhecer com segurança (o agente não deve chutar).

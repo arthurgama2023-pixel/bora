@@ -239,7 +239,7 @@ export function StatCard({
 }: {
   label: string;
   value: React.ReactNode;
-  hint?: string;
+  hint?: React.ReactNode;
   accent?: boolean;
 }) {
   return (
