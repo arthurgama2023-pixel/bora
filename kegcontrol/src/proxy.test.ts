@@ -56,6 +56,13 @@ describe("integrações externas passam sem cookie de sessão", () => {
     expect(passou(await proxy(pedido("/api/public/site-pricing")))).toBe(true);
   });
 
+  it("imagem da tabela de preços passa — a Evolution busca por URL sem sessão", async () => {
+    // O agente manda a tabela como imagem no WhatsApp; a Evolution (e o
+    // celular do cliente) baixam /api/tabela-precos sem cookie. Se cair na
+    // regra geral, vira 401 e o cliente recebe um link quebrado.
+    expect(passou(await proxy(pedido("/api/tabela-precos?cidade=Baixada%20Fluminense")))).toBe(true);
+  });
+
   it("passa ANTES de olhar o cookie — cookie inválido não atrapalha", async () => {
     // A liberação por prefixo vem primeiro de propósito: um cookie velho ou
     // corrompido no servidor da Evolution não pode derrubar o webhook.

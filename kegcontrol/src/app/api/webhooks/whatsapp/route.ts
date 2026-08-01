@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
-import { chatWithAgent, type ChatTurn } from "@/server/services/agent";
+import { chatWithAgent, ORDER_PHOTO_FOLLOWUP, type ChatTurn } from "@/server/services/agent";
 import { findCustomerByPhone, upsertCustomerFromAgent } from "@/server/services/customers";
 import { getWhatsAppChannel, isWhatsAppNumberAllowed } from "@/server/services/whatsapp/channel";
 import { findCompanyByWebhookToken } from "@/server/services/whatsapp/config";
@@ -97,21 +97,55 @@ export async function POST(req: NextRequest) {
   ];
 
   try {
-    const { reply } = await chatWithAgent(companyId, sessionId, history, {
-      channel: "WHATSAPP",
-      phone: incoming.externalId,
-      pushName: incoming.pushName,
-      identifiedCustomer: customer
-        ? { id: customer.id, name: customer.name, status: customer.status, type: customer.type }
-        : null,
-    });
+    const { reply, photos, priceImages, priceTableText } = await chatWithAgent(
+      companyId,
+      sessionId,
+      history,
+      {
+        channel: "WHATSAPP",
+        phone: incoming.externalId,
+        pushName: incoming.pushName,
+        identifiedCustomer: customer
+          ? { id: customer.id, name: customer.name, status: customer.status, type: customer.type }
+          : null,
+      },
+    );
     await channel.sendMessage(companyId, incoming.externalId, reply);
+    // Perguntou preço de um bairro coberto: manda a IMAGEM da tabela logo depois
+    // do texto (mesma fonte que o agente cotou). PNG explícito porque a URL tem
+    // query-string e o palpite por extensão cairia no webp.
+    let priceImageFailed = false;
+    for (const img of priceImages) {
+      const ok = await channel.sendMedia(companyId, incoming.externalId, img.url, img.label, {
+        mimetype: "image/png",
+        fileName: "tabela-precos.png",
+      });
+      if (!ok) priceImageFailed = true;
+    }
+    // Rede de segurança: se a imagem não foi entregue, manda os preços em TEXTO —
+    // a saudação "segue a tabela 👇" não pode ficar apontando para nada.
+    if (priceImageFailed && priceTableText) {
+      await channel.sendMessage(companyId, incoming.externalId, priceTableText);
+      // O cliente ficou com os preços em texto (não perdeu nada), mas registra:
+      // se a imagem falha com frequência, é sinal de problema (URL/Evolution).
+      Sentry.captureMessage("Falha ao enviar a imagem da tabela — usei o fallback em texto", {
+        level: "warning",
+        tags: { companyId, whatsapp: "price-image" },
+      });
+    }
+    // Pedido fechado (finalizar_pedido): manda a foto do(s) barril(is) pedido(s)
+    // e, na sequência, um empurrãozinho pra confirmar o PIX.
+    for (const photo of photos) {
+      await channel.sendMedia(companyId, incoming.externalId, photo.url, photo.label);
+    }
+    if (photos.length > 0) {
+      await channel.sendMessage(companyId, incoming.externalId, ORDER_PHOTO_FOLLOWUP);
+    }
   } catch (err) {
+    // Este catch envolve a conversa INTEIRA (Gemini + ferramentas + resposta).
+    // Sem reportar, uma falha aqui ficaria invisível — a resposta HTTP volta 200
+    // mesmo assim (ok pro Evolution), então o erro nunca chegaria ao painel.
     console.error("[whatsapp]", err);
-    // Este catch envolve a conversa INTEIRA (Gemini + ferramentas) — sem o
-    // report abaixo, uma falha aqui (ex.: Gemini fora do ar) nunca chegava
-    // ao Sentry, porque a resposta HTTP volta 200 mesmo assim (ok pro
-    // Evolution API não reenviar o webhook, mas escondia o erro de nós).
     Sentry.captureException(err, { tags: { companyId, whatsapp: "chat" } });
     await channel.sendMessage(
       companyId,

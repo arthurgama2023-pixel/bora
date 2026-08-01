@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Trash2 } from "lucide-react";
+import { Beer, Plus, SlidersHorizontal, Trash2, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -13,7 +13,6 @@ import {
 } from "@/components/ui";
 import {
   CONDITION_LABELS,
-  KEG_CATEGORY_LABELS,
   LOCATION_LABELS,
   MOVEMENT_TYPES,
   MOVEMENT_TYPE_LABELS,
@@ -23,6 +22,8 @@ import {
   type MovementType,
 } from "@/lib/enums";
 import { cn, formatCurrency } from "@/lib/utils";
+import { MOVEMENT_TYPE_ICONS } from "@/lib/movement-icons";
+import { imageForKegType } from "@/lib/keg-images";
 
 type KegTypeOption = { id: string; name: string; code: string; category?: string };
 type CustomerOption = { id: string; name: string; status: string };
@@ -47,6 +48,13 @@ const TYPE_HELP: Record<MovementType, string> = {
   LOSS: "Registra extravio — o barril sai do saldo ativo mas fica rastreado.",
   MAINTENANCE: "Envio ou retorno de barris da manutenção.",
 };
+
+// Fora do quadrado por pedido do dono: Ajuste, Perda, Manutenção e Venda
+// continuam existindo (histórico, correção de movimentação, ajuste de
+// estoque do cliente) — só não aparecem como opção pra criar uma
+// movimentação nova. Venda saiu porque toda Entrega/Retirada já é venda.
+const HIDDEN_FROM_PICKER: readonly MovementType[] = ["ADJUSTMENT", "LOSS", "MAINTENANCE", "SALE"];
+const PICKER_TYPES = MOVEMENT_TYPES.filter((t) => !HIDDEN_FROM_PICKER.includes(t));
 
 function defaultRow(type: MovementType, direction: "OUT" | "IN" = "OUT"): Row {
   const base = {
@@ -95,7 +103,12 @@ export function MovementForm({
   const [type, setType] = useState<MovementType>(startType);
   const [customerId, setCustomerId] = useState(initialCustomerId ?? "");
   const [notes, setNotes] = useState("");
-  const [rows, setRows] = useState<Row[]>([defaultRow(startType)]);
+  // Tipos "visuais" (grid de fotos com +/-) começam sem linha nenhuma — cada
+  // clique no + já cria a linha. Os demais (Ajuste/correção) mantêm o modelo
+  // antigo de formulário livre, que precisa de uma linha em branco pra editar.
+  const [rows, setRows] = useState<Row[]>(
+    HIDDEN_FROM_PICKER.includes(startType) ? [defaultRow(startType)] : [],
+  );
   const [maintenanceDirection, setMaintenanceDirection] = useState<"IN" | "OUT">("OUT");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -129,10 +142,41 @@ export function MovementForm({
   const requiresCustomer = ["DELIVERY", "PICKUP", "SWAP"].includes(type);
   const showsCustomer = requiresCustomer || ["LOSS", "ADJUSTMENT"].includes(type);
 
+  const useCardGrid = !HIDDEN_FROM_PICKER.includes(type);
+
   function changeType(t: MovementType) {
     setType(t);
-    setRows([defaultRow(t)]);
+    setRows(HIDDEN_FROM_PICKER.includes(t) ? [defaultRow(t)] : []);
     if (t === "MAINTENANCE") setMaintenanceDirection("OUT");
+  }
+
+  // Quantidade atual de um tipo de barril nos cards com foto (0 = não
+  // adicionado ainda). Na Troca, cada direção (entrega/retirada) tem sua
+  // própria contagem pro mesmo tipo de barril.
+  function quantityFor(kegTypeId: string, direction: "OUT" | "IN" = "OUT") {
+    return (
+      rows.find((r) => r.kegTypeId === kegTypeId && (type !== "SWAP" || r.swapDirection === direction))
+        ?.quantity ?? 0
+    );
+  }
+
+  // Clique no + ou no − do card: ajusta a linha correspondente, criando-a na
+  // hora se ainda não existir, e removendo se a quantidade zerar.
+  function setQuantity(kegTypeId: string, quantity: number, direction: "OUT" | "IN" = "OUT") {
+    setRows((rs) => {
+      const idx = rs.findIndex(
+        (r) => r.kegTypeId === kegTypeId && (type !== "SWAP" || r.swapDirection === direction),
+      );
+      if (quantity <= 0) {
+        return idx >= 0 ? rs.filter((_, i) => i !== idx) : rs;
+      }
+      if (idx >= 0) {
+        const copy = [...rs];
+        copy[idx] = { ...copy[idx], quantity };
+        return copy;
+      }
+      return [...rs, { ...defaultRow(type, direction), kegTypeId, quantity }];
+    });
   }
 
   // Chip de item pré-selecionado (tipo já registrado em Barris/Chopeiras): se
@@ -176,6 +220,10 @@ export function MovementForm({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (rows.length === 0) {
+      setError("Adicione ao menos um item");
+      return;
+    }
     if (rows.some((r) => !r.kegTypeId)) {
       setError("Selecione o tipo de barril em todos os itens");
       return;
@@ -248,36 +296,133 @@ export function MovementForm({
     </Select>
   );
 
-  const swapRows = (direction: "OUT" | "IN") =>
-    rows.map((r, idx) => ({ r, idx })).filter(({ r }) => r.swapDirection === direction);
-
-  // Itens pré-selecionados — tudo que já está registrado em Barris/Chopeiras.
-  // Clicar já bota o item na movimentação, sem precisar procurar no dropdown.
+  // Itens pré-selecionados — tudo que já está registrado em Barris/Chopeiras,
+  // agrupado por categoria pra achar mais rápido. Clicar já bota o item na
+  // movimentação, sem precisar procurar no dropdown.
   function kegTypeChips(direction: "OUT" | "IN" = "OUT") {
     if (kegTypes.length === 0) return null;
+    const groups: { label: string; icon: typeof Zap; items: KegTypeOption[] }[] = [
+      { label: "Chopeiras", icon: Zap, items: kegTypes.filter((t) => t.category === "CHOPEIRA") },
+      { label: "Barris", icon: Beer, items: kegTypes.filter((t) => t.category !== "CHOPEIRA") },
+    ].filter((g) => g.items.length > 0);
+
     return (
-      <div className="flex flex-wrap gap-1.5">
-        {kegTypes.map((t) => {
-          const price = customerId ? customerPrices[t.id] : undefined;
-          const isChopeira = t.category === "CHOPEIRA";
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => pickKegType(t.id, direction)}
-              title={isChopeira ? KEG_CATEGORY_LABELS.CHOPEIRA : KEG_CATEGORY_LABELS.BARRIL}
-              className={cn(
-                "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-                isChopeira
-                  ? "border-info/40 bg-info/10 text-info hover:bg-info/20"
-                  : "border-brand/40 bg-brand/10 text-brand-strong hover:bg-brand/20",
-              )}
-            >
-              {t.name} <span className="opacity-70">({t.code})</span>
-              {price ? <span className="ml-1 opacity-80">· {formatCurrency(price)}</span> : null}
-            </button>
-          );
-        })}
+      <div className="space-y-3">
+        {groups.map((g) => (
+          <div key={g.label}>
+            <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <g.icon className="h-3.5 w-3.5" />
+              {g.label}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {g.items.map((t) => {
+                const price = customerId ? customerPrices[t.id] : undefined;
+                const isChopeira = t.category === "CHOPEIRA";
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => pickKegType(t.id, direction)}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors",
+                      isChopeira
+                        ? "border-info/40 bg-info/10 text-info hover:bg-info/20"
+                        : "border-brand/40 bg-brand/10 text-brand-strong hover:bg-brand/20",
+                    )}
+                  >
+                    {t.name}
+                    <span className="font-mono text-xs font-normal opacity-60">{t.code}</span>
+                    {price ? (
+                      <span className="rounded-full bg-success/15 px-2 py-0.5 text-xs font-bold text-success">
+                        {formatCurrency(price)}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Grid com foto real do barril/chopeira + botões +/− pra ajustar a
+  // quantidade direto no card — igual ao site do cliente. Usado nos tipos
+  // "visuais" (Entrega/Retirada/Troca/Compra); substitui dropdown+input.
+  function kegImageCards(direction: "OUT" | "IN" = "OUT") {
+    if (kegTypes.length === 0) return null;
+    const groups: { label: string; icon: typeof Zap; items: KegTypeOption[] }[] = [
+      { label: "Chopeiras", icon: Zap, items: kegTypes.filter((t) => t.category === "CHOPEIRA") },
+      { label: "Barris", icon: Beer, items: kegTypes.filter((t) => t.category !== "CHOPEIRA") },
+    ].filter((g) => g.items.length > 0);
+
+    return (
+      <div className="space-y-4">
+        {groups.map((g) => (
+          <div key={g.label}>
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <g.icon className="h-3.5 w-3.5" />
+              {g.label}
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {g.items.map((t) => {
+                const qty = quantityFor(t.id, direction);
+                const price = customerId ? customerPrices[t.id] : undefined;
+                const image = imageForKegType(t.name);
+                return (
+                  <div
+                    key={t.id}
+                    className={cn(
+                      "flex flex-col overflow-hidden rounded-xl border bg-card transition-colors",
+                      qty > 0 ? "border-brand shadow-sm" : "border-border",
+                    )}
+                  >
+                    <div className="flex h-24 items-center justify-center overflow-hidden bg-muted/40">
+                      {image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={image} alt={t.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <Beer className="h-8 w-8 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="flex flex-1 flex-col gap-2 p-3">
+                      <div>
+                        <p className="text-sm font-semibold leading-tight">{t.name}</p>
+                        <p className="font-mono text-xs text-muted-foreground">{t.code}</p>
+                      </div>
+                      {price ? (
+                        <span className="w-fit rounded-full bg-success/15 px-2 py-0.5 text-xs font-bold text-success">
+                          {formatCurrency(price)}
+                        </span>
+                      ) : null}
+                      <div className="mt-auto flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setQuantity(t.id, qty - 1, direction)}
+                          disabled={qty === 0}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-lg font-bold leading-none transition-colors hover:bg-muted disabled:opacity-30"
+                          aria-label={`Diminuir ${t.name}`}
+                        >
+                          −
+                        </button>
+                        <span className="w-6 text-center text-base font-bold">{qty}</span>
+                        <button
+                          type="button"
+                          onClick={() => setQuantity(t.id, qty + 1, direction)}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-brand bg-brand/10 text-lg font-bold leading-none text-brand-strong transition-colors hover:bg-brand/20"
+                          aria-label={`Aumentar ${t.name}`}
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -366,10 +511,18 @@ export function MovementForm({
 
         <button
           type="button"
-          onClick={() => setRows((rs) => rs.filter((_, i) => i !== idx))}
-          disabled={rows.length === 1}
-          className="ml-auto text-muted-foreground hover:text-danger disabled:opacity-30"
-          aria-label="Remover item"
+          onClick={() => {
+            if (rows.length === 1) {
+              // último item: não dá pra remover a linha (tem que sobrar
+              // pelo menos uma), então zera ela de volta ao padrão.
+              setRows([defaultRow(type, r.swapDirection)]);
+            } else {
+              setRows((rs) => rs.filter((_, i) => i !== idx));
+            }
+          }}
+          className="ml-auto text-muted-foreground hover:text-danger"
+          aria-label={rows.length === 1 ? "Limpar item" : "Remover item"}
+          title={rows.length === 1 ? "Limpar item" : "Remover item"}
         >
           <Trash2 className="h-4 w-4" />
         </button>
@@ -394,20 +547,39 @@ export function MovementForm({
         </p>
       )}
       <Card className="p-6">
-        <div className="grid gap-4 md:grid-cols-3">
-          <Field label="Tipo de movimentação">
-            <Select
-              value={type}
-              onChange={(e) => changeType(e.target.value as MovementType)}
-              disabled={!!correctsId}
-            >
-              {MOVEMENT_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {MOVEMENT_TYPE_LABELS[t]}
-                </option>
-              ))}
-            </Select>
-          </Field>
+        <Field label="Tipo de movimentação">
+          {correctsId || HIDDEN_FROM_PICKER.includes(type) ? (
+            <div className="flex w-fit items-center gap-2 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm font-semibold">
+              <SlidersHorizontal className="h-5 w-5" />
+              {MOVEMENT_TYPE_LABELS[type]}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {PICKER_TYPES.map((t) => {
+                const Icon = MOVEMENT_TYPE_ICONS[t];
+                const active = type === t;
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => changeType(t)}
+                    className={cn(
+                      "flex flex-col items-center gap-2 rounded-xl border p-4 text-center text-sm font-semibold transition-colors",
+                      active
+                        ? "border-brand bg-brand text-brand-foreground shadow-sm"
+                        : "border-border bg-card text-foreground hover:bg-muted",
+                    )}
+                  >
+                    <Icon className="h-7 w-7" />
+                    {MOVEMENT_TYPE_LABELS[t]}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </Field>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
           {showsCustomer && (
             <Field label={requiresCustomer ? "Cliente *" : "Cliente (se aplicável)"}>
               <Select
@@ -440,45 +612,25 @@ export function MovementForm({
         <p className="mt-3 text-sm text-muted-foreground">{TYPE_HELP[type]}</p>
 
         <div className="mt-6 space-y-4">
-          {type === "SWAP" ? (
-            <>
-              <div>
-                <div className="mb-2 text-sm font-semibold text-success">
-                  Entregar ao cliente (cheios)
+          {useCardGrid ? (
+            type === "SWAP" ? (
+              <>
+                <div>
+                  <div className="mb-2 text-sm font-semibold text-success">
+                    Entregar ao cliente (cheios)
+                  </div>
+                  {kegImageCards("OUT")}
                 </div>
-                <div className="mb-2">{kegTypeChips("OUT")}</div>
-                <div className="space-y-2">
-                  {swapRows("OUT").map(({ r, idx }) => renderRow(r, idx))}
+                <div>
+                  <div className="mb-2 text-sm font-semibold text-info">
+                    Retirar do cliente (retornam vazios)
+                  </div>
+                  {kegImageCards("IN")}
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-2"
-                  onClick={() => setRows((rs) => [...rs, defaultRow("SWAP", "OUT")])}
-                >
-                  <Plus className="h-3.5 w-3.5" /> Item de entrega
-                </Button>
-              </div>
-              <div>
-                <div className="mb-2 text-sm font-semibold text-info">
-                  Retirar do cliente (retornam vazios)
-                </div>
-                <div className="mb-2">{kegTypeChips("IN")}</div>
-                <div className="space-y-2">
-                  {swapRows("IN").map(({ r, idx }) => renderRow(r, idx))}
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-2"
-                  onClick={() => setRows((rs) => [...rs, defaultRow("SWAP", "IN")])}
-                >
-                  <Plus className="h-3.5 w-3.5" /> Item de retirada
-                </Button>
-              </div>
-            </>
+              </>
+            ) : (
+              kegImageCards("OUT")
+            )
           ) : (
             <>
               <div className="mb-2">
