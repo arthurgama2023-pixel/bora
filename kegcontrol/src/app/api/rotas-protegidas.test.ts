@@ -37,6 +37,7 @@ const PUBLICAS: Record<string, string> = {
   "public/site-pricing": "preços do site, público por definição",
   "webhooks/whatsapp": "autentica pelo ?token= da Evolution (401 sem ele)",
   "whatsapp/keepalive": "endpoint idempotente; exige KEEPALIVE_TOKEN quando definido",
+  "health/agent": "saúde do agente pro vigia (cron externo); só estado operacional, sem PII nem conteúdo",
 };
 
 const METODOS = /export async function (GET|POST|PUT|PATCH|DELETE)/g;

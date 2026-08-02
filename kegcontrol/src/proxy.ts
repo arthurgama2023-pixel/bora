@@ -11,6 +11,7 @@ const PUBLIC_PREFIXES = [
   "/api/whatsapp/keepalive",
   "/api/public/",
   "/api/tabela-precos",
+  "/api/health/", // o "vigia" (cron externo) lê a saúde do agente sem sessão
 ];
 
 export async function proxy(request: NextRequest) {

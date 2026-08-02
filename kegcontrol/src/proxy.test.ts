@@ -56,6 +56,12 @@ describe("integrações externas passam sem cookie de sessão", () => {
     expect(passou(await proxy(pedido("/api/public/site-pricing")))).toBe(true);
   });
 
+  it("saúde do agente passa — o vigia (cron externo) lê sem sessão", async () => {
+    // O monitor de vida bate em /api/health/agent de fora, sem cookie. Se cair
+    // na regra geral, vira 401 e o vigia acha que o app está fora do ar.
+    expect(passou(await proxy(pedido("/api/health/agent")))).toBe(true);
+  });
+
   it("imagem da tabela de preços passa — a Evolution busca por URL sem sessão", async () => {
     // O agente manda a tabela como imagem no WhatsApp; a Evolution (e o
     // celular do cliente) baixam /api/tabela-precos sem cookie. Se cair na
