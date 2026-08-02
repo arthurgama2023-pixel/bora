@@ -1,0 +1,75 @@
+name: KegControl — Vigia do Agente (alerta no Telegram)
+
+# Monitor de VIDA do agente. A cada 15 min bate no /api/health/agent e, se algo
+# estiver quebrado, avisa no Telegram. Cobre o que o Sentry (erro) não cobre:
+#   - App fora do ar (o endpoint não responde)
+#   - WhatsApp desconectado (app de pé, mas a instância caiu → agente mudo)
+# Não expõe dado sensível; só lê estado operacional.
+#
+# Precisa de 2 secrets no repositório (Settings → Secrets and variables → Actions):
+#   TELEGRAM_BOT_TOKEN  — token do bot criado no @BotFather
+#   TELEGRAM_CHAT_ID    — id do chat que recebe o aviso
+# Sem os secrets, o job roda mas não envia nada (não quebra).
+
+on:
+  schedule:
+    # A cada 15 minutos (o GitHub pode atrasar em horários de pico).
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {} # permite rodar manualmente pela UI do Actions
+
+concurrency:
+  group: kegcontrol-vigia
+  cancel-in-progress: true
+
+jobs:
+  vigia:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checa a saúde do agente e avisa no Telegram se quebrou
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          HEALTH_URL: "https://kegcontrol.onrender.com/api/health/agent"
+        run: |
+          set -u
+
+          # Timeout + retries generosos: o keepalive mantém o app quente, mas se
+          # ele estiver acordando de um cold-start, damos tempo antes de gritar
+          # "fora do ar" — evita alarme falso.
+          resp="$(curl -fsS -m 100 --retry 2 --retry-delay 20 "$HEALTH_URL" 2>/dev/null)" || resp=""
+
+          alert=""
+          if [ -z "$resp" ]; then
+            alert="🔴 KegControl FORA DO AR — /api/health/agent não respondeu (kegcontrol.onrender.com). O agente não está atendendo os clientes."
+          else
+            state="$(echo "$resp" | jq -r '.whatsapp.state // "unknown"')"
+            last_in="$(echo "$resp" | jq -r '.agent.lastInboundMinutesAgo // "?"')"
+            # Só alerta em "close" (caiu de verdade). "unknown"/"connecting" pode
+            # ser leitura passageira da Evolution — não grita à toa.
+            if [ "$state" = "close" ]; then
+              alert="🟠 WhatsApp DESCONECTADO — o app está no ar, mas a instância do WhatsApp caiu (state=close). O agente NÃO recebe mensagens até reconectar. Último cliente há ${last_in} min. Reconecte em Central IA → WhatsApp."
+            fi
+          fi
+
+          if [ -z "$alert" ]; then
+            echo "✅ Tudo certo (state=${state:-n/a}) — sem alerta."
+            exit 0
+          fi
+
+          echo "⚠️ Detectado: $alert"
+
+          if [ -z "${TELEGRAM_BOT_TOKEN}" ] || [ -z "${TELEGRAM_CHAT_ID}" ]; then
+            echo "Secrets do Telegram não configurados — pulo o envio (configure TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID)."
+            exit 0
+          fi
+
+          # Envia o aviso. Prefixo com data/hora UTC pra referência.
+          stamp="$(date -u '+%d/%m %H:%M UTC')"
+          curl -fsS -m 30 \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d disable_web_page_preview=true \
+            --data-urlencode "text=[${stamp}] ${alert}" \
+            > /dev/null \
+            && echo "Alerta enviado no Telegram." \
+            || echo "Falha ao enviar no Telegram (token/chat_id corretos?)."
