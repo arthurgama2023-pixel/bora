@@ -1,10 +1,15 @@
 name: KegControl — Vigia do Agente (alerta no Telegram)
 
-# Monitor de VIDA do agente. A cada 15 min bate no /api/health/agent e, se algo
-# estiver quebrado, avisa no Telegram. Cobre o que o Sentry (erro) não cobre:
-#   - App fora do ar (o endpoint não responde)
-#   - WhatsApp desconectado (app de pé, mas a instância caiu → agente mudo)
-# Não expõe dado sensível; só lê estado operacional.
+# Monitor de VIDA e de ERRO do agente, num canal só: Telegram.
+#   1) /api/health/agent a cada 15 min — cobre o que o Sentry NÃO vê:
+#      - App fora do ar (o endpoint não responde)
+#      - WhatsApp desconectado (app de pé, mas a instância caiu → agente mudo)
+#   2) Issues novas com label "bug" — é o Sentry avisando de um erro real de
+#      código (a integração Sentry→GitHub já cria essas Issues sozinha; este
+#      job só repassa pro Telegram as que são NOVAS desde a rodada anterior,
+#      usando a própria execução anterior do workflow como "relógio", sem
+#      precisar guardar estado em outro lugar).
+# Não expõe dado sensível; só lê estado operacional e título/link de Issue.
 #
 # Precisa de 2 secrets no repositório (Settings → Secrets and variables → Actions):
 #   TELEGRAM_BOT_TOKEN  — token do bot criado no @BotFather
@@ -21,17 +26,47 @@ concurrency:
   group: kegcontrol-vigia
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  issues: read   # ler as Issues que o Sentry cria (label "bug")
+  actions: read  # ler a execução anterior deste mesmo workflow (o "relógio")
+
 jobs:
   vigia:
     runs-on: ubuntu-latest
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
     steps:
-      - name: Checa a saúde do agente e avisa no Telegram se quebrou
+      - name: Manda uma mensagem no Telegram (função reutilizada pelos passos abaixo)
+        id: setup
+        run: |
+          cat > /tmp/telegram.sh <<'SCRIPT'
+          send_telegram() {
+            local text="$1"
+            if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
+              echo "Secrets do Telegram não configurados — pulo o envio."
+              return 0
+            fi
+            curl -fsS -m 30 \
+              "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -d chat_id="${TELEGRAM_CHAT_ID}" \
+              -d disable_web_page_preview=true \
+              --data-urlencode "text=${text}" \
+              > /dev/null \
+              && echo "Alerta enviado no Telegram." \
+              || echo "Falha ao enviar no Telegram (token/chat_id corretos?)."
+          }
+          SCRIPT
+
+      - name: Checa a saúde do agente (WhatsApp/app no ar) e avisa se quebrou
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           HEALTH_URL: "https://kegcontrol.onrender.com/api/health/agent"
         run: |
           set -u
+          source /tmp/telegram.sh
 
           # Timeout + retries generosos: o keepalive mantém o app quente, mas se
           # ele estiver acordando de um cold-start, damos tempo antes de gritar
@@ -52,24 +87,46 @@ jobs:
           fi
 
           if [ -z "$alert" ]; then
-            echo "✅ Tudo certo (state=${state:-n/a}) — sem alerta."
+            echo "✅ Tudo certo (state=${state:-n/a}) — sem alerta de saúde."
             exit 0
           fi
 
           echo "⚠️ Detectado: $alert"
+          stamp="$(date -u '+%d/%m %H:%M UTC')"
+          send_telegram "[${stamp}] ${alert}"
 
-          if [ -z "${TELEGRAM_BOT_TOKEN}" ] || [ -z "${TELEGRAM_CHAT_ID}" ]; then
-            echo "Secrets do Telegram não configurados — pulo o envio (configure TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID)."
+      - name: Checa bugs novos (Sentry → Issue no GitHub) e avisa no Telegram
+        run: |
+          set -u
+          source /tmp/telegram.sh
+
+          # "Relógio": usa a execução ANTERIOR completa deste mesmo workflow como
+          # corte — só avisa de Issues criadas DEPOIS dela. Sem isso teríamos que
+          # guardar estado em algum lugar; a própria história de execuções do
+          # Actions já serve. Sem rodada anterior (1ª vez), olha só os últimos 20min.
+          cutoff="$(gh run list --repo "$REPO" --workflow=kegcontrol-vigia.yml \
+            --json databaseId,createdAt,status,conclusion --limit 5 \
+            --jq '[.[] | select(.conclusion=="success")] | sort_by(.createdAt) | .[-1].createdAt // empty')"
+          if [ -z "$cutoff" ]; then
+            cutoff="$(date -u -d '20 minutes ago' '+%Y-%m-%dT%H:%M:%SZ')"
+          fi
+          echo "Corte: Issues criadas depois de $cutoff"
+
+          novas="$(gh issue list --repo "$REPO" --label bug --state open \
+            --json number,title,url,createdAt --limit 30 \
+            --jq --arg cutoff "$cutoff" '[.[] | select(.createdAt > $cutoff)] | sort_by(.createdAt)')"
+
+          count="$(echo "$novas" | jq 'length')"
+          if [ "$count" = "0" ]; then
+            echo "✅ Nenhum bug novo desde a última rodada."
             exit 0
           fi
 
-          # Envia o aviso. Prefixo com data/hora UTC pra referência.
-          stamp="$(date -u '+%d/%m %H:%M UTC')"
-          curl -fsS -m 30 \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d disable_web_page_preview=true \
-            --data-urlencode "text=[${stamp}] ${alert}" \
-            > /dev/null \
-            && echo "Alerta enviado no Telegram." \
-            || echo "Falha ao enviar no Telegram (token/chat_id corretos?)."
+          echo "⚠️ $count bug(s) novo(s) detectado(s)."
+          echo "$novas" | jq -c '.[]' | while read -r issue; do
+            title="$(echo "$issue" | jq -r '.title')"
+            url="$(echo "$issue" | jq -r '.url')"
+            number="$(echo "$issue" | jq -r '.number')"
+            send_telegram "🐛 Bug novo (#${number}): ${title}
+${url}"
+          done
