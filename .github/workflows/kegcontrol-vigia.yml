@@ -114,7 +114,7 @@ jobs:
 
           novas="$(gh issue list --repo "$REPO" --label bug --state open \
             --json number,title,url,createdAt --limit 30 \
-            --jq --arg cutoff "$cutoff" '[.[] | select(.createdAt > $cutoff)] | sort_by(.createdAt)')"
+            | jq --arg cutoff "$cutoff" '[.[] | select(.createdAt > $cutoff)] | sort_by(.createdAt)')"
 
           count="$(echo "$novas" | jq 'length')"
           if [ "$count" = "0" ]; then
