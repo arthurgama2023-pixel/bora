@@ -36,6 +36,7 @@ const PUBLICAS: Record<string, string> = {
   "v1/auth/logout": "só apaga o cookie; não lê nem devolve dado",
   "public/site-pricing": "preços do site, público por definição",
   "webhooks/whatsapp": "autentica pelo ?token= da Evolution (401 sem ele)",
+  "webhooks/sentry": "autentica pelo ?token= (SENTRY_WEBHOOK_TOKEN) quando definido, como o keepalive",
   "whatsapp/keepalive": "endpoint idempotente; exige KEEPALIVE_TOKEN quando definido",
   "health/agent": "saúde do agente pro vigia (cron externo); só estado operacional, sem PII nem conteúdo",
 };
@@ -102,7 +103,7 @@ describe("proteção das rotas de API", () => {
 
   it("as rotas públicas de webhook têm autenticação própria", () => {
     // Público não pode significar aberto: estas duas se defendem por token.
-    for (const nome of ["webhooks/whatsapp", "whatsapp/keepalive"]) {
+    for (const nome of ["webhooks/whatsapp", "webhooks/sentry", "whatsapp/keepalive"]) {
       const r = rotas.find((x) => x.nome === nome)!;
       expect(r.fonte, `${nome} sem token`).toMatch(/token/i);
       expect(r.fonte, `${nome} sem resposta 401`).toContain("401");
