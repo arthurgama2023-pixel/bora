@@ -56,7 +56,18 @@ export async function POST(req: Request) {
     }
   }
 
-  const body = await req.json().catch(() => null);
+  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+
+  // A Internal Integration do Sentry assina TODO evento do recurso "issue"
+  // (created/assigned/ignored/resolved/unresolved), não só bug novo — sem
+  // filtrar, alguém resolvendo um bug chegaria como "🐛 Bug novo" no Telegram.
+  // "action" só existe nesse formato; o webhook clássico não manda esse campo,
+  // e nesse caso deixamos passar (ele já dispara só pelas condições da regra).
+  const action = typeof body?.action === "string" ? body.action : null;
+  if (action && !["created", "unresolved"].includes(action)) {
+    return NextResponse.json({ ok: true, sent: false, skipped: action });
+  }
+
   const { title, url, level } = extractAlert(body);
 
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
