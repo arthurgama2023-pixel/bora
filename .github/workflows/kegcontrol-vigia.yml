@@ -127,6 +127,5 @@ jobs:
             title="$(echo "$issue" | jq -r '.title')"
             url="$(echo "$issue" | jq -r '.url')"
             number="$(echo "$issue" | jq -r '.number')"
-            send_telegram "🐛 Bug novo (#${number}): ${title}
-${url}"
+            send_telegram "🐛 Bug novo (#${number}): ${title}"$'\n'"${url}"
           done
