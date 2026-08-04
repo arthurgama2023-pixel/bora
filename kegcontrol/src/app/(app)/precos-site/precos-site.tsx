@@ -322,9 +322,12 @@ export function PrecosSite() {
   }
 
   // Carrega os preços salvos (fonte única no servidor) ao abrir a tela.
+  // cache: "no-store" — sem isso o navegador pode servir uma resposta antiga
+  // do cache HTTP mesmo depois de um F5 normal, escondendo produto/preço
+  // que acabou de mudar no banco até um hard-refresh forçar a busca de novo.
   useEffect(() => {
     let alive = true;
-    fetch("/api/v1/precos-site")
+    fetch("/api/v1/precos-site", { cache: "no-store" })
       .then((r) => r.json())
       .then((json) => {
         if (!alive || !json?.ok) return;
