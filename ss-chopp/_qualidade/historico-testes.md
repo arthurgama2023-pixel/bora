@@ -8,6 +8,29 @@ completa antes de fechar entrega: `npx tsc --noEmit` · `npx eslint .`
 verificação manual no navegador (dev server porta 3004) do fluxo tocado.
 
 ---
+## 2026-08-05 (3) — Pagamento único via Pix (remove Cartão e Dinheiro)
+
+- **O que mudou:** removidas as opções "Cartão (na entrega)" e "Dinheiro"; só
+  Pix é aceito. Card "Forma de pagamento" virou "Pagamento via Pix", mostrando
+  a chave (`20994543000189`, CNPJ) e o nome do estabelecimento ("Ss Chopp
+  Expresso"), com botão "Copiar chave Pix" (`navigator.clipboard.writeText`).
+  Resumo do WhatsApp fixa `💳 Pagamento: Pix` (não depende mais de seleção).
+- **Typecheck:** ✅ (exit 0) · **Build:** ✅ (exit 0) · **Lint:** ⚠️ mesmos 3
+  pré-existentes (nada novo)
+- **Regressões:** nenhuma. `canFinish` nunca dependeu de `paymentMethod` —
+  remover a seleção não muda a lógica de liberar "Finalizar pedido".
+- **Prova (manual, navegador):** confirmado visualmente que Cartão/Dinheiro
+  sumiram e o card mostra chave+nome corretos.
+- **Limitação de teste:** o clique real no botão "Copiar chave Pix" disparou
+  `Write permission denied` — mas é o Browser Pane de automação que não
+  concede `clipboard-write` (confirmado testando `navigator.clipboard
+  .writeText` direto no console, mesmo erro fora do meu código). Em produção
+  (HTTPS real + clique genuíno do usuário) a API funciona normalmente; o
+  padrão implementado é o correto e padrão da plataforma. Não foi possível
+  verificar automaticamente o feedback visual "Chave copiada! ✅" — validação
+  manual num navegador real recomendada antes de considerar 100% fechado.
+
+---
 ## 2026-08-05 (2) — Chopeira: escolha ÚNICA por pedido (revisão do design)
 
 - **Contexto:** a v1 (entrada abaixo) tratava a escolha como variação SÓ do
