@@ -12,6 +12,9 @@ export interface Product {
   description: string;
   servir?: string;
   tag?: Tag;
+  // O kit inclui uma chopeira (elétrica ou de gelo) — cliente escolhe o tipo
+  // uma vez só pro pedido inteiro (ver "Chopeira elétrica ou de gelo?" no carrinho).
+  temChopeira?: boolean;
 }
 
 export interface CartItem {

@@ -2,17 +2,31 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { useLocation } from "@/lib/location-context";
-import { zones, getZoneById } from "@/data/zones";
+import Countdown from "@/components/Countdown";
 
-// tira acento e caixa pra casar "sao bento" com "São Bento"
+// Normaliza pra busca tolerante: tira acento/caixa, expande abreviações comuns
+// (pq→parque, jd→jardim, vl→vila) e uniformiza escrita ("matheus"→"mateus").
+// Assim "pq araruama", "são matheus" e "apollo11" acham o bairro certo.
 const norm = (s: string) =>
-  s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/\bpq\b/g, "parque")
+    .replace(/\bjd\b/g, "jardim")
+    .replace(/\bvl\b/g, "vila")
+    .replace(/th/g, "t")
+    .replace(/\s+/g, " ")
+    .trim();
+
+// versão sem espaços — casa "apollo11" com "apollo 11", "lotexv" com "lote xv"
+const nospace = (s: string) => norm(s).replace(/\s+/g, "");
 
 // Modal de entrada em dois passos:
 //  1) O cliente DIGITA o bairro; sugestões aparecem conforme ele escreve.
 //  2) Depois que clica, REVELA a surpresa — desconto de hoje + frete grátis.
 export default function LocationModal() {
-  const { zone, ready, setZone } = useLocation();
+  const { zones, zone, ready, setZone } = useLocation();
   const [query, setQuery] = useState("");
   const [pickedId, setPickedId] = useState("");
   const [revealed, setRevealed] = useState(false);
@@ -30,8 +44,12 @@ export default function LocationModal() {
   const matches = useMemo(() => {
     const q = norm(query);
     if (!q) return [];
-    return zones.filter((z) => norm(`${z.name} ${z.city}`).includes(q));
-  }, [query]);
+    const qn = nospace(query);
+    return zones.filter((z) => {
+      const alvo = norm(`${z.name} ${z.city}`);
+      return alvo.includes(q) || nospace(alvo).includes(qn);
+    });
+  }, [query, zones]);
 
   // bairro escolhido: ou clicou numa sugestão, ou só sobrou um resultado
   const resolvedId = pickedId || (matches.length === 1 ? matches[0].id : "");
@@ -39,10 +57,10 @@ export default function LocationModal() {
   if (!ready) return null; // ainda lendo o localStorage — não pisca
   if (zone) return null; // já escolheu — segue o catálogo
 
-  const chosen = resolvedId ? getZoneById(resolvedId) : undefined;
+  const chosen = resolvedId ? zones.find((z) => z.id === resolvedId) : undefined;
 
   function pick(id: string) {
-    const z = getZoneById(id);
+    const z = zones.find((z) => z.id === id);
     if (!z) return;
     setPickedId(id);
     setQuery(`${z.name} · ${z.city}`);
@@ -125,8 +143,11 @@ export default function LocationModal() {
             </p>
 
             <div className="mt-5 space-y-2">
-              <div className="rounded-xl bg-green-600 px-4 py-3 text-lg font-extrabold text-white">
-                {chosen.discountPercent}% de desconto em tudo
+              <div className="flex flex-col items-center gap-1 rounded-xl bg-brand-amber px-4 py-3 text-lg font-extrabold text-white">
+                <span>🔥 Oferta por tempo limitado</span>
+                <span className="flex items-center gap-1.5 text-sm font-bold">
+                  Acaba em <Countdown className="text-white" />
+                </span>
               </div>
               <div className="rounded-xl bg-brand-black px-4 py-3 text-lg font-extrabold text-brand-gold">
                 🚚 Frete grátis pra sua região

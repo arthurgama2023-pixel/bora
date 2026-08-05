@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "@/lib/cart-context";
@@ -19,6 +19,16 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "SS-Chopp Distribuidora",
   description: "Loja online da SS-Chopp: barris de chopp, equipamentos e combos para festa, churrasco e jogo.",
+};
+
+// Viewport mobile: largura do device, sem zoom automático. Deixamos o
+// usuário ampliar até 5x (acessibilidade) — o que evita o "zoom ao tocar"
+// é a fonte 16px nos inputs (ver globals.css), não travar o pinch-zoom.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  themeColor: "#161616",
 };
 
 export default function RootLayout({

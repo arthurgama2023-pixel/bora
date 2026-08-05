@@ -2,7 +2,7 @@ import type { Category, Product } from "@/lib/types";
 
 export const categories: { id: Category; label: string }[] = [
   { id: "barris", label: "Belco" },
-  { id: "combos", label: "Bramma" },
+  { id: "combos", label: "Brahma" },
   { id: "equipamentos", label: "Heineken" },
   { id: "acessorios", label: "Amstel" },
   { id: "outros", label: "Choppe de Vinho" },
@@ -14,11 +14,12 @@ export const products: Product[] = [
     id: "belco-30l",
     name: "Belco 30L",
     category: "barris",
-    price: 442.22,
+    price: 450.0,
     emoji: "🛢️",
     image: "https://images.unsplash.com/photo-1532634931-f8ec541ea2aa",
-    description: "Barril Belco de 30 litros, ideal para festas e churrascos.",
+    description: "O kit inclui: chopeira + barril Belco 30L + gás + mesa + 1 fardo com 20 copos.",
     servir: "Peça com 24h de antecedência para garantir a temperatura ideal.",
+    temChopeira: true,
   },
   {
     id: "belco-50l",
@@ -27,23 +28,38 @@ export const products: Product[] = [
     price: 610.0,
     emoji: "🛢️",
     image: "https://images.unsplash.com/photo-1532634931-f8ec541ea2aa",
-    description: "Barril Belco de 50 litros, para eventos grandes.",
+    description: "O kit inclui: chopeira + barril Belco 50L + gás + mesa + 1 fardo com 50 copos.",
     servir: "Peça com 48h de antecedência.",
+    temChopeira: true,
   },
 
-  // Bramma
+  // Brahma
   {
     id: "bramma-50l",
-    name: "Bramma 50L",
+    name: "Brahma 50L",
     category: "combos",
     price: 610.0,
     emoji: "🛢️",
     image: "https://images.unsplash.com/photo-1532634931-f8ec541ea2aa",
-    description: "Barril Bramma de 50 litros, clássico e refrescante.",
+    description: "O kit inclui: chopeira + barril Brahma 50L + gás + mesa + 1 fardo com 50 copos.",
     servir: "Peça com 48h de antecedência.",
+    temChopeira: true,
   },
 
   // Heineken
+  {
+    // Preço placeholder (mesmo valor do Belco 30L) — editável pelo cliente
+    // na aba "Preços do Site" do painel (fonte real pra zona de preço fixo).
+    id: "heineken-30l",
+    name: "Heineken 30L",
+    category: "equipamentos",
+    price: 450.0,
+    emoji: "🛢️",
+    image: "https://images.unsplash.com/photo-1532634931-f8ec541ea2aa",
+    description: "O kit inclui: chopeira + barril Heineken 30L + gás + mesa + 1 fardo com 20 copos.",
+    servir: "Peça com 24h de antecedência.",
+    temChopeira: true,
+  },
   {
     id: "heineken-50l",
     name: "Heineken 50L",
@@ -51,11 +67,25 @@ export const products: Product[] = [
     price: 665.44,
     emoji: "🛢️",
     image: "https://images.unsplash.com/photo-1532634931-f8ec541ea2aa",
-    description: "Barril Heineken de 50 litros, importada premium.",
+    description: "O kit inclui: chopeira + barril Heineken 50L + gás + mesa + 1 fardo com 50 copos.",
     servir: "Peça com 48h de antecedência.",
+    temChopeira: true,
   },
 
   // Amstel
+  {
+    // Preço placeholder (mesmo valor do Belco 30L) — editável pelo cliente
+    // na aba "Preços do Site" do painel (fonte real pra zona de preço fixo).
+    id: "amstel-30l",
+    name: "Amstel 30L",
+    category: "acessorios",
+    price: 450.0,
+    emoji: "🛢️",
+    image: "https://images.unsplash.com/photo-1532634931-f8ec541ea2aa",
+    description: "O kit inclui: chopeira + barril Amstel 30L + gás + mesa + 1 fardo com 20 copos.",
+    servir: "Peça com 24h de antecedência.",
+    temChopeira: true,
+  },
   {
     id: "amstel-50l",
     name: "Amstel 50L",
@@ -63,8 +93,9 @@ export const products: Product[] = [
     price: 598.89,
     emoji: "🛢️",
     image: "https://images.unsplash.com/photo-1532634931-f8ec541ea2aa",
-    description: "Barril Amstel de 50 litros, suave e agradável.",
+    description: "O kit inclui: chopeira + barril Amstel 50L + gás + mesa + 1 fardo com 50 copos.",
     servir: "Peça com 48h de antecedência.",
+    temChopeira: true,
   },
 
   // Choppe de Vinho
@@ -72,11 +103,12 @@ export const products: Product[] = [
     id: "vinho-30l",
     name: "Choppe de Vinho 30L",
     category: "outros",
-    price: 498.89,
+    price: 450.0,
     emoji: "🍷",
     image: "https://images.unsplash.com/photo-1532634931-f8ec541ea2aa",
-    description: "Choppe de vinho delicioso em barril de 30 litros.",
+    description: "O kit inclui: chopeira + barril Choppe de Vinho 30L + gás + mesa + 1 fardo com 20 copos.",
     servir: "Peça com 24h de antecedência.",
+    temChopeira: true,
   },
   {
     id: "vinho-50l",
@@ -85,8 +117,9 @@ export const products: Product[] = [
     price: 665.56,
     emoji: "🍷",
     image: "https://images.unsplash.com/photo-1532634931-f8ec541ea2aa",
-    description: "Choppe de vinho delicioso em barril de 50 litros.",
+    description: "O kit inclui: chopeira + barril Choppe de Vinho 50L + gás + mesa + 1 fardo com 50 copos.",
     servir: "Peça com 48h de antecedência.",
+    temChopeira: true,
   },
 
   // Equipamentos
@@ -96,27 +129,10 @@ export const products: Product[] = [
     category: "equipamentos",
     price: 120.0,
     emoji: "🧊",
-    image: "https://images.unsplash.com/photo-1546622891-02c72c1537b6",
-    description: "Kit completo: chopeira elétrica + botijão CO2 + mangueira + mesa.",
+    image: "/logos/kit-chopeira-bar.webp",
+    description: "Chopeira de gelo ou elétrica + botijão CO2 + mangueira — equipamento avulso.",
     tag: "Promoção",
-  },
-  {
-    id: "kit-extracao",
-    name: "Kit Extração + Mesa",
-    category: "equipamentos",
-    price: 85.0,
-    emoji: "⚙️",
-    image: "https://images.unsplash.com/photo-1546622891-02c72c1537b6",
-    description: "Kit com torneira de extração + mesa dobrável. Sem gás.",
-  },
-  {
-    id: "copo-descartavel-300ml",
-    name: "Copo Descartável 300ml (pct 50un)",
-    category: "equipamentos",
-    price: 35.0,
-    emoji: "🥤",
-    image: "https://images.unsplash.com/photo-1566633806327-68e152aaf26d",
-    description: "Pacote com 50 copos descartáveis de 300ml, ideais para festas.",
+    temChopeira: true,
   },
 ];
 
