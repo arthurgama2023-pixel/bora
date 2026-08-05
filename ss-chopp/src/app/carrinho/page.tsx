@@ -9,6 +9,10 @@ import { getCaxiasSavings } from "@/data/caxias-pricing";
 
 const WHATSAPP_NUMBER = "5521993765465";
 
+// Único meio de pagamento aceito: Pix direto pro estabelecimento.
+const PIX_KEY = "20994543000189";
+const PIX_MERCHANT_NAME = "Ss Chopp Expresso";
+
 // Chopeira tem duas opções físicas — o cliente escolhe uma vez pro pedido
 // inteiro (o kit de praticamente todo produto inclui uma chopeira).
 const CHOPEIRA_VARIANTS = [
@@ -17,13 +21,6 @@ const CHOPEIRA_VARIANTS = [
 ];
 
 type DeliveryMethod = "entrega" | "retirada";
-type PaymentMethod = "pix" | "cartao" | "dinheiro";
-
-const PAYMENT_LABELS: Record<PaymentMethod, string> = {
-  pix: "Pix",
-  cartao: "Cartão (na entrega)",
-  dinheiro: "Dinheiro",
-};
 
 function validateCPF(cpf: string): boolean {
   const cleaned = cpf.replace(/\D/g, "");
@@ -96,7 +93,7 @@ export default function CarrinhoPage() {
   const { zone } = useLocation();
   const [sent, setSent] = useState(false);
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("entrega");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | "">("");
+  const [pixCopiado, setPixCopiado] = useState(false);
   const [address, setAddress] = useState({
     nome: "",
     email: "",
@@ -161,6 +158,16 @@ export default function CarrinhoPage() {
 
   const isCPFValid = !address.cpfCnpj || isValidCPFOrCNPJ(address.cpfCnpj);
 
+  function copiarChavePix() {
+    navigator.clipboard
+      .writeText(PIX_KEY)
+      .then(() => {
+        setPixCopiado(true);
+        setTimeout(() => setPixCopiado(false), 2000);
+      })
+      .catch(() => {});
+  }
+
   function handleSendToWhatsApp() {
     const lines = items.map((item) => {
       const product = getProductById(item.productId);
@@ -220,7 +227,7 @@ export default function CarrinhoPage() {
       `👤 Nome: ${address.nome}`,
       ...(address.email ? [`📧 E-mail: ${address.email}`] : []),
       `🪪 CPF/CNPJ: ${address.cpfCnpj}`,
-      `💳 Pagamento: ${paymentMethod ? PAYMENT_LABELS[paymentMethod] : "Não informado"}`,
+      `💳 Pagamento: Pix`,
       "",
       "💬 Confirme o pedido por favor!",
     ].join("\n");
@@ -475,22 +482,26 @@ export default function CarrinhoPage() {
       </div>
 
       <div className="mt-6 rounded-xl border border-brand-black/10 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 font-bold text-brand-black">Forma de pagamento</h2>
-        <div className="flex gap-2">
-          {(Object.keys(PAYMENT_LABELS) as PaymentMethod[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setPaymentMethod(m)}
-              className={`flex-1 rounded-full px-3 py-2 text-sm font-semibold transition ${
-                paymentMethod === m
-                  ? "bg-brand-black text-brand-cream"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              {PAYMENT_LABELS[m]}
-            </button>
-          ))}
+        <h2 className="mb-3 font-bold text-brand-black">Pagamento via Pix</h2>
+        <p className="mb-3 text-sm text-gray-600">
+          Copie a chave abaixo e faça o pagamento no valor total do pedido.
+        </p>
+        <div className="rounded-lg border border-dashed border-brand-amber/60 bg-brand-cream/50 p-3">
+          <p className="text-xs font-semibold text-gray-500">Chave Pix (CNPJ)</p>
+          <p className="font-mono text-base font-bold tracking-wide text-brand-black">{PIX_KEY}</p>
+          <p className="mt-1 text-xs font-semibold text-gray-500">Nome do estabelecimento</p>
+          <p className="text-sm font-bold text-brand-black">{PIX_MERCHANT_NAME}</p>
+          <button
+            type="button"
+            onClick={copiarChavePix}
+            className={`mt-3 w-full rounded-full px-4 py-2 text-sm font-semibold transition ${
+              pixCopiado
+                ? "bg-green-600 text-white"
+                : "bg-brand-black text-brand-cream hover:brightness-110"
+            }`}
+          >
+            {pixCopiado ? "Chave copiada! ✅" : "Copiar chave Pix"}
+          </button>
         </div>
       </div>
 
