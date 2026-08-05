@@ -38,6 +38,18 @@ export const caxiasTiers: Record<string, PriceTier[]> = {
     { min: 2, unit: 750.0 },
     { min: 1, unit: 800.0 },
   ],
+  // Placeholder (mesmo do Belco 30L) — o real vem ao vivo do KegControl;
+  // isto só entra em jogo se a busca remota falhar. Editável pelo cliente.
+  "heineken-30l": [
+    { min: 3, unit: 360.0 },
+    { min: 2, unit: 400.0 },
+    { min: 1, unit: 450.0 },
+  ],
+  "amstel-30l": [
+    { min: 3, unit: 360.0 },
+    { min: 2, unit: 400.0 },
+    { min: 1, unit: 450.0 },
+  ],
 };
 
 // Preço fixo por unidade (produtos sem faixa escalonada — Choppe de Vinho).

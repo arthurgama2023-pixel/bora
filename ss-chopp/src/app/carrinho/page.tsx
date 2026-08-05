@@ -9,7 +9,21 @@ import { getCaxiasSavings } from "@/data/caxias-pricing";
 
 const WHATSAPP_NUMBER = "5521993765465";
 
+// Chopeira tem duas opções físicas — o cliente escolhe uma vez pro pedido
+// inteiro (o kit de praticamente todo produto inclui uma chopeira).
+const CHOPEIRA_VARIANTS = [
+  { value: "eletrica", label: "Elétrica" },
+  { value: "gelo", label: "De gelo" },
+];
+
 type DeliveryMethod = "entrega" | "retirada";
+type PaymentMethod = "pix" | "cartao" | "dinheiro";
+
+const PAYMENT_LABELS: Record<PaymentMethod, string> = {
+  pix: "Pix",
+  cartao: "Cartão (na entrega)",
+  dinheiro: "Dinheiro",
+};
 
 function validateCPF(cpf: string): boolean {
   const cleaned = cpf.replace(/\D/g, "");
@@ -64,12 +78,38 @@ function isValidCPFOrCNPJ(value: string): boolean {
 }
 
 export default function CarrinhoPage() {
-  const { items, updateQuantity, removeItem, subtotal, deliveryFee, total, minimumOrder, meetsMinimum, clearCart, unitPrice } =
-    useCart();
+  const {
+    items,
+    updateQuantity,
+    removeItem,
+    subtotal,
+    deliveryFee,
+    total,
+    minimumOrder,
+    meetsMinimum,
+    clearCart,
+    unitPrice,
+    chopeiraType,
+    setChopeiraType,
+    hasChopeira,
+  } = useCart();
   const { zone } = useLocation();
   const [sent, setSent] = useState(false);
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("entrega");
-  const [address, setAddress] = useState({ nome: "", rua: "", numero: "", bairro: "", complemento: "", cpfCnpj: "" });
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | "">("");
+  const [address, setAddress] = useState({
+    nome: "",
+    email: "",
+    rua: "",
+    numero: "",
+    bairro: "",
+    complemento: "",
+    cpfCnpj: "",
+    dataEvento: "",
+    horarioEvento: "",
+    temEscada: "" as "" | "sim" | "nao",
+    tipoLocal: "" as "" | "casa" | "salao",
+  });
 
   // já que o cliente escolheu o bairro na entrada, joga ele no endereço
   useEffect(() => {
@@ -112,8 +152,12 @@ export default function CarrinhoPage() {
   const finalDeliveryFee = deliveryMethod === "entrega" ? deliveryFee : 0;
   const finalTotal = subtotal + finalDeliveryFee;
   const addressComplete = address.rua && address.numero && address.bairro && address.cpfCnpj;
+  const chopeiraEscolhida = !hasChopeira || !!chopeiraType;
   const canFinish =
-    meetsMinimum && !!address.nome && (deliveryMethod === "retirada" || addressComplete);
+    meetsMinimum &&
+    !!address.nome &&
+    (deliveryMethod === "retirada" || addressComplete) &&
+    chopeiraEscolhida;
 
   const isCPFValid = !address.cpfCnpj || isValidCPFOrCNPJ(address.cpfCnpj);
 
@@ -125,8 +169,21 @@ export default function CarrinhoPage() {
       return `    ${product.emoji} ${product.name}\n       ${item.quantity}x = ${formatPrice(lineTotal)}`;
     });
 
+    const chopeiraLabel = chopeiraType
+      ? CHOPEIRA_VARIANTS.find((v) => v.value === chopeiraType)?.label ?? chopeiraType
+      : null;
+
     const deliveryLabel = deliveryMethod === "entrega" ? "🚚 Entrega" : "🏪 Retirada na loja";
-    const zoneLine = zone ? [`📍 *REGIÃO*: ${zone.name} — ${zone.city} (entrega ${zone.eta.toLowerCase()})`, ""] : [];
+    const zoneLine = zone
+      ? [`📍 *REGIÃO*: ${zone.name} — ${zone.city}${zone.eta ? ` (entrega ${zone.eta.toLowerCase()})` : ""}`, ""]
+      : [];
+    const dataFormatada = address.dataEvento
+      ? new Date(`${address.dataEvento}T00:00:00`).toLocaleDateString("pt-BR")
+      : "";
+    const eventoLines = [
+      ...(dataFormatada ? [`📅 Data da festa: ${dataFormatada}`] : []),
+      ...(address.horarioEvento ? [`🕐 Horário do evento: ${address.horarioEvento}`] : []),
+    ];
     const addressLines =
       deliveryMethod === "entrega"
         ? [
@@ -134,6 +191,8 @@ export default function CarrinhoPage() {
             "📍 *ENDEREÇO DE ENTREGA*",
             `Rua: ${address.rua}, ${address.numero}`,
             `Bairro: ${address.bairro}${address.complemento ? `\nComplemento: ${address.complemento}` : ""}`,
+            `Tem escada: ${address.temEscada === "sim" ? "Sim" : address.temEscada === "nao" ? "Não" : "Não informado"}`,
+            `Local do evento: ${address.tipoLocal === "casa" ? "Casa" : address.tipoLocal === "salao" ? "Salão" : "Não informado"}`,
           ]
         : [];
 
@@ -143,8 +202,10 @@ export default function CarrinhoPage() {
       "╚════════════════════════════════╝",
       "",
       ...zoneLine,
+      ...(eventoLines.length ? [...eventoLines, ""] : []),
       "📦 *ITENS DO PEDIDO*",
       ...lines,
+      ...(chopeiraLabel ? ["", `🍺 Chopeira: ${chopeiraLabel}`] : []),
       "",
       "─────────────────────────────────",
       `💰 Subtotal: ${formatPrice(subtotal)}`,
@@ -157,7 +218,9 @@ export default function CarrinhoPage() {
       ...addressLines,
       "",
       `👤 Nome: ${address.nome}`,
+      ...(address.email ? [`📧 E-mail: ${address.email}`] : []),
       `🪪 CPF/CNPJ: ${address.cpfCnpj}`,
+      `💳 Pagamento: ${paymentMethod ? PAYMENT_LABELS[paymentMethod] : "Não informado"}`,
       "",
       "💬 Confirme o pedido por favor!",
     ].join("\n");
@@ -238,15 +301,51 @@ export default function CarrinhoPage() {
           Pedido mínimo de {formatPrice(minimumOrder)}. Faltam {formatPrice(minimumOrder - subtotal)} para finalizar.
         </p>
       )}
+      {!chopeiraEscolhida && (
+        <p className="mt-4 rounded-lg bg-yellow-50 px-4 py-2 text-sm text-yellow-800">
+          Escolha qual chopeira você prefere (elétrica ou de gelo) para finalizar.
+        </p>
+      )}
 
       <div className="mt-6 rounded-xl border border-brand-black/10 bg-white p-4 shadow-sm">
         <h2 className="mb-3 font-bold text-brand-black">Seus dados</h2>
-        <input
-          placeholder="Nome completo"
-          value={address.nome}
-          onChange={(e) => setAddress({ ...address, nome: e.target.value })}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-        />
+        <div className="flex flex-col gap-2">
+          <input
+            placeholder="Nome completo"
+            value={address.nome}
+            onChange={(e) => setAddress({ ...address, nome: e.target.value })}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          />
+          <input
+            type="email"
+            placeholder="E-mail"
+            value={address.email}
+            onChange={(e) => setAddress({ ...address, email: e.target.value })}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          />
+        </div>
+
+        {hasChopeira && (
+          <div className="mt-4">
+            <label className="mb-1 block text-xs font-semibold text-gray-500">Qual chopeira você prefere?</label>
+            <div className="flex gap-2">
+              {CHOPEIRA_VARIANTS.map((v) => (
+                <button
+                  key={v.value}
+                  type="button"
+                  onClick={() => setChopeiraType(v.value)}
+                  className={`flex-1 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    chopeiraType === v.value
+                      ? "bg-brand-black text-brand-cream"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="mt-6 rounded-xl border border-brand-black/10 bg-white p-4 shadow-sm">
@@ -265,6 +364,27 @@ export default function CarrinhoPage() {
               {m === "entrega" ? "Entrega" : "Retirada na loja"}
             </button>
           ))}
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-500">Para qual data?</label>
+            <input
+              type="date"
+              value={address.dataEvento}
+              onChange={(e) => setAddress({ ...address, dataEvento: e.target.value })}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-500">Horário do evento?</label>
+            <input
+              type="time"
+              value={address.horarioEvento}
+              onChange={(e) => setAddress({ ...address, horarioEvento: e.target.value })}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            />
+          </div>
         </div>
 
         {deliveryMethod === "entrega" && (
@@ -293,6 +413,44 @@ export default function CarrinhoPage() {
               onChange={(e) => setAddress({ ...address, complemento: e.target.value })}
               className="col-span-2 rounded-md border border-gray-300 px-3 py-2 text-sm"
             />
+            <div className="col-span-2">
+              <label className="mb-1 block text-xs font-semibold text-gray-500">Tem escada no local?</label>
+              <div className="flex gap-2">
+                {(["sim", "nao"] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setAddress({ ...address, temEscada: v })}
+                    className={`flex-1 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                      address.temEscada === v
+                        ? "bg-brand-black text-brand-cream"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    {v === "sim" ? "Sim" : "Não"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="col-span-2">
+              <label className="mb-1 block text-xs font-semibold text-gray-500">O evento será casa ou salão?</label>
+              <div className="flex gap-2">
+                {(["casa", "salao"] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setAddress({ ...address, tipoLocal: v })}
+                    className={`flex-1 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                      address.tipoLocal === v
+                        ? "bg-brand-black text-brand-cream"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    {v === "casa" ? "Casa" : "Salão"}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="col-span-2 flex gap-2 items-center">
               <input
                 placeholder="CPF ou CNPJ"
@@ -314,6 +472,26 @@ export default function CarrinhoPage() {
             </div>
           </div>
         )}
+      </div>
+
+      <div className="mt-6 rounded-xl border border-brand-black/10 bg-white p-4 shadow-sm">
+        <h2 className="mb-3 font-bold text-brand-black">Forma de pagamento</h2>
+        <div className="flex gap-2">
+          {(Object.keys(PAYMENT_LABELS) as PaymentMethod[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setPaymentMethod(m)}
+              className={`flex-1 rounded-full px-3 py-2 text-sm font-semibold transition ${
+                paymentMethod === m
+                  ? "bg-brand-black text-brand-cream"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              {PAYMENT_LABELS[m]}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="mt-6 rounded-xl border border-brand-black/10 bg-white p-4 shadow-sm">

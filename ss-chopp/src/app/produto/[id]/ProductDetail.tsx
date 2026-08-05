@@ -4,30 +4,35 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCart, formatPrice } from "@/lib/cart-context";
 import { useLocation } from "@/lib/location-context";
-import { getCaxiasUnitPrice, caxiasTiers, getCaxiasSavings } from "@/data/caxias-pricing";
+import { brandForProduct } from "@/lib/brands";
+import BrandBarrel from "@/components/BrandBarrel";
+import Countdown from "@/components/Countdown";
 import type { Product } from "@/lib/types";
 
 export default function ProductDetail({ product }: { product: Product }) {
   const router = useRouter();
   const { addItem } = useCart();
-  const { zone, priceFactor, discountPercent } = useLocation();
+  const { zone, priceFactor, tiersOf, unitPriceOf, savingsOf } = useLocation();
 
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
 
   // Produto com preço escalonado por quantidade (ex.: Brahma) na região fixa
-  const tiers = zone?.fixed ? caxiasTiers[product.id] : undefined;
+  const tiers = zone?.fixed ? tiersOf(product.id) : undefined;
 
   // Zona com tabela de preço fixo — preço unitário conforme a quantidade.
   let unit = product.price * priceFactor;
   if (zone?.fixed) {
-    const fixedPrice = getCaxiasUnitPrice(product.id, quantity);
+    const fixedPrice = unitPriceOf(product.id, quantity);
     if (fixedPrice !== undefined) {
       unit = fixedPrice;
     }
   }
   const price = unit * quantity;
-  const savings = zone?.fixed ? getCaxiasSavings(product.id, quantity) : 0;
+  const savings = zone?.fixed ? savingsOf(product.id, quantity) : 0;
+
+  // "de/por" só quando há economia real sobre o preço de tabela (sem % fixo).
+  const hasDeal = !!zone && !tiers && unit < product.price;
 
   function handleAddToCart() {
     addItem(product.id, quantity);
@@ -46,7 +51,9 @@ export default function ProductDetail({ product }: { product: Product }) {
 
       <div className="overflow-hidden rounded-xl border border-brand-black/10 bg-white shadow-sm">
         <div className="flex h-64 items-center justify-center overflow-hidden bg-brand-cream text-8xl sm:h-80">
-          {product.image ? (
+          {brandForProduct(product.id) ? (
+            <BrandBarrel productId={product.id} productName={product.name} />
+          ) : product.image ? (
             <img
               src={`${product.image}?w=900&q=80&auto=format&fit=crop`}
               alt={product.name}
@@ -70,17 +77,22 @@ export default function ProductDetail({ product }: { product: Product }) {
           )}
 
           <div className="mt-4 flex items-baseline gap-2">
-            {discountPercent > 0 && !tiers && (
+            {hasDeal && (
               <span className="text-sm text-gray-400 line-through">{formatPrice(product.price)}</span>
             )}
             <span className="text-2xl font-extrabold text-brand-amber">{formatPrice(unit)}</span>
             <span className="text-sm text-gray-500">/ un.</span>
-            {discountPercent > 0 && !tiers && (
-              <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-bold text-green-700">
-                −{discountPercent}% hoje
+            {hasDeal && (
+              <span className="rounded-full bg-brand-amber/15 px-2 py-0.5 text-xs font-bold text-brand-amber">
+                ⏳ tempo limitado
               </span>
             )}
           </div>
+          {zone && (
+            <p className="mt-2 flex items-center gap-1.5 text-sm font-bold text-brand-amber">
+              🔥 Oferta acaba em <Countdown className="text-brand-amber" />
+            </p>
+          )}
           {tiers && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {[...tiers].sort((a, b) => a.min - b.min).map((t, i, arr) => (
@@ -100,7 +112,8 @@ export default function ProductDetail({ product }: { product: Product }) {
           )}
           {zone && (
             <p className="mt-1 text-xs font-semibold text-green-700">
-              🚚 Frete grátis para {zone.name} · {zone.city} — entrega {zone.eta.toLowerCase()}
+              🚚 Frete grátis para {zone.name} · {zone.city}
+              {zone.eta && ` — entrega ${zone.eta.toLowerCase()}`}
             </p>
           )}
 
