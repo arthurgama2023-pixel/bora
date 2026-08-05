@@ -8,6 +8,25 @@ completa antes de fechar entrega: `npx tsc --noEmit` · `npx eslint .`
 verificação manual no navegador (dev server porta 3004) do fluxo tocado.
 
 ---
+## 2026-08-05 (4) — Sinal fixo de 50% + layout do Pix redesenhado (mais confiável)
+
+- **Regra final (substituiu uma versão por faixas de barril, nunca publicada):**
+  sinal = sempre 50% do total do pedido, sem exceção (mais simples e previsível
+  do que variar por quantidade de barril). `Product.isBarril` foi removido —
+  ficou sem uso depois da simplificação.
+- **Layout do Pix redesenhado pra passar mais segurança:** cabeçalho verde
+  "🔒 Pagamento seguro via Pix" (era neutro); destaque do sinal em verde (era
+  amarelo — amarelo lê como alerta, não como confiança); chave Pix com selo
+  "✓ Verificada"; campo "Favorecido" com o nome do estabelecimento; botão
+  "📋 Copiar chave Pix"; rodapé "🔒 O pagamento é feito direto no app do seu
+  banco — a SS-Chopp não recebe nem guarda seus dados bancários."; resumo do
+  WhatsApp ganhou linha `🔒 Sinal para confirmar (50%): R$X`.
+- **Typecheck:** ✅ · **Build:** ✅ · **Lint:** mesmos 3 pré-existentes
+- **Regressões:** nenhuma
+- **Prova (manual, navegador, via localStorage simulando o carrinho):** Belco
+  30L (R$450) → sinal R$225,00 (50% exato), restante R$225,00 na entrega ✅
+
+---
 ## 2026-08-05 (3) — Pagamento único via Pix (remove Cartão e Dinheiro)
 
 - **O que mudou:** removidas as opções "Cartão (na entrega)" e "Dinheiro"; só
