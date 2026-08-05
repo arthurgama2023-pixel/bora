@@ -148,6 +148,8 @@ export default function CarrinhoPage() {
 
   const finalDeliveryFee = deliveryMethod === "entrega" ? deliveryFee : 0;
   const finalTotal = subtotal + finalDeliveryFee;
+  // Sinal pra confirmar a reserva: sempre 50% do total do pedido.
+  const sinal = finalTotal * 0.5;
   const addressComplete = address.rua && address.numero && address.bairro && address.cpfCnpj;
   const chopeiraEscolhida = !hasChopeira || !!chopeiraType;
   const canFinish =
@@ -219,6 +221,7 @@ export default function CarrinhoPage() {
       `🚛 Taxa de entrega: ${finalDeliveryFee > 0 ? formatPrice(finalDeliveryFee) : "GRÁTIS 🎉"}`,
       "",
       `✅ *TOTAL: ${formatPrice(finalTotal)}*`,
+      `🔒 Sinal para confirmar (50%): ${formatPrice(sinal)}`,
       "─────────────────────────────────",
       "",
       `${deliveryLabel}`,
@@ -481,27 +484,54 @@ export default function CarrinhoPage() {
         )}
       </div>
 
-      <div className="mt-6 rounded-xl border border-brand-black/10 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 font-bold text-brand-black">Pagamento via Pix</h2>
-        <p className="mb-3 text-sm text-gray-600">
-          Copie a chave abaixo e faça o pagamento no valor total do pedido.
-        </p>
-        <div className="rounded-lg border border-dashed border-brand-amber/60 bg-brand-cream/50 p-3">
-          <p className="text-xs font-semibold text-gray-500">Chave Pix (CNPJ)</p>
-          <p className="font-mono text-base font-bold tracking-wide text-brand-black">{PIX_KEY}</p>
-          <p className="mt-1 text-xs font-semibold text-gray-500">Nome do estabelecimento</p>
-          <p className="text-sm font-bold text-brand-black">{PIX_MERCHANT_NAME}</p>
+      <div className="mt-6 overflow-hidden rounded-xl border border-green-600/20 bg-white shadow-sm">
+        <div className="flex items-center gap-2 bg-green-600 px-4 py-3">
+          <span className="text-lg">🔒</span>
+          <h2 className="font-bold text-white">Pagamento seguro via Pix</h2>
+        </div>
+
+        <div className="p-4">
+          <div className="rounded-lg border border-green-600/30 bg-green-50 px-4 py-3">
+            <p className="text-sm text-gray-700">Sinal para confirmar a reserva (50% do pedido)</p>
+            <p className="text-2xl font-extrabold text-green-700">{formatPrice(sinal)}</p>
+            <p className="mt-1 text-xs text-gray-500">
+              O restante ({formatPrice(finalTotal - sinal)}) é acertado{" "}
+              {deliveryMethod === "entrega" ? "na entrega" : "na retirada"}.
+            </p>
+          </div>
+
+          <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Chave Pix (CNPJ)</p>
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-green-600">
+                <span aria-hidden>✓</span> Verificada
+              </span>
+            </div>
+            <p className="mt-0.5 font-mono text-base font-bold tracking-wide text-brand-black">{PIX_KEY}</p>
+            <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Favorecido</p>
+            <p className="text-sm font-bold text-brand-black">{PIX_MERCHANT_NAME}</p>
+          </div>
+
           <button
             type="button"
             onClick={copiarChavePix}
-            className={`mt-3 w-full rounded-full px-4 py-2 text-sm font-semibold transition ${
+            className={`mt-3 flex w-full items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-bold transition ${
               pixCopiado
                 ? "bg-green-600 text-white"
                 : "bg-brand-black text-brand-cream hover:brightness-110"
             }`}
           >
-            {pixCopiado ? "Chave copiada! ✅" : "Copiar chave Pix"}
+            {pixCopiado ? (
+              <>✅ Chave copiada!</>
+            ) : (
+              <>📋 Copiar chave Pix</>
+            )}
           </button>
+
+          <p className="mt-3 flex items-center gap-1.5 text-[11px] text-gray-400">
+            <span aria-hidden>🔒</span>
+            O pagamento é feito direto no app do seu banco — a SS-Chopp não recebe nem guarda seus dados bancários.
+          </p>
         </div>
       </div>
 
