@@ -8,6 +8,7 @@ import {
   Beer,
   Bot,
   LayoutDashboard,
+  ShoppingBag,
   Tags,
   Users,
   UserCog,
@@ -81,6 +82,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "Preços do Site",
     description: "Tabela de preços exibida para o cliente final",
     icon: Tags,
+    roles: ["ADMIN", "MANAGER"],
+  },
+  {
+    href: "/pedidos-site",
+    label: "Pedidos do Site",
+    description: "Pedidos feitos no site aguardando confirmação",
+    icon: ShoppingBag,
     roles: ["ADMIN", "MANAGER"],
   },
 ] as const;
