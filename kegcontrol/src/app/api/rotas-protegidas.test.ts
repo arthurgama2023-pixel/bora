@@ -35,6 +35,7 @@ const PUBLICAS: Record<string, string> = {
   "v1/auth/login": "é o próprio login — não há sessão ainda",
   "v1/auth/logout": "só apaga o cookie; não lê nem devolve dado",
   "public/site-pricing": "preços do site, público por definição",
+  "public/pedidos": "histórico de pedidos do site por telefone, público por definição (mesmo padrão de 'rastrear meu pedido')",
   "webhooks/whatsapp": "autentica pelo ?token= da Evolution (401 sem ele)",
   "webhooks/sentry": "autentica pelo ?token= (SENTRY_WEBHOOK_TOKEN) quando definido, como o keepalive",
   "whatsapp/keepalive": "endpoint idempotente; exige KEEPALIVE_TOKEN quando definido",

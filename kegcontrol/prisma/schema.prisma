@@ -30,6 +30,7 @@ model Company {
   campaignRules CampaignRule[]
   dispatches    Dispatch[]
   settings      Setting[]
+  siteOrders    SiteOrder[]
 }
 
 // Configurações chave/valor por empresa (ex.: credenciais do WhatsApp/Evolution).
@@ -196,6 +197,41 @@ model MovementItem {
   kegType  KegType  @relation(fields: [kegTypeId], references: [id])
 
   @@index([movementId])
+}
+
+// Pedido feito pelo SITE (ss-chopp) — capturado quando o cliente finaliza.
+// NÃO é movimentação de estoque: entra como PENDING e a SS-Chopp confirma no
+// painel (aí sim vira Movement, manualmente). É a ponte entre o site estático
+// e o controle interno, sem deixar um endpoint público mexer no patrimônio.
+model SiteOrder {
+  id             String   @id @default(cuid())
+  companyId      String
+  customerName   String
+  phone          String
+  email          String?
+  document       String? // CPF/CNPJ
+  deliveryMethod String // entrega | retirada
+  neighborhood   String?
+  city           String?
+  street         String?
+  number         String?
+  complement     String?
+  hasStairs      String? // sim | nao
+  venueType      String? // casa | salao
+  eventDate      String? // data do evento (texto vindo do site)
+  eventTime      String?
+  chopeiraType   String? // eletrica | gelo
+  items          String // JSON: [{ id, name, quantity, unitPrice }]
+  total          Float
+  status         String   @default("PENDING") // PENDING | CONFIRMED | CANCELLED
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, status])
+  @@index([companyId, phone])
 }
 
 // ─── Central IA: agente, CRM e disparos (módulo à parte, aditivo) ──────────
