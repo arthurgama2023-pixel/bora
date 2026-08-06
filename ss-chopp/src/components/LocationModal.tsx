@@ -26,10 +26,11 @@ const nospace = (s: string) => norm(s).replace(/\s+/g, "");
 //  1) O cliente DIGITA o bairro; sugestões aparecem conforme ele escreve.
 //  2) Depois que clica, REVELA a surpresa — desconto de hoje + frete grátis.
 export default function LocationModal() {
-  const { zones, zone, ready, setZone } = useLocation();
+  const { zones, zone, ready, setZone, phone, setPhone } = useLocation();
   const [query, setQuery] = useState("");
   const [pickedId, setPickedId] = useState("");
   const [revealed, setRevealed] = useState(false);
+  const [phoneInput, setPhoneInput] = useState(phone);
 
   // Quando o usuário clica "trocar", zone vira null e o modal reaparece.
   // Reseta tudo pra o passo 1 (o campo de digitar).
@@ -40,6 +41,13 @@ export default function LocationModal() {
       setPickedId("");
     }
   }, [zone]);
+
+  // O telefone salvo é lido do localStorage DEPOIS do primeiro render (efeito
+  // do context), então o campo começa vazio. Sincroniza quando ele chega —
+  // sem isso, confirmar o modal sobrescreveria o telefone salvo com "".
+  useEffect(() => {
+    if (phone) setPhoneInput(phone);
+  }, [phone]);
 
   const matches = useMemo(() => {
     const q = norm(query);
@@ -118,8 +126,27 @@ export default function LocationModal() {
               )}
             </div>
 
+            <div className="mt-4">
+              <label className="mb-1 block text-xs font-semibold text-gray-500">
+                Seu WhatsApp <span className="font-normal text-gray-400">(opcional — pra ver seus pedidos)</span>
+              </label>
+              <input
+                type="tel"
+                inputMode="numeric"
+                value={phoneInput}
+                onChange={(e) => setPhoneInput(e.target.value)}
+                placeholder="(21) 99999-9999"
+                autoComplete="tel"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"
+              />
+            </div>
+
             <button
-              onClick={() => resolvedId && setRevealed(true)}
+              onClick={() => {
+                if (!resolvedId) return;
+                setPhone(phoneInput);
+                setRevealed(true);
+              }}
               disabled={!resolvedId}
               className={`mt-4 w-full rounded-full px-6 py-3 font-bold text-white transition ${
                 resolvedId ? "bg-brand-amber hover:brightness-110" : "cursor-not-allowed bg-gray-300"

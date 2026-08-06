@@ -6,12 +6,9 @@ import { getProductById } from "@/data/products";
 import { useCart, formatPrice } from "@/lib/cart-context";
 import { useLocation } from "@/lib/location-context";
 import { getCaxiasSavings } from "@/data/caxias-pricing";
+import { PEDIDOS_URL } from "@/lib/tabela";
 
 const WHATSAPP_NUMBER = "5521993765465";
-
-// Único meio de pagamento aceito: Pix direto pro estabelecimento.
-const PIX_KEY = "20994543000189";
-const PIX_MERCHANT_NAME = "Ss Chopp Expresso";
 
 // Chopeira tem duas opções físicas — o cliente escolhe uma vez pro pedido
 // inteiro (o kit de praticamente todo produto inclui uma chopeira).
@@ -90,10 +87,10 @@ export default function CarrinhoPage() {
     setChopeiraType,
     hasChopeira,
   } = useCart();
-  const { zone } = useLocation();
+  const { zone, phone, setPhone } = useLocation();
   const [sent, setSent] = useState(false);
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("entrega");
-  const [pixCopiado, setPixCopiado] = useState(false);
+  const [telefone, setTelefone] = useState(phone);
   const [address, setAddress] = useState({
     nome: "",
     email: "",
@@ -112,6 +109,12 @@ export default function CarrinhoPage() {
   useEffect(() => {
     if (zone && !address.bairro) setAddress((a) => ({ ...a, bairro: zone.name }));
   }, [zone, address.bairro]);
+
+  // Telefone salvo no modal do bairro chega depois do 1º render — sincroniza
+  // o campo do carrinho quando aparecer, sem sobrescrever o que o cliente digitou.
+  useEffect(() => {
+    if (phone) setTelefone((t) => t || phone);
+  }, [phone]);
 
   if (sent) {
     return (
@@ -148,26 +151,56 @@ export default function CarrinhoPage() {
 
   const finalDeliveryFee = deliveryMethod === "entrega" ? deliveryFee : 0;
   const finalTotal = subtotal + finalDeliveryFee;
-  // Sinal pra confirmar a reserva: sempre 50% do total do pedido.
-  const sinal = finalTotal * 0.5;
   const addressComplete = address.rua && address.numero && address.bairro && address.cpfCnpj;
+  const telefoneOk = telefone.replace(/\D/g, "").length >= 10;
   const chopeiraEscolhida = !hasChopeira || !!chopeiraType;
   const canFinish =
     meetsMinimum &&
     !!address.nome &&
+    telefoneOk &&
     (deliveryMethod === "retirada" || addressComplete) &&
     chopeiraEscolhida;
 
   const isCPFValid = !address.cpfCnpj || isValidCPFOrCNPJ(address.cpfCnpj);
 
-  function copiarChavePix() {
-    navigator.clipboard
-      .writeText(PIX_KEY)
-      .then(() => {
-        setPixCopiado(true);
-        setTimeout(() => setPixCopiado(false), 2000);
-      })
-      .catch(() => {});
+  // Captura o pedido no KegControl como PENDENTE (a SS-Chopp confirma no
+  // painel). Best-effort: se falhar, o cliente ainda finaliza pelo WhatsApp —
+  // não travamos a venda por causa da captura.
+  function capturarPedido() {
+    const payload = {
+      customerName: address.nome,
+      phone: telefone,
+      email: address.email || null,
+      document: address.cpfCnpj || null,
+      deliveryMethod,
+      neighborhood: address.bairro || zone?.name || null,
+      city: zone?.city || null,
+      street: deliveryMethod === "entrega" ? address.rua || null : null,
+      number: deliveryMethod === "entrega" ? address.numero || null : null,
+      complement: deliveryMethod === "entrega" ? address.complemento || null : null,
+      hasStairs: deliveryMethod === "entrega" ? address.temEscada || null : null,
+      venueType: deliveryMethod === "entrega" ? address.tipoLocal || null : null,
+      eventDate: address.dataEvento || null,
+      eventTime: address.horarioEvento || null,
+      chopeiraType: hasChopeira ? chopeiraType : null,
+      items: items.map((it) => {
+        const p = getProductById(it.productId);
+        return {
+          id: it.productId,
+          name: p?.name ?? it.productId,
+          quantity: it.quantity,
+          unitPrice: unitPrice(it.productId, it.quantity),
+        };
+      }),
+      total: finalTotal,
+    };
+    return fetch(PEDIDOS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).catch(() => {
+      // silencioso — captura é best-effort; o WhatsApp é o caminho garantido
+    });
   }
 
   function handleSendToWhatsApp() {
@@ -221,7 +254,6 @@ export default function CarrinhoPage() {
       `🚛 Taxa de entrega: ${finalDeliveryFee > 0 ? formatPrice(finalDeliveryFee) : "GRÁTIS 🎉"}`,
       "",
       `✅ *TOTAL: ${formatPrice(finalTotal)}*`,
-      `🔒 Sinal para confirmar (50%): ${formatPrice(sinal)}`,
       "─────────────────────────────────",
       "",
       `${deliveryLabel}`,
@@ -230,10 +262,13 @@ export default function CarrinhoPage() {
       `👤 Nome: ${address.nome}`,
       ...(address.email ? [`📧 E-mail: ${address.email}`] : []),
       `🪪 CPF/CNPJ: ${address.cpfCnpj}`,
-      `💳 Pagamento: Pix`,
       "",
       "💬 Confirme o pedido por favor!",
     ].join("\n");
+
+    // Dispara a captura ANTES de abrir o WhatsApp (o open pode trocar de aba /
+    // congelar o contexto no mobile). Não aguardamos — é best-effort.
+    capturarPedido();
 
     const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(summary)}`;
     window.open(url, "_blank");
@@ -327,8 +362,21 @@ export default function CarrinhoPage() {
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
           />
           <input
+            type="tel"
+            inputMode="numeric"
+            placeholder="WhatsApp com DDD"
+            value={telefone}
+            onChange={(e) => {
+              setTelefone(e.target.value);
+              setPhone(e.target.value);
+            }}
+            className={`w-full rounded-md border px-3 py-2 text-sm ${
+              telefone && !telefoneOk ? "border-red-400 bg-red-50" : "border-gray-300"
+            }`}
+          />
+          <input
             type="email"
-            placeholder="E-mail"
+            placeholder="E-mail (opcional)"
             value={address.email}
             onChange={(e) => setAddress({ ...address, email: e.target.value })}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
@@ -482,57 +530,6 @@ export default function CarrinhoPage() {
             </div>
           </div>
         )}
-      </div>
-
-      <div className="mt-6 overflow-hidden rounded-xl border border-green-600/20 bg-white shadow-sm">
-        <div className="flex items-center gap-2 bg-green-600 px-4 py-3">
-          <span className="text-lg">🔒</span>
-          <h2 className="font-bold text-white">Pagamento seguro via Pix</h2>
-        </div>
-
-        <div className="p-4">
-          <div className="rounded-lg border border-green-600/30 bg-green-50 px-4 py-3">
-            <p className="text-sm text-gray-700">Sinal para confirmar a reserva (50% do pedido)</p>
-            <p className="text-2xl font-extrabold text-green-700">{formatPrice(sinal)}</p>
-            <p className="mt-1 text-xs text-gray-500">
-              O restante ({formatPrice(finalTotal - sinal)}) é acertado{" "}
-              {deliveryMethod === "entrega" ? "na entrega" : "na retirada"}.
-            </p>
-          </div>
-
-          <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Chave Pix (CNPJ)</p>
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-green-600">
-                <span aria-hidden>✓</span> Verificada
-              </span>
-            </div>
-            <p className="mt-0.5 font-mono text-base font-bold tracking-wide text-brand-black">{PIX_KEY}</p>
-            <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Favorecido</p>
-            <p className="text-sm font-bold text-brand-black">{PIX_MERCHANT_NAME}</p>
-          </div>
-
-          <button
-            type="button"
-            onClick={copiarChavePix}
-            className={`mt-3 flex w-full items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-bold transition ${
-              pixCopiado
-                ? "bg-green-600 text-white"
-                : "bg-brand-black text-brand-cream hover:brightness-110"
-            }`}
-          >
-            {pixCopiado ? (
-              <>✅ Chave copiada!</>
-            ) : (
-              <>📋 Copiar chave Pix</>
-            )}
-          </button>
-
-          <p className="mt-3 flex items-center gap-1.5 text-[11px] text-gray-400">
-            <span aria-hidden>🔒</span>
-            O pagamento é feito direto no app do seu banco — a SS-Chopp não recebe nem guarda seus dados bancários.
-          </p>
-        </div>
       </div>
 
       <div className="mt-6 rounded-xl border border-brand-black/10 bg-white p-4 shadow-sm">

@@ -11,6 +11,7 @@ import {
 import { PRICING_URL, idsRemotos } from "@/lib/tabela";
 
 const STORAGE_KEY = "ss-chopp-zone";
+const PHONE_KEY = "ss-chopp-phone";
 
 // Fonte única de preços E cobertura (KegControl → Supabase). O site lê ao
 // vivo daqui; se falhar/estiver carregando, cai na tabela fixa local (nunca
@@ -44,6 +45,8 @@ interface LocationContextValue {
   zones: Zone[]; // cobertura efetiva: embutida + adicionada via KegControl
   zone: Zone | null;
   ready: boolean; // já leu o localStorage? (evita piscar o modal pra quem já escolheu)
+  phone: string; // telefone informado pelo cliente (pra "Meus pedidos"); "" se não deu
+  setPhone: (phone: string) => void;
   priceFactor: number; // multiplicador já com a bonificação (ex.: 15% off => 0.85)
   discountPercent: number; // bonificação de hoje da região escolhida
   setZone: (id: string) => void;
@@ -60,6 +63,7 @@ const LocationContext = createContext<LocationContextValue | null>(null);
 
 export function LocationProvider({ children }: { children: ReactNode }) {
   const [zoneId, setZoneId] = useState<string | null>(null);
+  const [phone, setPhoneState] = useState("");
   const [ready, setReady] = useState(false);
   const [remote, setRemote] = useState<RemotePricing | null>(null);
   const [pricingRev, setPricingRev] = useState(0);
@@ -99,8 +103,17 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) setZoneId(saved);
+    const savedPhone = localStorage.getItem(PHONE_KEY);
+    if (savedPhone) setPhoneState(savedPhone);
     setReady(true);
   }, []);
+
+  function setPhone(p: string) {
+    const clean = p.trim();
+    setPhoneState(clean);
+    if (clean) localStorage.setItem(PHONE_KEY, clean);
+    else localStorage.removeItem(PHONE_KEY);
+  }
 
   // Busca os preços + cobertura publicados uma vez ao carregar. Falha
   // silenciosa => fallback local (preços fixos + zonas embutidas).
@@ -188,6 +201,8 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         zones,
         zone,
         ready,
+        phone,
+        setPhone,
         priceFactor,
         discountPercent,
         setZone,
