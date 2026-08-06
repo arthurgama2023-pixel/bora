@@ -15,6 +15,11 @@ export const PRICING_URL =
   process.env.NEXT_PUBLIC_PRICING_URL ??
   "https://kegcontrol.onrender.com/api/public/site-pricing";
 
+// Base do KegControl pra endpoints públicos (deriva do PRICING_URL pra não
+// repetir a URL do Render / permitir override por env em dev).
+const KEGCONTROL_BASE = PRICING_URL.replace(/\/api\/public\/site-pricing$/, "");
+export const PEDIDOS_URL = `${KEGCONTROL_BASE}/api/public/pedidos`;
+
 export interface RemoteProd {
   id: string;
   tiers?: [number, number, number];
