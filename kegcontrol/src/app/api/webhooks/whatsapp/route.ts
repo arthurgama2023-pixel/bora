@@ -3,8 +3,13 @@ import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { chatWithAgent, ORDER_PHOTO_FOLLOWUP, type ChatTurn } from "@/server/services/agent";
 import { findCustomerByPhone, upsertCustomerFromAgent } from "@/server/services/customers";
+import { savePaymentProof } from "@/server/services/payment-proofs";
 import { getWhatsAppChannel, isWhatsAppNumberAllowed } from "@/server/services/whatsapp/channel";
 import { findCompanyByWebhookToken } from "@/server/services/whatsapp/config";
+
+// Resposta fixa (não passa pelo Gemini — mais barato e previsível) quando
+// chega uma foto. Não confirma pagamento nenhum; só avisa que foi recebida.
+const IMAGE_RECEIVED_ACK = "📥 Recebi sua imagem! Se for comprovante de pagamento, vamos conferir e te avisamos por aqui.";
 
 export const dynamic = "force-dynamic";
 
@@ -39,13 +44,36 @@ export async function POST(req: NextRequest) {
 
   const incoming = raw ? channel.parseWebhook(raw) : null;
 
-  // Ignoramos tudo que não for texto nem áudio (voz) de um usuário.
-  if (!incoming || (!incoming.text && !incoming.audio)) {
+  // Ignoramos tudo que não for texto, áudio (voz) ou imagem de um usuário.
+  if (!incoming || (!incoming.text && !incoming.audio && !incoming.image)) {
     return NextResponse.json({ ok: true });
   }
 
-  // Allowlist: fora da lista, ignora sem gastar transcrição nem chamada de IA.
+  // Allowlist: fora da lista, ignora sem gastar transcrição, IA ou storage.
   if (!(await isWhatsAppNumberAllowed(companyId, incoming.externalId))) {
+    return NextResponse.json({ ok: true });
+  }
+
+  // Foto: provável comprovante de PIX. NÃO passa pelo agente/Gemini — só
+  // guarda pra revisão humana (aba Verificação) e confirma o recebimento.
+  // Tratado à parte, antes da lógica de texto/áudio, e sempre retorna aqui.
+  if (incoming.image) {
+    const downloaded = await channel.downloadImage(companyId, incoming.image);
+    if (downloaded) {
+      await savePaymentProof(companyId, {
+        phone: incoming.externalId,
+        pushName: incoming.pushName,
+        mimetype: downloaded.mimetype,
+        base64: downloaded.base64,
+        caption: incoming.image.caption,
+      }).catch((e) => {
+        console.error("[whatsapp] savePaymentProof falhou:", e);
+        Sentry.captureException(e, { tags: { companyId, whatsapp: "payment-proof" } });
+      });
+      await channel.sendMessage(companyId, incoming.externalId, IMAGE_RECEIVED_ACK);
+    } else {
+      console.error("[whatsapp] falha ao baixar imagem do Evolution — comprovante não salvo");
+    }
     return NextResponse.json({ ok: true });
   }
 
