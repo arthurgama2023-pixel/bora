@@ -6,6 +6,26 @@ Rodar com `npm test` (Vitest). Verificação completa antes de fechar entrega:
 `npm test` · `npx tsc --noEmit` · `npx eslint src` · `npm run build`.
 
 ---
+## 2026-08-05 — fix: agente respondia em GRUPO do WhatsApp
+
+- **Bug de produção real (relatado pelo dono):** JID de grupo (termina em
+  `@g.us`) nunca era filtrado em `parseWebhook` — uma mensagem de grupo era
+  tratada como se fosse de um contato individual, e o agente respondia
+  dentro do grupo.
+- **Fix:** `channel.ts` — `if (key.remoteJid.endsWith("@g.us")) return null`,
+  aplicado ANTES de resolver texto/áudio (cobre os dois tipos de mensagem).
+- **Testes: 176/176 ✅** em 15 arquivos (0 regressões) — +5 nesta entrada
+  | Arquivo | Testes | O que protege |
+  |---|---|---|
+  | `src/server/services/whatsapp/channel.test.ts` (novo) | 5 | grupo (`@g.us`) ignorado, inclusive em áudio; contato individual continua respondido; `fromMe` ignorado; payload vazio não quebra |
+- **Typecheck:** ✅ · **Lint:** ✅ nos arquivos tocados
+- **Regressões:** nenhuma (as 171 da entrada anterior seguem ✅)
+- **Nota de processo:** base real do `bora/main` confirmada em 171 testes antes
+  desta entrada — os documentos de qualidade estavam desatualizados (travados
+  em "2026-07-31", 170) porque features recentes (captura de pedido, Pix) não
+  os atualizaram. Corrigido aqui.
+
+---
 ## 2026-07-31 — Tabela de preços como IMAGEM no WhatsApp
 
 - **Testes: 170/170 ✅** em 14 arquivos (0 regressões) — +1 nesta entrada

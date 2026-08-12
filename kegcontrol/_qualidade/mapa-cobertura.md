@@ -1,10 +1,13 @@
 # Mapa de Cobertura — KegControl
 
-Atualizado: 2026-07-31 · rodar com `npm test`
+Atualizado: 2026-08-05 · rodar com `npm test`
 
-Retrato ATUAL de onde o código tem rede de proteção. **170 testes** cobrindo o
+Retrato ATUAL de onde o código tem rede de proteção. **176 testes** cobrindo o
 núcleo do sistema (movimentação + estoque), a porta de entrada (middleware +
 auth), o contrato das rotas de API e a lógica pura de apoio.
+
+⚠️ Este documento não reflete features recentes (captura de pedido do site,
+Pix) que não passaram por este portão — cobertura delas é desconhecida.
 
 ## Com teste
 
@@ -23,6 +26,7 @@ auth), o contrato das rotas de API e a lógica pura de apoio.
 | `src/server/services/reports.ts` | 🟡 parcial | 9 | só `getReportPeriodRange` (datas) |
 | `src/lib/phone.ts` | 🟢 testado | 7 | formatos reais de entrada |
 | `src/lib/nav-items.ts` | 🟢 testado | 7 | os 3 papéis |
+| `src/server/services/whatsapp/channel.ts` (`parseWebhook`) | 🟡 parcial | 5 | grupo (`@g.us`) ignorado — o bug real de produção; `fromMe` ignorado; contato individual OK; payload vazio não quebra. Resto da classe (`sendMessage`/`connect`/etc.) segue sem teste — depende da Evolution real |
 
 ## Sem teste — por ordem de risco
 
@@ -31,7 +35,7 @@ auth), o contrato das rotas de API e a lógica pura de apoio.
 | `reports.ts` → `getMovementPeriodSummary`, `getCustomerStatement` | 🔴 sem teste | somam o faturamento estimado e o extrato do cliente |
 | Corpo das outras 37 rotas | 🟡 parcial | a proteção é garantida pela varredura, mas só `v1/users` tem teste de contrato do começo ao fim |
 | `src/server/services/customers.ts` | 🔴 sem teste | `findCustomerByPhone` (o `phoneMatchKey` que ele usa já está coberto) |
-| `src/server/services/agent.ts` + `whatsapp/*` | 🔴 sem teste | dependem de rede (Gemini/Evolution); inclui o encanamento da imagem da tabela de preços |
+| `src/server/services/agent.ts` + resto de `whatsapp/*` | 🔴 sem teste | dependem de rede (Gemini/Evolution); inclui o encanamento da imagem da tabela de preços. `channel.ts.parseWebhook` (lógica pura, sem rede) já testado — ver acima |
 | `src/app/api/tabela-precos/route.tsx` | 🔴 sem teste | render de imagem (next/og) a partir dos preços vivos; validado por render manual (curl → PNG 1080x1350) |
 | `src/app/(app)/*` (telas) | 🔴 sem teste | precisaria de teste de componente (jsdom) ou e2e |
 | `prisma/*`, `src/generated/*` | ⚪ não testável | schema, seed e client gerado |
