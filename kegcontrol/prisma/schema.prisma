@@ -31,6 +31,7 @@ model Company {
   dispatches    Dispatch[]
   settings      Setting[]
   siteOrders    SiteOrder[]
+  paymentProofs PaymentProof[]
 }
 
 // Configurações chave/valor por empresa (ex.: credenciais do WhatsApp/Evolution).
@@ -232,6 +233,24 @@ model SiteOrder {
 
   @@index([companyId, status])
   @@index([companyId, phone])
+}
+
+// Comprovante de pagamento (foto) recebido no WhatsApp — o agente NÃO tenta
+// ler/validar o comprovante, só guarda pra revisão humana na aba Verificação.
+// Nenhuma imagem passa pelo Gemini nem vira dado de conversa.
+model PaymentProof {
+  id        String   @id @default(cuid())
+  companyId String
+  phone     String // quem mandou, no WhatsApp
+  pushName  String? // nome de exibição do WhatsApp, se veio no webhook
+  mimetype  String // image/jpeg, image/png, etc.
+  imageData Bytes // a imagem em si — MVP: direto no banco, sem storage externo
+  caption   String? // legenda que o cliente escreveu junto com a foto
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, createdAt])
 }
 
 // ─── Central IA: agente, CRM e disparos (módulo à parte, aditivo) ──────────

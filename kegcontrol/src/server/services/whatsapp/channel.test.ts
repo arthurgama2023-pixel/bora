@@ -6,14 +6,20 @@ import { WhatsAppEvolutionChannel } from "./channel";
 // grupo era tratada como se fosse de um contato individual. O agente é para
 // atendimento 1:1; nunca deve responder dentro de um grupo.
 
-function payload(remoteJid: string, opts: { fromMe?: boolean; text?: string; audio?: boolean } = {}) {
+function payload(
+  remoteJid: string,
+  opts: { fromMe?: boolean; text?: string; audio?: boolean; image?: boolean; caption?: string } = {},
+) {
+  const message = opts.audio
+    ? { audioMessage: { mimetype: "audio/ogg" } }
+    : opts.image
+      ? { imageMessage: { mimetype: "image/jpeg", caption: opts.caption } }
+      : { conversation: opts.text ?? "oi" };
   return {
     data: {
       key: { remoteJid, fromMe: opts.fromMe ?? false, id: "msg-1" },
       pushName: "Cliente Teste",
-      message: opts.audio
-        ? { audioMessage: { mimetype: "audio/ogg" } }
-        : { conversation: opts.text ?? "oi" },
+      message,
     },
   };
 }
@@ -46,5 +52,24 @@ describe("parseWebhook — grupo nunca gera resposta", () => {
   it("payload sem key/data não quebra (retorna null)", () => {
     expect(channel.parseWebhook({})).toBeNull();
     expect(channel.parseWebhook(null)).toBeNull();
+  });
+});
+
+describe("parseWebhook — foto (comprovante de PIX)", () => {
+  const channel = new WhatsAppEvolutionChannel();
+
+  it("imagem de contato INDIVIDUAL é reconhecida, com legenda", () => {
+    const msg = channel.parseWebhook(
+      payload("5521980828309@s.whatsapp.net", { image: true, caption: "pix enviado" }),
+    );
+    expect(msg?.image).toBeDefined();
+    expect(msg?.image?.caption).toBe("pix enviado");
+    expect(msg?.image?.mimetype).toBe("image/jpeg");
+    expect(msg?.text).toBeUndefined();
+  });
+
+  it("imagem em GRUPO é ignorada, igual texto/áudio", () => {
+    const msg = channel.parseWebhook(payload("120363012345678901@g.us", { image: true }));
+    expect(msg).toBeNull();
   });
 });
