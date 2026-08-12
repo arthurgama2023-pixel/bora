@@ -92,6 +92,10 @@ export class WhatsAppEvolutionChannel {
     const data = payload?.data;
     const key = data?.key;
     if (!data || !key || key.fromMe) return null; // ignora eco das próprias mensagens
+    // JID de grupo termina em "@g.us" (contato individual termina em
+    // "@s.whatsapp.net"). O agente é pra atendimento 1:1 — nunca responde
+    // dentro de grupo, mesmo que alguém o mencione ou responda a ele lá.
+    if (key.remoteJid.endsWith("@g.us")) return null;
 
     const externalId = phoneFromJid(key.remoteJid);
     const text = data.message?.conversation ?? data.message?.extendedTextMessage?.text;
