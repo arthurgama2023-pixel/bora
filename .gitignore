@@ -1,42 +1,48 @@
-# Segredos — NUNCA commitar
-server/.env
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# Uploads e dados persistentes — ficam no servidor
-server/uploads/
-server/data/
-# Mas o agent-config é configuração (não dado runtime), deve subir
-!server/data/agent-config.json
-logs/
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
 
-# Binários locais e artefatos de deploy
-yt-dlp.exe
-alfredo_voz.m4a
-deploy.tar.gz
-*.err
+# testing
+/coverage
 
-# Logs
-*.log
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+.pnpm-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# env files (can opt-in for committing if needed)
+.env*
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+# vercel
+.vercel
 
-# Local Netlify folder
-.netlify
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# database local
+dev.db
+dev.db-journal
+
+# prisma client gerado
+/src/generated/
