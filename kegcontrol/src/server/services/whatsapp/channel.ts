@@ -386,7 +386,14 @@ export class WhatsAppEvolutionChannel {
         return { configured: true, state: "unknown", webhookUrl, publicUrlWarning };
       }
       await this.waitFor(cfg, (s) => s === "close" || s === "connecting" || s === "open");
-    } else if ((await this.readState(cfg)) === "missing") {
+    } else {
+      // Fluxo QR: recria a instância do zero SEMPRE (não só quando "missing").
+      // Uma instância presa em "connecting" de uma tentativa anterior não gera
+      // QR novo — apagar e recriar garante um QR fresco e limpo. É exatamente o
+      // que destrava o pareamento (o código de 8 dígitos costuma dar 401).
+      await this.api(cfg, "DELETE", `/instance/logout/${cfg.instance}`, undefined, 10000);
+      await this.api(cfg, "DELETE", `/instance/delete/${cfg.instance}`, undefined, 10000);
+      await this.waitFor(cfg, (s) => s === "missing" || s === "unknown");
       await this.api(cfg, "POST", "/instance/create", {
         instanceName: cfg.instance,
         integration: "WHATSAPP-BAILEYS",

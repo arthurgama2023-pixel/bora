@@ -54,7 +54,9 @@ export function ConnectWhatsApp({
   const [resetting, setResetting] = useState(false);
   const [savingServer, setSavingServer] = useState(false);
   const [phone, setPhone] = useState("");
-  const [mode, setMode] = useState<"code" | "qr">("code");
+  // QR por padrão: o código de pareamento (Baileys) costuma ser rejeitado pelo
+  // WhatsApp (erro 401) e derruba a instância. O QR é o caminho confiável.
+  const [mode, setMode] = useState<"code" | "qr">("qr");
 
   const [apiUrl, setApiUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
