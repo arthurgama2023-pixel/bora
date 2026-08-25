@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPrimaryCompanyId, getSitePricing } from "@/server/services/site-pricing";
+import { getPrimaryCompanyId, getSitePricing, getSiteWhatsapp } from "@/server/services/site-pricing";
 
 // Endpoint PÚBLICO (sem sessão) que o site ss-chopp consome ao vivo.
 // Liberado no proxy.ts via prefixo /api/public/. CORS aberto para o site
@@ -24,8 +24,13 @@ export async function GET() {
       { status: 404, headers: CORS },
     );
   }
-  const pricing = await getSitePricing(companyId);
-  return NextResponse.json({ ok: true, data: pricing }, { headers: CORS });
+  const [pricing, whatsappNumber] = await Promise.all([
+    getSitePricing(companyId),
+    getSiteWhatsapp(companyId),
+  ]);
+  // whatsappNumber vai junto: o site usa como destino do "Finalizar pelo
+  // WhatsApp" sem precisar de outra requisição.
+  return NextResponse.json({ ok: true, data: { ...pricing, whatsappNumber } }, { headers: CORS });
 }
 
 export async function OPTIONS() {

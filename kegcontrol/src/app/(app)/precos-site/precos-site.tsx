@@ -15,6 +15,7 @@ import {
   ListPlus,
   X,
   Save,
+  MessageCircle,
 } from "lucide-react";
 import { Badge, Button, Card, PageHeader, StatCard } from "@/components/ui";
 import { REGIONS_BY_CITY } from "@/server/data/site-regions";
@@ -129,6 +130,101 @@ const PROMOS: Promo[] = [
 const brl = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fromPrice = (p: Prod) => (p.fixed != null ? p.fixed : Math.min(...p.tiers!));
+
+// Número de WhatsApp do site — destino do botão "Finalizar pelo WhatsApp" do
+// site. Salva NA HORA (não passa pelo Publicar dos preços). Card isolado do
+// estado de preços de propósito, pra não misturar os fluxos.
+function SiteWhatsappCard() {
+  const [value, setValue] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/v1/site-whatsapp")
+      .then((r) => r.json())
+      .then((j) => {
+        if (j?.ok) setValue(String(j.data?.whatsapp ?? ""));
+      })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, []);
+
+  const digits = value.replace(/\D/g, "");
+  const valid = digits.length >= 10 && digits.length <= 15;
+
+  async function save() {
+    if (!valid || saving) return;
+    setSaving(true);
+    setSaved(false);
+    setError(null);
+    try {
+      const res = await fetch("/api/v1/site-whatsapp", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ whatsapp: value }),
+      });
+      const json = await res.json();
+      if (!json?.ok) throw new Error(json?.error ?? "falha");
+      setValue(String(json.data?.whatsapp ?? value));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch {
+      setError("Não deu pra salvar agora. Tente de novo.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="mb-6 p-5">
+      <div className="mb-2 flex items-center gap-2">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand/10">
+          <MessageCircle className="h-4 w-4 text-brand-strong" />
+        </div>
+        <div>
+          <h2 className="text-sm font-semibold">Número do WhatsApp do site</h2>
+          <p className="text-xs text-muted-foreground">
+            Para onde o botão <strong>“Finalizar pelo WhatsApp”</strong> do site manda o pedido. Troca
+            vale <strong>na hora</strong> — não precisa publicar.
+          </p>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          disabled={!loaded || saving}
+          placeholder="5521993765465"
+          inputMode="tel"
+          className="w-56 rounded-md border border-border bg-background px-3 py-2 text-sm"
+        />
+        <Button onClick={save} disabled={!valid || saving || !loaded}>
+          {saving ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" /> Salvando…
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4" /> Salvar número
+            </>
+          )}
+        </Button>
+        {saved && (
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
+            <Check className="h-3.5 w-3.5" /> Salvo — já vale no site
+          </span>
+        )}
+        {error && <span className="text-xs text-danger">{error}</span>}
+      </div>
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        Com DDI e DDD (ex.: <span className="font-mono">5521993765465</span>). O 55 é adicionado
+        sozinho se você esquecer.
+      </p>
+    </Card>
+  );
+}
 
 export function PrecosSite() {
   // Tabela padrão do SS-Chopp — ponto de partida de toda região. Carregada do
@@ -463,6 +559,9 @@ export function PrecosSite() {
           Hoje esses preços vivem copiados em 3 arquivos. Aqui viram um só.
         </p>
       </Card>
+
+      {/* Número de WhatsApp do site (destino do "Finalizar pelo WhatsApp") */}
+      <SiteWhatsappCard />
 
       <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
         <StatCard label="Produtos" value={prods.length} accent />

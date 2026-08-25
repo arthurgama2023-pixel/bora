@@ -13,6 +13,11 @@ import { PRICING_URL, idsRemotos } from "@/lib/tabela";
 const STORAGE_KEY = "ss-chopp-zone";
 const PHONE_KEY = "ss-chopp-phone";
 
+// Número de WhatsApp de destino do "Finalizar pelo WhatsApp". Configurável no
+// painel (KegControl → Preços do Site → "Número do WhatsApp do site"); chega
+// junto do fetch de preços. Este é só o FALLBACK, caso o fetch falhe/demore.
+export const FALLBACK_WHATSAPP = "5521993765465";
+
 // Fonte única de preços E cobertura (KegControl → Supabase). O site lê ao
 // vivo daqui; se falhar/estiver carregando, cai na tabela fixa local (nunca
 // quebra o preço nem o seletor de bairro). URL e mapa de ids vivem em
@@ -57,6 +62,7 @@ interface LocationContextValue {
   tiersOf: (productId: string) => Tier[] | undefined;
   savingsOf: (productId: string, qty: number) => number;
   pricingRev: number; // muda quando os preços/regiões remotos chegam (p/ recalcular memos)
+  whatsappNumber: string; // destino do "Finalizar pelo WhatsApp" (painel > fallback)
 }
 
 const LocationContext = createContext<LocationContextValue | null>(null);
@@ -67,6 +73,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [remote, setRemote] = useState<RemotePricing | null>(null);
   const [pricingRev, setPricingRev] = useState(0);
+  const [whatsappNumber, setWhatsappNumber] = useState<string>(FALLBACK_WHATSAPP);
 
   // Cobertura efetiva: zonas embutidas (menos as excluídas na aba) + bairros
   // adicionados via KegControl (um por cidade, com preço/eta da própria
@@ -129,6 +136,10 @@ export function LocationProvider({ children }: { children: ReactNode }) {
           extraRegions: j.data.extraRegions ?? {},
           removedRegions: j.data.removedRegions ?? {},
         });
+        // Número do WhatsApp configurado no painel (só dígitos). Sem ele, mantém
+        // o fallback.
+        const wa = String(j.data.whatsappNumber ?? "").replace(/\D/g, "");
+        if (wa) setWhatsappNumber(wa);
         setPricingRev((x) => x + 1);
       })
       .catch(() => {});
@@ -212,6 +223,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         tiersOf,
         savingsOf,
         pricingRev,
+        whatsappNumber,
       }}
     >
       {children}

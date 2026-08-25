@@ -8,7 +8,8 @@ import { useLocation } from "@/lib/location-context";
 import { getCaxiasSavings } from "@/data/caxias-pricing";
 import { PEDIDOS_URL } from "@/lib/tabela";
 
-const WHATSAPP_NUMBER = "5521993765465";
+// Número de WhatsApp agora vem do painel (KegControl → Preços do Site), via
+// useLocation().whatsappNumber — com fallback embutido no contexto.
 
 // Chopeira tem duas opções físicas — o cliente escolhe uma vez pro pedido
 // inteiro (o kit de praticamente todo produto inclui uma chopeira).
@@ -87,7 +88,7 @@ export default function CarrinhoPage() {
     setChopeiraType,
     hasChopeira,
   } = useCart();
-  const { zone, phone, setPhone } = useLocation();
+  const { zone, phone, setPhone, whatsappNumber } = useLocation();
   const [sent, setSent] = useState(false);
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("entrega");
   const [telefone, setTelefone] = useState(phone);
@@ -270,7 +271,7 @@ export default function CarrinhoPage() {
     // congelar o contexto no mobile). Não aguardamos — é best-effort.
     capturarPedido();
 
-    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(summary)}`;
+    const url = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(summary)}`;
     window.open(url, "_blank");
     setSent(true);
     clearCart();
