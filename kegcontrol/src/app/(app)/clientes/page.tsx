@@ -97,11 +97,11 @@ export default async function CustomersPage({
             <tr>
               <Th>Nome</Th>
               <Th>Tipo</Th>
-              <Th>Empresa</Th>
-              <Th>CPF/CNPJ</Th>
+              <Th className="hidden 2xl:table-cell">Empresa</Th>
+              <Th className="hidden 2xl:table-cell">CPF/CNPJ</Th>
               <Th>Cidade</Th>
               <Th>WhatsApp</Th>
-              <Th>Responsável</Th>
+              <Th className="hidden 2xl:table-cell">Responsável</Th>
               <Th>Status</Th>
               <Th className="text-center">Agente IA</Th>
               {canEdit && <Th className="w-10" />}
@@ -123,11 +123,11 @@ export default async function CustomersPage({
                     {CUSTOMER_TYPE_LABELS[c.type as CustomerType] ?? c.type}
                   </Badge>
                 </Td>
-                <Td>{c.companyName ?? "—"}</Td>
-                <Td className="font-mono text-xs">{formatCpfCnpj(c.document)}</Td>
+                <Td className="hidden 2xl:table-cell">{c.companyName ?? "—"}</Td>
+                <Td className="hidden font-mono text-xs 2xl:table-cell">{formatCpfCnpj(c.document)}</Td>
                 <Td>{c.city ? `${c.city}${c.state ? `/${c.state}` : ""}` : "—"}</Td>
                 <Td>{c.whatsapp ?? "—"}</Td>
-                <Td>{c.contactName ?? "—"}</Td>
+                <Td className="hidden 2xl:table-cell">{c.contactName ?? "—"}</Td>
                 <Td>
                   <Badge tone={STATUS_TONES[c.status as CustomerStatus] ?? "neutral"}>
                     {CUSTOMER_STATUS_LABELS[c.status as CustomerStatus] ?? c.status}
