@@ -437,6 +437,25 @@ export class WhatsAppEvolutionChannel {
   }
 
   /**
+   * ZERA a instância: logout + delete COMPLETO no Evolution. É o "reset de
+   * fábrica" para quando a instância trava num estado ruim (nem conecta, nem
+   * cai direito) e nem reconectar resolve. Depois disto a instância deixa de
+   * existir no servidor — o próximo "Conectar" cria uma nova do zero e gera um
+   * código/QR novo. Idempotente e limitado no tempo (não trava).
+   */
+  async reset(companyId: string): Promise<{ ok: boolean; state: string }> {
+    const cfg = await getWhatsAppConfig(companyId);
+    if (!cfg) return { ok: false, state: "unconfigured" };
+    // logout primeiro (encerra a sessão pareada), depois delete (remove a
+    // instância inteira). Timeouts próprios: mesmo se um passo engasgar, retorna.
+    await this.api(cfg, "DELETE", `/instance/logout/${cfg.instance}`, undefined, 10000);
+    await this.api(cfg, "DELETE", `/instance/delete/${cfg.instance}`, undefined, 10000);
+    // Confirma que sumiu de verdade (estado "missing") — dá até 8s.
+    const gone = await this.waitFor(cfg, (s) => s === "missing" || s === "unknown", 8000);
+    return { ok: gone, state: await this.readState(cfg) };
+  }
+
+  /**
    * Conciliação idempotente — chamada periodicamente (keep-alive) e após eventos de
    * conexão. Reafirma o webhook (para nunca "desapontar" após redeploy/mudança) e, se a
    * instância caiu mas as credenciais do número ainda existem no servidor, cutuca a
