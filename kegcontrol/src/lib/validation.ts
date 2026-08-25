@@ -38,6 +38,9 @@ export const customerSchema = z.object({
   notes: z.string().trim().optional().nullable(),
   openBalance: z.coerce.number().min(0).optional(),
   status: z.enum(CUSTOMER_STATUSES).default("ACTIVE"),
+  // Liberação do agente IA por cliente (trancado por padrão). O dono libera na
+  // aba Clientes; o webhook do WhatsApp só atende quem estiver liberado.
+  agentEnabled: z.boolean().optional(),
 });
 
 // Atualização parcial (PATCH): campos com .default() precisam ser redeclarados

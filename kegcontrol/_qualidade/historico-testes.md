@@ -6,33 +6,6 @@ Rodar com `npm test` (Vitest). Verificação completa antes de fechar entrega:
 `npm test` · `npx tsc --noEmit` · `npx eslint src` · `npm run build`.
 
 ---
-## 2026-08-12 — feat: Verificação de Comprovantes (foto de PIX no WhatsApp)
-
-- **Nova tabela `PaymentProof`** (migração aplicada via `db push` — os arquivos
-  de migração em `prisma/migrations/` têm sintaxe SQLite herdada de antes da
-  troca de provider, então `migrate dev`/`deploy` falham no banco-sombra;
-  `db push` lê o schema atual, que já é `postgresql`, e sincroniza direto).
-  Corrigido de passagem: `migration_lock.toml` dizia `sqlite`, agora diz
-  `postgresql` (nunca tinha sido corrigido, era só metadado desatualizado).
-- **Fluxo:** cliente manda foto no WhatsApp → `channel.ts` detecta
-  `imageMessage` (JID de grupo continua bloqueado) → baixa o base64 → NÃO
-  passa pelo Gemini → salva em `PaymentProof` → manda confirmação fixa por
-  texto. Nova aba `/central-ia/verificacao` lista os comprovantes (imagem +
-  telefone/nome + pedido PENDING que bate pelo telefone, se houver) — só
-  visualização, nada muda o pedido sozinho (decisão do dono).
-- **Testes: 178/178 ✅** em 15 arquivos (0 regressões) — +2 nesta entrada
-  | Arquivo | Testes | O que protege |
-  |---|---|---|
-  | `channel.test.ts` | +2 | imagem individual reconhecida (com legenda); imagem em GRUPO ignorada, igual texto/áudio |
-- **Typecheck:** ✅ · **Lint:** ✅ nos arquivos tocados
-- **Verificado de ponta a ponta (não só local):**
-  1. Webhook simulado com imagem real (base64 inline) → `PaymentProof` salvo no banco de produção com telefone/nome/legenda/bytes corretos (confirmado via query direta)
-  2. `GET /api/v1/payment-proofs` → retornou o registro certo, incluindo o cruzamento com pedido pendente
-  3. Servidor renderizou a página `/central-ia/verificacao` corretamente (HTML bruto confirma título/subtítulo certos)
-  4. Dado de teste removido do banco depois da verificação
-- **Gap de verificação (honesto):** não consegui tirar screenshot da tela renderizada no navegador desta sessão — a aba ficou em estado "hidden" (`document.hidden: true`), o que pausa a hidratação do React em modo concorrente; confirmado que isso NÃO é bug do código (uma página pré-existente, nunca tocada, apresentou o mesmo sintoma). Recomendo o dono conferir visualmente antes de considerar 100% fechado.
-
----
 ## 2026-08-05 — fix: agente respondia em GRUPO do WhatsApp
 
 - **Bug de produção real (relatado pelo dono):** JID de grupo (termina em

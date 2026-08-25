@@ -18,7 +18,10 @@ import {
   type CustomerType,
 } from "@/lib/enums";
 import { formatCpfCnpj } from "@/lib/utils";
-import { listCustomers } from "@/server/services/customers";
+import { countCustomersBySource, listCustomers } from "@/server/services/customers";
+import { getAutoEnableNew } from "@/server/services/agent-access";
+import { AgentToggle } from "./agent-toggle";
+import { AutoEnableNewToggle } from "./auto-enable-toggle";
 import { CustomerFilters } from "./filters";
 
 export const metadata = { title: "Clientes" };
@@ -39,12 +42,18 @@ const TYPE_TONES: Record<CustomerType, "brand" | "info" | "warning"> = {
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; type?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; type?: string; reg?: string }>;
 }) {
   const session = await getSession();
   if (!session) redirect("/login");
-  const { q, status, type } = await searchParams;
-  const customers = await listCustomers(session.companyId, { q, status, type });
+  const { q, status, type, reg } = await searchParams;
+  const naoRegistrados = reg === "nao";
+  const source = naoRegistrados ? "AGENTE" : "MANUAL";
+  const [customers, counts, autoEnableNew] = await Promise.all([
+    listCustomers(session.companyId, { q, status, type, source }),
+    countCustomersBySource(session.companyId),
+    getAutoEnableNew(session.companyId),
+  ]);
   const canEdit = session.role === "ADMIN" || session.role === "MANAGER";
 
   return (
@@ -60,9 +69,28 @@ export default async function CustomersPage({
           ) : undefined
         }
       />
+
+      {canEdit && (
+        <div className="mb-4">
+          <AutoEnableNewToggle initial={autoEnableNew} />
+        </div>
+      )}
+
+      {/* Abas: cadastrados no painel × chegaram sozinhos pelo WhatsApp */}
+      <div className="mb-4 flex gap-2">
+        <TabLink href="/clientes" active={!naoRegistrados} label="Registrados" count={counts.MANUAL} />
+        <TabLink href="/clientes?reg=nao" active={naoRegistrados} label="Não registrados" count={counts.AGENTE} />
+      </div>
+
       <CustomerFilters />
       {customers.length === 0 ? (
-        <EmptyState message="Nenhum cliente encontrado com esses filtros." />
+        <EmptyState
+          message={
+            naoRegistrados
+              ? "Nenhum contato novo do WhatsApp por aqui ainda."
+              : "Nenhum cliente encontrado com esses filtros."
+          }
+        />
       ) : (
         <Table>
           <thead>
@@ -75,6 +103,7 @@ export default async function CustomersPage({
               <Th>WhatsApp</Th>
               <Th>Responsável</Th>
               <Th>Status</Th>
+              <Th className="text-center">Agente IA</Th>
               {canEdit && <Th className="w-10" />}
             </tr>
           </thead>
@@ -104,6 +133,17 @@ export default async function CustomersPage({
                     {CUSTOMER_STATUS_LABELS[c.status as CustomerStatus] ?? c.status}
                   </Badge>
                 </Td>
+                <Td>
+                  <div className="flex justify-center">
+                    {canEdit ? (
+                      <AgentToggle id={c.id} initial={c.agentEnabled} />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">
+                        {c.agentEnabled ? "Liberado" : "Trancado"}
+                      </span>
+                    )}
+                  </div>
+                </Td>
                 {canEdit && (
                   <Td>
                     <Link
@@ -121,5 +161,35 @@ export default async function CustomersPage({
         </Table>
       )}
     </>
+  );
+}
+
+function TabLink({
+  href,
+  active,
+  label,
+  count,
+}: {
+  href: string;
+  active: boolean;
+  label: string;
+  count: number;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-semibold transition ${
+        active ? "bg-brand text-white" : "bg-muted text-muted-foreground hover:bg-muted/70"
+      }`}
+    >
+      {label}
+      <span
+        className={`rounded-full px-1.5 text-xs tabular-nums ${
+          active ? "bg-white/20" : "bg-background"
+        }`}
+      >
+        {count}
+      </span>
+    </Link>
   );
 }

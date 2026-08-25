@@ -1,8 +1,8 @@
 # Mapa de Cobertura — KegControl
 
-Atualizado: 2026-08-12 · rodar com `npm test`
+Atualizado: 2026-08-05 · rodar com `npm test`
 
-Retrato ATUAL de onde o código tem rede de proteção. **178 testes** cobrindo o
+Retrato ATUAL de onde o código tem rede de proteção. **176 testes** cobrindo o
 núcleo do sistema (movimentação + estoque), a porta de entrada (middleware +
 auth), o contrato das rotas de API e a lógica pura de apoio.
 
@@ -26,7 +26,7 @@ Pix) que não passaram por este portão — cobertura delas é desconhecida.
 | `src/server/services/reports.ts` | 🟡 parcial | 9 | só `getReportPeriodRange` (datas) |
 | `src/lib/phone.ts` | 🟢 testado | 7 | formatos reais de entrada |
 | `src/lib/nav-items.ts` | 🟢 testado | 7 | os 3 papéis |
-| `src/server/services/whatsapp/channel.ts` (`parseWebhook`) | 🟡 parcial | 7 | grupo (`@g.us`) ignorado em texto/áudio/imagem — o bug real de produção; `fromMe` ignorado; contato individual OK (texto e imagem, com legenda); payload vazio não quebra. Resto da classe (`sendMessage`/`connect`/`downloadImage`/etc.) segue sem teste — depende da Evolution real |
+| `src/server/services/whatsapp/channel.ts` (`parseWebhook`) | 🟡 parcial | 5 | grupo (`@g.us`) ignorado — o bug real de produção; `fromMe` ignorado; contato individual OK; payload vazio não quebra. Resto da classe (`sendMessage`/`connect`/etc.) segue sem teste — depende da Evolution real |
 
 ## Sem teste — por ordem de risco
 
@@ -37,7 +37,6 @@ Pix) que não passaram por este portão — cobertura delas é desconhecida.
 | `src/server/services/customers.ts` | 🔴 sem teste | `findCustomerByPhone` (o `phoneMatchKey` que ele usa já está coberto) |
 | `src/server/services/agent.ts` + resto de `whatsapp/*` | 🔴 sem teste | dependem de rede (Gemini/Evolution); inclui o encanamento da imagem da tabela de preços. `channel.ts.parseWebhook` (lógica pura, sem rede) já testado — ver acima |
 | `src/app/api/tabela-precos/route.tsx` | 🔴 sem teste | render de imagem (next/og) a partir dos preços vivos; validado por render manual (curl → PNG 1080x1350) |
-| `src/server/services/payment-proofs.ts` | 🔴 sem teste | CRUD simples sobre Prisma; validado ponta a ponta (webhook real → banco → API → HTML do servidor), sem teste automatizado ainda |
 | `src/app/(app)/*` (telas) | 🔴 sem teste | precisaria de teste de componente (jsdom) ou e2e |
 | `prisma/*`, `src/generated/*` | ⚪ não testável | schema, seed e client gerado |
 

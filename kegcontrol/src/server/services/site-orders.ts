@@ -101,6 +101,40 @@ export async function updateSiteOrderStatus(
   return prisma.siteOrder.update({ where: { id }, data: { status } });
 }
 
+// Pedido fechado pelo AGENTE IA no WhatsApp (finalizar_pedido). Diferente de
+// createSiteOrder (payload público, validado por siteOrderSchema): os dados
+// aqui já vêm calculados/confiáveis do servidor, então grava direto, com
+// origin "AGENTE" — é o que liga o comprovante de PIX (por telefone) a um
+// pedido real quando o cliente fecha pelo chat em vez do formulário do site.
+export async function createAgentSiteOrder(
+  companyId: string,
+  data: {
+    customerName: string;
+    phone: string;
+    deliveryMethod: "entrega" | "retirada";
+    neighborhood?: string | null;
+    city?: string | null;
+    street?: string | null;
+    items: { id: string; name: string; quantity: number; unitPrice: number }[];
+    total: number;
+  },
+) {
+  return prisma.siteOrder.create({
+    data: {
+      companyId,
+      customerName: data.customerName,
+      phone: data.phone,
+      deliveryMethod: data.deliveryMethod,
+      neighborhood: data.neighborhood ?? null,
+      city: data.city ?? null,
+      street: data.street ?? null,
+      items: JSON.stringify(data.items),
+      total: data.total,
+      origin: "AGENTE",
+    },
+  });
+}
+
 // Parse seguro dos itens (guardados como JSON string).
 export function parseItems(json: string): z.infer<typeof itemSchema>[] {
   try {

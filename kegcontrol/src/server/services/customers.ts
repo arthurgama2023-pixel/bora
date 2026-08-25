@@ -34,13 +34,14 @@ export async function findCustomerByPhone(companyId: string, rawPhone: string) {
 
 export async function listCustomers(
   companyId: string,
-  opts: { q?: string; status?: string; type?: string } = {},
+  opts: { q?: string; status?: string; type?: string; source?: string } = {},
 ) {
   return prisma.customer.findMany({
     where: {
       companyId,
       ...(opts.status ? { status: opts.status } : {}),
       ...(opts.type ? { type: opts.type } : {}),
+      ...(opts.source ? { source: opts.source } : {}),
       ...(opts.q
         ? {
             OR: [
@@ -54,6 +55,23 @@ export async function listCustomers(
     },
     orderBy: { name: "asc" },
   });
+}
+
+// Contagem por origem, para os rótulos das abas (Registrados × Não registrados).
+export async function countCustomersBySource(
+  companyId: string,
+): Promise<{ MANUAL: number; AGENTE: number }> {
+  const rows = await prisma.customer.groupBy({
+    by: ["source"],
+    where: { companyId },
+    _count: { _all: true },
+  });
+  const out = { MANUAL: 0, AGENTE: 0 };
+  for (const r of rows) {
+    if (r.source === "AGENTE") out.AGENTE = r._count._all;
+    else out.MANUAL += r._count._all;
+  }
+  return out;
 }
 
 export async function getCustomer(companyId: string, id: string) {
@@ -163,6 +181,10 @@ export async function upsertCustomerFromAgent(
     usualOrder?: string;
     pushName?: string; // nome de exibição do WhatsApp — fallback quando não há nome ainda
   },
+  // Só na CRIAÇÃO de um contato novo: se o dono ligou a chave-mestra "ativar
+  // agente para clientes novos", o contato já nasce liberado (agentEnabled).
+  // Contato já existente NÃO é mexido aqui (respeita a escolha do dono).
+  opts: { agentEnabledOnCreate?: boolean } = {},
 ): Promise<{ id: string; created: boolean; name: string }> {
   const existing = await findCustomerByPhone(companyId, phone);
   const val = (s?: string) => (s && s.trim() ? s.trim() : undefined);
@@ -202,6 +224,8 @@ export async function upsertCustomerFromAgent(
       notes: val(fields.usualOrder) ? mergeUsualOrder(null, fields.usualOrder!) : null,
       type: "COMERCIO",
       status: "ACTIVE",
+      source: "AGENTE", // chegou sozinho pelo WhatsApp → aba "Não registrados"
+      agentEnabled: opts.agentEnabledOnCreate ?? false,
     },
   });
   return { id: customer.id, created: true, name };
