@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { chatWithAgent, ORDER_PHOTO_FOLLOWUP, type ChatTurn } from "@/server/services/agent";
+import { getAutoEnableNew } from "@/server/services/agent-access";
 import { findCustomerByPhone, upsertCustomerFromAgent } from "@/server/services/customers";
 import { savePaymentProof } from "@/server/services/payment-proofs";
 import { getWhatsAppChannel, isWhatsAppNumberAllowed } from "@/server/services/whatsapp/channel";
@@ -54,6 +55,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // Registra o contato pelo pushName ANTES da trava — assim um número novo já
+  // aparece na aba Clientes (aba "Não registrados") e o dono pode liberá-lo. É
+  // determinístico (não depende do LLM): nunca chama o cliente pelo número.
+  // Se a chave-mestra "ativar para clientes novos" estiver ligada, o contato
+  // novo já nasce liberado (agentEnabled) e passa direto pela trava abaixo.
+  const autoEnableNew = await getAutoEnableNew(companyId);
+  if (incoming.pushName) {
+    await upsertCustomerFromAgent(
+      companyId,
+      incoming.externalId,
+      { pushName: incoming.pushName },
+      { agentEnabledOnCreate: autoEnableNew },
+    ).catch((e) => {
+      console.error("[whatsapp] upsertCustomerFromAgent (pushName) falhou:", e);
+      Sentry.captureException(e, { tags: { companyId, whatsapp: "upsert-pushname" } });
+    });
+  }
+
+  // TRAVA POR CLIENTE (aba Clientes → "Liberar Agente IA"): o agente só atua
+  // para quem o dono liberou. TRANCADO POR PADRÃO — número desconhecido ou não
+  // liberado é ignorado por completo aqui (não responde nem salva comprovante).
+  const customer = await findCustomerByPhone(companyId, incoming.externalId);
+  if (!customer?.agentEnabled) {
+    return NextResponse.json({ ok: true });
+  }
+
   // Foto: provável comprovante de PIX. NÃO passa pelo agente/Gemini — só
   // guarda pra revisão humana (aba Verificação) e confirma o recebimento.
   // Tratado à parte, antes da lógica de texto/áudio, e sempre retorna aqui.
@@ -94,23 +121,8 @@ export async function POST(req: NextRequest) {
 
   const sessionId = `wa-${incoming.externalId}`;
 
-  // Cria/atualiza o nome a partir do pushName do WhatsApp de forma
-  // DETERMINÍSTICA (não depende do LLM decidir chamar salvar_cliente) — evita
-  // o agente chamar o cliente pelo número quando ainda não sabe o nome real.
-  // Não sobrescreve nome já cadastrado; só cria (número novo) ou substitui o
-  // nome-placeholder ("Cliente <telefone>").
-  if (incoming.pushName) {
-    await upsertCustomerFromAgent(companyId, incoming.externalId, {
-      pushName: incoming.pushName,
-    }).catch((e) => {
-      console.error("[whatsapp] upsertCustomerFromAgent (pushName) falhou:", e);
-      Sentry.captureException(e, { tags: { companyId, whatsapp: "upsert-pushname" } });
-    });
-  }
-
-  // Reconhece o cliente pelo número (tolerando formatos) para o agente já saber
-  // com quem fala e conectar o contexto dele. null = número não cadastrado.
-  const customer = await findCustomerByPhone(companyId, incoming.externalId);
+  // Contato já registrado e cliente já resolvido acima (na trava por cliente):
+  // aqui o `customer` é sempre um cliente existente e LIBERADO (agentEnabled).
 
   // Reconstrói o histórico recente da conversa desse número para dar contexto ao agente.
   const previous = await prisma.agentMessage.findMany({

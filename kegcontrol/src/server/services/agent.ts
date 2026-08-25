@@ -25,6 +25,7 @@ import {
   fullPriceTableText,
   resolveProductByText,
 } from "./site-pricing";
+import { createAgentSiteOrder } from "./site-orders";
 
 // Cliente reconhecido pelo número de WhatsApp (ou null se o número não bate
 // com nenhum cadastro). Passado ao agente para ele "conectar os pontos".
@@ -253,6 +254,10 @@ type ToolCtx = {
   phone?: string;
   customerId?: string | null;
   pushName?: string;
+  // Nome "de verdade" do cliente (cadastro, sem ser placeholder), resolvido em
+  // chatWithAgent — usado pra gravar o pedido do finalizar_pedido com um nome
+  // decente, e não o número de telefone.
+  customerName?: string;
   // Preenchido pelo finalizar_pedido quando o pedido fecha: fotos dos barris
   // pedidos, para o webhook mandar como mídia depois da resposta em texto.
   photosOut?: { url: string; label: string }[];
@@ -469,7 +474,7 @@ async function runTool(
       }
       const products = effectiveProductsForCity(pricing, zona.city);
       const rawItens = Array.isArray(input.itens) ? (input.itens as Array<Record<string, unknown>>) : [];
-      const itens: Array<{ produto: string; quantidade: number; precoUnit: number; subtotal: number; economia: number }> = [];
+      const itens: Array<{ id: string; produto: string; quantidade: number; precoUnit: number; subtotal: number; economia: number }> = [];
       const naoReconhecidos: string[] = [];
       const fotosVistas = new Set<string>();
       const fotos: { url: string; label: string }[] = [];
@@ -485,7 +490,7 @@ async function runTool(
         // economia: quanto o cliente economizou no total vs. o preço de 1 unidade.
         const precoUnit = unitPriceFor(item, qtd);
         const economia = item.tiers ? Math.max(0, (item.tiers[0] - precoUnit) * qtd) : 0;
-        itens.push({ produto: item.name, quantidade: qtd, precoUnit, subtotal: precoUnit * qtd, economia });
+        itens.push({ id: item.id, produto: item.name, quantidade: qtd, precoUnit, subtotal: precoUnit * qtd, economia });
         const fotoUrl = photoUrlForProduct(item.id);
         if (fotoUrl && !fotosVistas.has(fotoUrl)) {
           fotosVistas.add(fotoUrl);
@@ -504,6 +509,27 @@ async function runTool(
       if (ctx.photosOut) ctx.photosOut.push(...fotos);
       const total = itens.reduce((s, i) => s + i.subtotal, 0);
       const economiaTotal = itens.reduce((s, i) => s + i.economia, 0);
+      const deliveryMethod = /retirada/i.test(String(input.entrega ?? "")) ? "retirada" : "entrega";
+      // Grava o pedido como fonte de verdade (origin AGENTE) — é o que permite
+      // ao comprovante de PIX (casado por telefone, ver payment-proofs.ts) achar
+      // este pedido e aparecer pra revisão em Pedidos do Site/Verificação.
+      // Só quando veio de canal com número (WhatsApp) — no Playground não há
+      // telefone real, então não grava (mesmo critério de salvar_cliente).
+      if (ctx.phone) {
+        await createAgentSiteOrder(companyId, {
+          customerName: ctx.customerName?.trim() || `Cliente ${ctx.phone}`,
+          phone: ctx.phone,
+          deliveryMethod,
+          neighborhood: zona.bairro,
+          city: zona.city,
+          street: input.endereco ? String(input.endereco) : null,
+          items: itens.map((i) => ({ id: i.id, name: i.produto, quantity: i.quantidade, unitPrice: i.precoUnit })),
+          total,
+        }).catch((e) => {
+          console.error("[agent] createAgentSiteOrder falhou:", e);
+          Sentry.captureException(e, { tags: { companyId, tool: "finalizar_pedido" } });
+        });
+      }
       // PIX real vem do Setting (pix_key/pix_nome). Enquanto não configurado,
       // usa um PIX de TESTE — seguro porque esta ferramenta só roda no
       // playground (channel === PLAYGROUND). Ao configurar o PIX real, ele assume.
@@ -513,7 +539,7 @@ async function runTool(
         ok: true,
         bairro: zona.bairro,
         cidade: zona.city,
-        entrega: String(input.entrega ?? ""),
+        entrega: deliveryMethod,
         endereco: input.endereco ? String(input.endereco) : null,
         itens: itens.map((i) => ({ produto: i.produto, quantidade: i.quantidade, precoUnit: i.precoUnit, subtotal: i.subtotal, economia: i.economia || undefined })),
         freteGratis: true,
@@ -762,11 +788,18 @@ export async function chatWithAgent(
   let priceTableText = "";
 
   if (process.env.GEMINI_API_KEY) {
+    // Nome "de verdade" pra gravar o pedido (finalizar_pedido): o do cadastro,
+    // se não for o placeholder "Cliente <telefone>" — senão o pushName do
+    // WhatsApp. Mesma regra de exibição usada em buildIdentityContext.
+    const rawName = opts.identifiedCustomer?.name?.trim();
+    const customerName =
+      rawName && !PLACEHOLDER_NAME.test(rawName) ? rawName : opts.pushName;
     const result = await runGeminiLoop(companyId, systemInstruction, history, {
       channel,
       phone: opts.phone,
       customerId,
       pushName: opts.pushName,
+      customerName,
     });
     reply = result.reply;
     toolsUsed = result.toolsUsed;
