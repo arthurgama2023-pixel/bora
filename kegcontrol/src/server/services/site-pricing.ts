@@ -150,6 +150,43 @@ export async function getPrimaryCompanyId(): Promise<string | null> {
 }
 
 // ---------------------------------------------------------------------------
+// Número de WhatsApp do SITE — para onde o botão "Finalizar pelo WhatsApp" do
+// site manda o pedido. É um setting PRÓPRIO (não entra no rascunho/publicar dos
+// preços): trocar aqui vale NA HORA. Exposto no endpoint público que o site já
+// consome, com fallback para o número histórico embutido no site.
+// ---------------------------------------------------------------------------
+const KEY_SITE_WHATSAPP = "site.whatsapp";
+// Fallback = número que estava fixo no código do site (carrinho/page.tsx).
+export const DEFAULT_SITE_WHATSAPP = "5521993765465";
+
+// Só dígitos; se ficar vazio, cai no padrão. Aceita com/sem 55 na frente.
+export function normalizeSiteWhatsapp(raw: string): string {
+  const digits = (raw ?? "").replace(/\D/g, "");
+  if (!digits) return "";
+  // Garante DDI 55 na frente (o site usa formato E.164 sem o "+").
+  return digits.startsWith("55") ? digits : `55${digits}`;
+}
+
+export async function getSiteWhatsapp(companyId: string): Promise<string> {
+  const row = await prisma.setting.findUnique({
+    where: { companyId_key: { companyId, key: KEY_SITE_WHATSAPP } },
+    select: { value: true },
+  });
+  const val = (row?.value ?? "").trim();
+  return val || DEFAULT_SITE_WHATSAPP;
+}
+
+export async function setSiteWhatsapp(companyId: string, raw: string): Promise<string> {
+  const value = normalizeSiteWhatsapp(raw) || DEFAULT_SITE_WHATSAPP;
+  await prisma.setting.upsert({
+    where: { companyId_key: { companyId, key: KEY_SITE_WHATSAPP } },
+    update: { value },
+    create: { companyId, key: KEY_SITE_WHATSAPP, value },
+  });
+  return value;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers de COBERTURA e PRODUTO — usados pelo agente de IA (agent.ts) para
 // consultar bairro/preço na MESMA fonte que o site público, em vez da cópia
 // estática antiga (server/data/bairro-pricing.ts, agora sem uso).
