@@ -21,13 +21,22 @@ async function apiGet(url: string) {
   return json?.ok ? json.data : null;
 }
 
-async function apiPost(url: string, body?: unknown) {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  return res.json().catch(() => null);
+async function apiPost(url: string, body?: unknown, timeoutMs?: number) {
+  // timeoutMs: aborta a requisição se o servidor demorar demais — assim o painel
+  // nunca fica preso esperando uma resposta que não vem (ex.: Evolution travado).
+  const ctrl = timeoutMs ? new AbortController() : undefined;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : undefined;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: ctrl?.signal,
+    });
+    return res.json().catch(() => null);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export function ConnectWhatsApp({
@@ -41,6 +50,7 @@ export function ConnectWhatsApp({
   const [editingServer, setEditingServer] = useState(!serverConfigured);
   const [status, setStatus] = useState<Status | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
   const [savingServer, setSavingServer] = useState(false);
   const [phone, setPhone] = useState("");
   const [mode, setMode] = useState<"code" | "qr">("code");
@@ -155,15 +165,30 @@ export function ConnectWhatsApp({
   async function connect() {
     if (mode === "code" && phone.replace(/\D/g, "").length < 10) return;
     setConnecting(true);
+    setConnectError(null);
     setStatus((s) => ({ ...(s as Status), pairingCode: undefined, qrBase64: undefined }));
     try {
+      // 60s de teto no cliente (o backend já se limita a ~45s). Se estourar ou
+      // falhar, mostra erro e libera o botão — nunca fica preso em "Gerando…".
       const json = await apiPost(
         "/api/v1/whatsapp/connect",
         mode === "code" ? { number: phone } : {},
+        60000,
       );
       if (json?.ok) {
         setStatus(json.data as Status);
+        if (!json.data?.pairingCode && !json.data?.qrBase64 && json.data?.state !== "open") {
+          setConnectError(
+            "O servidor não gerou o código a tempo. Tente de novo — se persistir, confira se o servidor Evolution está no ar.",
+          );
+        }
+      } else {
+        setConnectError(json?.error ?? "Não foi possível conectar agora. Tente novamente.");
       }
+    } catch {
+      setConnectError(
+        "O servidor demorou demais para responder. Tente de novo em instantes (o servidor Evolution pode estar sobrecarregado).",
+      );
     } finally {
       setConnecting(false);
     }
@@ -383,6 +408,10 @@ export function ConnectWhatsApp({
                   {mode === "code" ? "prefiro escanear QR code" : "prefiro código de confirmação"}
                 </button>
               </div>
+
+              {connectError && (
+                <p className="rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{connectError}</p>
+              )}
 
               {status?.publicUrlWarning && (
                 <p className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
