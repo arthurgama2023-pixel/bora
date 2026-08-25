@@ -40,8 +40,8 @@ export function AutoEnableNewToggle({ initial }: { initial: boolean }) {
           <div className="text-sm font-semibold">Ativar agente para clientes novos</div>
           <p className="text-xs text-muted-foreground">
             {on
-              ? "Ligado: todo contato novo do WhatsApp já é atendido automaticamente."
-              : "Desligado: contato novo entra trancado — você libera um por um abaixo."}
+              ? "Ligado: todo número novo (não registrado) que mandar mensagem já é RESPONDIDO na hora pelo agente — entra liberado automaticamente."
+              : "Desligado: número novo (não registrado) entra TRANCADO e o agente não responde — ele aparece em “Não registrados” e você libera um por um no toggle abaixo."}
           </p>
         </div>
       </div>
