@@ -251,16 +251,31 @@ export class WhatsAppEvolutionChannel {
     method: string,
     path: string,
     body?: unknown,
+    timeoutMs = 12000,
   ): Promise<Response | null> {
+    // TIMEOUT OBRIGATÓRIO em toda chamada ao Evolution. Sem isto, um servidor
+    // lento/travado deixava o fetch pendurado para SEMPRE — o connect() nunca
+    // resolvia, o endpoint nunca respondia e o painel ficava eterno em
+    // "Gerando…". Com AbortController, nada trava: no pior caso a chamada falha
+    // (retorna null, tratado pelos chamadores) e o usuário pode tentar de novo.
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
       return await fetch(`${cfg.apiUrl}${path}`, {
         method,
         headers: { "content-type": "application/json", apikey: cfg.apiKey },
+        signal: ctrl.signal,
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       });
     } catch (err) {
-      console.error("[whatsapp] erro de rede:", path, err);
+      if ((err as { name?: string })?.name === "AbortError") {
+        console.error(`[whatsapp] timeout (${timeoutMs}ms) em ${method} ${path}`);
+      } else {
+        console.error("[whatsapp] erro de rede:", path, err);
+      }
       return null;
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -280,7 +295,7 @@ export class WhatsAppEvolutionChannel {
       publicUrlWarning: /localhost|127\.0\.0\.1/.test(appUrl),
     };
 
-    const stateRes = await this.api(cfg, "GET", `/instance/connectionState/${cfg.instance}`);
+    const stateRes = await this.api(cfg, "GET", `/instance/connectionState/${cfg.instance}`, undefined, 6000);
     if (!stateRes || stateRes.status === 404) return base; // instância ainda não existe
     if (!stateRes.ok) return base;
 
@@ -296,7 +311,7 @@ export class WhatsAppEvolutionChannel {
   }
 
   private async connectedNumber(cfg: WhatsAppConfig): Promise<string | undefined> {
-    const res = await this.api(cfg, "GET", `/instance/fetchInstances?instanceName=${cfg.instance}`);
+    const res = await this.api(cfg, "GET", `/instance/fetchInstances?instanceName=${cfg.instance}`, undefined, 6000);
     if (!res?.ok) return undefined;
     const data = (await res.json().catch(() => null)) as unknown;
     const list = Array.isArray(data) ? data : [data];
@@ -310,7 +325,9 @@ export class WhatsAppEvolutionChannel {
   }
 
   private async readState(cfg: WhatsAppConfig): Promise<string> {
-    const res = await this.api(cfg, "GET", `/instance/connectionState/${cfg.instance}`);
+    // Timeout curto: é um poll de estado, chamado em loop — não pode segurar o
+    // fluxo se o servidor engasgar numa leitura.
+    const res = await this.api(cfg, "GET", `/instance/connectionState/${cfg.instance}`, undefined, 6000);
     if (!res) return "unknown";
     if (res.status === 404) return "missing";
     if (!res.ok) return "unknown";
@@ -323,10 +340,13 @@ export class WhatsAppEvolutionChannel {
   private async waitFor(
     cfg: WhatsAppConfig,
     cond: (s: string) => boolean,
-    tries = 12,
+    maxMs = 8000,
     gap = 600,
   ): Promise<boolean> {
-    for (let i = 0; i < tries; i++) {
+    // Orçamento por TEMPO DE RELÓGIO (não por nº de tentativas): uma leitura de
+    // estado lenta não pode multiplicar a espera. Nunca ultrapassa maxMs.
+    const deadline = Date.now() + maxMs;
+    while (Date.now() < deadline) {
       if (cond(await this.readState(cfg))) return true;
       await wait(gap);
     }
@@ -380,12 +400,16 @@ export class WhatsAppEvolutionChannel {
       webhook: { enabled: true, url: webhookUrl, events: WEBHOOK_EVENTS },
     });
 
-    // Pede código de pareamento (com número) ou QR (sem número). Pode demorar a materializar.
+    // Pede código de pareamento (com número) ou QR (sem número). Pode demorar a
+    // materializar — mas com ORÇAMENTO DE TEMPO: no máximo ~15s tentando, para o
+    // endpoint sempre responder (com o código/QR ou vazio para nova tentativa),
+    // nunca ficar preso aqui.
     let pairingCode: string | undefined;
     let qrBase64: string | undefined;
-    for (let i = 0; i < 6; i++) {
+    const codeDeadline = Date.now() + 15000;
+    while (Date.now() < codeDeadline) {
       const path = `/instance/connect/${cfg.instance}${num ? `?number=${num}` : ""}`;
-      const res = await this.api(cfg, "GET", path);
+      const res = await this.api(cfg, "GET", path, undefined, 8000);
       const data = (res?.ok ? await res.json().catch(() => null) : null) as
         | { pairingCode?: string; base64?: string; qrcode?: { base64?: string } }
         | null;
