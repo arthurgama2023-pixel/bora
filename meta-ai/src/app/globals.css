@@ -1,0 +1,184 @@
+@import "tailwindcss";
+
+/* Dark mode controlado por classe (next-themes) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #fafafa;
+  --foreground: #18181b;
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --primary: #5b5bd6;
+  --primary-foreground: #ffffff;
+  --accent: #f4f4f5;
+  --accent-foreground: #18181b;
+  --destructive: #dc2626;
+  --success: #16a34a;
+  --warning: #d97706;
+  --ring: #5b5bd6;
+  --chart-1: #5b5bd6;
+  --chart-2: #10b981;
+  --chart-3: #f59e0b;
+}
+
+.dark {
+  --background: #0c0c0e;
+  --foreground: #ededef;
+  --card: #131316;
+  --card-foreground: #ededef;
+  --muted: #1c1c21;
+  --muted-foreground: #8b8b93;
+  --border: #232329;
+  --input: #2a2a31;
+  --primary: #7c7ce8;
+  --primary-foreground: #0c0c0e;
+  --accent: #1c1c21;
+  --accent-foreground: #ededef;
+  --destructive: #ef4444;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --ring: #7c7ce8;
+  --chart-1: #7c7ce8;
+  --chart-2: #34d399;
+  --chart-3: #fbbf24;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* Scrollbar discreta estilo Linear */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Animações suaves */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in-up {
+  animation: fade-in-up 0.25s ease-out both;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.typing-dot {
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Markdown renderizado no chat */
+.chat-markdown h2,
+.chat-markdown h3 {
+  font-weight: 600;
+  margin: 0.75rem 0 0.35rem;
+}
+.chat-markdown p {
+  margin: 0.4rem 0;
+}
+.chat-markdown ul,
+.chat-markdown ol {
+  margin: 0.4rem 0;
+  padding-left: 1.25rem;
+}
+.chat-markdown ul {
+  list-style: disc;
+}
+.chat-markdown ol {
+  list-style: decimal;
+}
+.chat-markdown li {
+  margin: 0.15rem 0;
+}
+.chat-markdown a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.chat-markdown table {
+  width: 100%;
+  margin: 0.6rem 0;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+.chat-markdown th,
+.chat-markdown td {
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+}
+.chat-markdown th {
+  background: var(--muted);
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.chat-markdown code {
+  background: var(--muted);
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.8em;
+}

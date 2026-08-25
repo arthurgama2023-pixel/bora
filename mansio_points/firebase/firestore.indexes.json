@@ -1,0 +1,88 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "alertas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "lista",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "lido",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "parceiros",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "ativo",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "avaliacao",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "alugueis",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "dono",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dataPagamento",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "historico",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "usurario",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "data",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "alertas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "lista",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "data",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "avaliacao_produto",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "produto",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "data",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #0b0b12;
+  --color-panel: #14141f;
+  --color-panel-2: #1b1b2a;
+  --color-line: #262638;
+  --color-ink: #ececf4;
+  --color-ink-dim: #9494ad;
+  --color-brand: #a855f7;
+  --color-brand-2: #ec4899;
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(168, 85, 247, 0.14), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(236, 72, 153, 0.1), transparent 60%),
+    var(--color-surface);
+  color: var(--color-ink);
+  min-height: 100vh;
+}
+
+.btn-brand {
+  background-image: linear-gradient(135deg, var(--color-brand), var(--color-brand-2));
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.btn-brand:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+.btn-brand:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

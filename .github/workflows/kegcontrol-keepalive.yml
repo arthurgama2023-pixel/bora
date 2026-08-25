@@ -1,0 +1,27 @@
+name: KegControl WhatsApp Keep-Alive (10min)
+
+# Mantém o serviço do Render (plano free dorme após ~15 min ocioso) acordado e
+# reafirma a conexão do WhatsApp, para o agente responder sem perder mensagens
+# durante cold-starts. O endpoint é idempotente e não expõe dados sensíveis.
+
+on:
+  schedule:
+    # A cada 10 minutos (o GitHub pode atrasar em horários de pico).
+    - cron: "*/10 * * * *"
+  # Permite rodar manualmente pela UI do Actions.
+  workflow_dispatch:
+
+# Evita acúmulo de execuções se uma demorar.
+concurrency:
+  group: kegcontrol-keepalive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping keep-alive + reconcile
+        run: |
+          curl -fsS -m 90 --retry 2 --retry-delay 10 \
+            "https://kegcontrol.onrender.com/api/whatsapp/keepalive" \
+            || echo "keep-alive falhou (serviço pode estar acordando) — próxima rodada tenta de novo"

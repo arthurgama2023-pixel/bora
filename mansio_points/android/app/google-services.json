@@ -1,0 +1,222 @@
+{
+  "project_info": {
+    "project_number": "33030354434",
+    "project_id": "massion-gp8c0i",
+    "storage_bucket": "massion-gp8c0i.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:33030354434:android:aaffc9833a2c02fbad591b",
+        "android_client_info": {
+          "package_name": "com.mycompany.customgooglemap"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "33030354434-es31k9a62c27s8usspqum7nskvjsfurq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDD1-SluZ682khTgBxPBWuQ6XtTeYDhsDc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "33030354434-es31k9a62c27s8usspqum7nskvjsfurq.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "33030354434-1lmj8h2rl8kuhjdc0ojeh1rl2vrtoslp.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "oridev.mansionpoints"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:33030354434:android:e769cf568387aaa8ad591b",
+        "android_client_info": {
+          "package_name": "com.mycompany.mansionpoints"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "33030354434-8b4tbvurnl8f6fdicv6una9e3hps26jf.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mycompany.mansionpoints",
+            "certificate_hash": "9bbb3186b2189ef16d8f272bdab59362c395cbb4"
+          }
+        },
+        {
+          "client_id": "33030354434-es31k9a62c27s8usspqum7nskvjsfurq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDD1-SluZ682khTgBxPBWuQ6XtTeYDhsDc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "33030354434-es31k9a62c27s8usspqum7nskvjsfurq.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "33030354434-1lmj8h2rl8kuhjdc0ojeh1rl2vrtoslp.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "oridev.mansionpoints"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:33030354434:android:b3106656a9e4d76fad591b",
+        "android_client_info": {
+          "package_name": "com.oridev.mansioadm"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "33030354434-5kq6r5akl0l7i36ok94iiu7d9rtn1c65.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.oridev.mansioadm",
+            "certificate_hash": "9bbb3186b2189ef16d8f272bdab59362c395cbb4"
+          }
+        },
+        {
+          "client_id": "33030354434-es31k9a62c27s8usspqum7nskvjsfurq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDD1-SluZ682khTgBxPBWuQ6XtTeYDhsDc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "33030354434-es31k9a62c27s8usspqum7nskvjsfurq.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "33030354434-1lmj8h2rl8kuhjdc0ojeh1rl2vrtoslp.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "oridev.mansionpoints"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:33030354434:android:82b3aeb6544a76f4ad591b",
+        "android_client_info": {
+          "package_name": "com.oridev.mansionpoints"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "33030354434-98carvq5qmd0hmchmu2d5qs6c0h331u3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.oridev.mansionpoints",
+            "certificate_hash": "9bbb3186b2189ef16d8f272bdab59362c395cbb4"
+          }
+        },
+        {
+          "client_id": "33030354434-es31k9a62c27s8usspqum7nskvjsfurq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDD1-SluZ682khTgBxPBWuQ6XtTeYDhsDc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "33030354434-es31k9a62c27s8usspqum7nskvjsfurq.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "33030354434-1lmj8h2rl8kuhjdc0ojeh1rl2vrtoslp.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "oridev.mansionpoints"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:33030354434:android:870c2136ccc34ab7ad591b",
+        "android_client_info": {
+          "package_name": "oridev.mansionpoints"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "33030354434-i12farhjg829jf5jfaterm30v1pcheq3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "oridev.mansionpoints",
+            "certificate_hash": "9bbb3186b2189ef16d8f272bdab59362c395cbb4"
+          }
+        },
+        {
+          "client_id": "33030354434-es31k9a62c27s8usspqum7nskvjsfurq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDD1-SluZ682khTgBxPBWuQ6XtTeYDhsDc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "33030354434-es31k9a62c27s8usspqum7nskvjsfurq.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "33030354434-1lmj8h2rl8kuhjdc0ojeh1rl2vrtoslp.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "oridev.mansionpoints"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

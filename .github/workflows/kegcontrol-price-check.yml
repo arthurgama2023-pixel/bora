@@ -1,0 +1,85 @@
+name: KegControl — Canário de Preço (alerta no Telegram)
+
+# O risco mais perigoso deste agente não é ele cair — é DIZER um preço errado
+# sem nenhuma exceção acontecer. O Sentry nunca veria isso. Este job chama
+# /api/health/price-check a cada 4h (dispara uma chamada REAL ao Gemini, por
+# isso é mais espaçado que o vigia) e avisa no Telegram se o preço que o
+# agente falou divergir do banco.
+
+on:
+  schedule:
+    # A cada 4 horas (6x/dia — equilibra detecção rápida com custo de Gemini).
+    - cron: "0 */4 * * *"
+  workflow_dispatch: {} # permite rodar manualmente pela UI do Actions
+
+concurrency:
+  group: kegcontrol-price-check
+  cancel-in-progress: true
+
+jobs:
+  canario:
+    runs-on: ubuntu-latest
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      PRICE_CHECK_TOKEN: ${{ secrets.PRICE_CHECK_TOKEN }}
+      CHECK_URL: "https://kegcontrol.onrender.com/api/health/price-check"
+    steps:
+      - name: Pergunta o preço pro agente de verdade e confere com o banco
+        run: |
+          set -u
+
+          send_telegram() {
+            local text="$1"
+            if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
+              echo "Secrets do Telegram não configurados — pulo o envio."
+              return 0
+            fi
+            curl -fsS -m 30 \
+              "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -d chat_id="${TELEGRAM_CHAT_ID}" \
+              -d disable_web_page_preview=true \
+              --data-urlencode "text=${text}" \
+              > /dev/null \
+              && echo "Alerta enviado no Telegram." \
+              || echo "Falha ao enviar no Telegram (token/chat_id corretos?)."
+          }
+
+          url="$CHECK_URL"
+          if [ -n "${PRICE_CHECK_TOKEN:-}" ]; then
+            url="${url}?token=${PRICE_CHECK_TOKEN}"
+          fi
+
+          # Timeout generoso: a chamada real ao Gemini pode levar alguns segundos.
+          resp="$(curl -fsS -m 60 --retry 1 --retry-delay 10 "$url" 2>/dev/null)" || resp=""
+
+          if [ -z "$resp" ]; then
+            echo "🔴 Canário de preço FORA DO AR — /api/health/price-check não respondeu."
+            send_telegram "🔴 Canário de preço FORA DO AR — não consegui nem testar se o agente está falando o preço certo. Confira kegcontrol.onrender.com."
+            exit 0
+          fi
+
+          ok="$(echo "$resp" | jq -r '.ok')"
+          if [ "$ok" != "true" ]; then
+            erro="$(echo "$resp" | jq -r '.error // "erro desconhecido"')"
+            echo "⚠️ Canário não conseguiu rodar: $erro"
+            send_telegram "⚠️ Canário de preço não conseguiu rodar: ${erro}"
+            exit 0
+          fi
+
+          match="$(echo "$resp" | jq -r '.match')"
+          if [ "$match" = "true" ]; then
+            produto="$(echo "$resp" | jq -r '.produto')"
+            echo "✅ Preço correto ($produto, R\$$(echo "$resp" | jq -r '.expectedPrice'))."
+            exit 0
+          fi
+
+          bairro="$(echo "$resp" | jq -r '.bairro')"
+          produto="$(echo "$resp" | jq -r '.produto')"
+          esperado="$(echo "$resp" | jq -r '.expectedPrice')"
+          extraido="$(echo "$resp" | jq -r '.extractedPrice // "nenhum"')"
+          resposta="$(echo "$resp" | jq -r '.agentReply')"
+
+          echo "🚨 PREÇO DIVERGENTE detectado."
+          alert="🚨 PREÇO ERRADO detectado: ${produto} em ${bairro} — banco diz R\$${esperado}, agente falou R\$${extraido}."$'\n'"Resposta do agente: \"${resposta}\""
+          send_telegram "$alert"

@@ -1,0 +1,72 @@
+// Meta AI — modelo de dados (PostgreSQL / Supabase)
+//
+// Para usar com Supabase: defina DATABASE_URL no .env com a connection string
+// do projeto (Settings → Database). Depois:
+//   npx prisma migrate dev --name init
+//   npx prisma generate   (Prisma 7 não regenera o client no migrate!)
+//
+// Sem DATABASE_URL o app funciona em modo demo com repositório em memória
+// (src/lib/db.ts) — nada disso é necessário para rodar localmente.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  preferences  Json? // preferências do usuário (tema, conta padrão, etc.)
+  createdAt    DateTime @default(now())
+
+  conversations  Conversation[]
+  metaConnection MetaConnection?
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String   @default("Nova conversa")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([userId, updatedAt])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String // "user" | "assistant" | "tool"
+  content        String
+  toolEvents     Json? // chamadas de tools executadas nesta mensagem
+  pendingAction  Json? // ação aguardando confirmação do usuário
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+model MetaConnection {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  accessToken   String // token OAuth (em produção: criptografar em repouso)
+  adAccountId   String
+  adAccountName String
+  currency      String    @default("BRL")
+  pageId        String?
+  instagramId   String?
+  expiresAt     DateTime?
+  createdAt     DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

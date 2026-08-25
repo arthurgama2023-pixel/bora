@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+:root {
+  --background: #fafafa;
+  --foreground: #18181b;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: #c7d2fe;
+}
+
+/* scrollbar discreta no chat */
+.chat-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.chat-scroll::-webkit-scrollbar-thumb {
+  background: #e4e4e7;
+  border-radius: 3px;
+}

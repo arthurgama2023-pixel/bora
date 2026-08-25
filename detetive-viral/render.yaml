@@ -1,0 +1,51 @@
+services:
+  # ── BACKEND (Node/Express :3003) ─────────────────────────────────────────────
+  - type: web
+    name: radar-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile.server
+    dockerContext: .
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3003
+      # Segredos — preencher no painel Render (não commitar valores aqui)
+      - key: APIFY_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      # Cookies Instagram — renovar quando expirar (~30 dias)
+      - key: INSTAGRAM_SESSION_ID
+        sync: false
+      - key: INSTAGRAM_CSRF_TOKEN
+        sync: false
+      - key: INSTAGRAM_DS_USER_ID
+        sync: false
+
+  # ── FRONTEND (Next.js :3000) ──────────────────────────────────────────────────
+  - type: web
+    name: radar-frontend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /
+    buildArgs:
+      # NEXT_PUBLIC_* são embutidos no bundle em build-time (via ARG no Dockerfile).
+      # O valor aqui deve ser a URL pública do serviço radar-backend acima.
+      - key: NEXT_PUBLIC_API_URL
+        value: https://radar-backend.onrender.com
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+    envVars:
+      - key: NODE_ENV
+        value: production

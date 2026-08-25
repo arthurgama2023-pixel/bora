@@ -1,0 +1,107 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /user/{document} {
+      allow create: if true;
+      allow read: if true;
+      allow write: if true;
+      allow delete: if false;
+    }
+
+    match /alugueis/{document} {
+      allow create: if true;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+      allow delete: if false;
+    }
+
+    match /parceiros/{document} {
+      allow create: if true;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+      allow delete: if false;
+    }
+
+    match /avaliacao/{document} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+      allow delete: if false;
+    }
+
+    match /alertas/{document} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+      allow delete: if false;
+    }
+
+    match /parceiros/{parent}/cupom/{document} {
+      allow create: if true;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+      allow delete: if false;
+    }
+
+    match /{path=**}/cupom/{document} {
+      allow read: if request.auth != null;
+    }
+
+
+    match /historico/{document} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+      allow delete: if false;
+    }
+
+    match /comprovantes/{document} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+      allow delete: if false;
+    }
+
+    match /produtos/{document} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+      allow delete: if request.auth != null;
+    }
+
+    match /compras/{document} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+      allow delete: if false;
+    }
+
+    match /pagamento/{document} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+      allow delete: if false;
+    }
+
+    match /avaliacao_produto/{document} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+      allow delete: if false;
+    }
+
+    match /user/{parent}/carrinho/{document} {
+      allow create: if request.auth.uid == parent;
+      allow read: if request.auth.uid == parent;
+      allow write: if request.auth.uid == parent;
+      allow delete: if request.auth.uid == parent;
+    }
+
+    match /assinaturas/{document} {
+      allow create: if true;
+      allow read: if true;
+      allow write: if true;
+      allow delete: if true;
+    }
+  }
+}

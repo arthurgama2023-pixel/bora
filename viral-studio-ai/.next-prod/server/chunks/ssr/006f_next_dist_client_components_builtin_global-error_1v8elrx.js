@@ -1,0 +1,3 @@
+module.exports=[9579,(a,b,c)=>{let{createClientModuleProxy:d}=a.r(64014);a.n(d("[project]/.gemini/antigravity-ide/scratch/agente-bora-chat/viral-studio-ai/node_modules/next/dist/client/components/builtin/global-error.js <module evaluation>"))},37415,(a,b,c)=>{let{createClientModuleProxy:d}=a.r(64014);a.n(d("[project]/.gemini/antigravity-ide/scratch/agente-bora-chat/viral-studio-ai/node_modules/next/dist/client/components/builtin/global-error.js"))},68839,a=>{"use strict";a.i(9579);var b=a.i(37415);a.n(b)},75497,a=>{a.n(a.i(68839))}];
+
+//# sourceMappingURL=006f_next_dist_client_components_builtin_global-error_1v8elrx.js.map

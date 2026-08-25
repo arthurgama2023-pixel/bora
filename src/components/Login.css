@@ -1,0 +1,121 @@
+.login-root {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: #16130F;
+  font-family: "Inter", sans-serif;
+}
+
+.login-card {
+  background: #1E1A15;
+  border: 1px solid #2E2920;
+  border-radius: 16px;
+  padding: 40px 36px;
+  width: 100%;
+  max-width: 360px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.login-bolt {
+  font-size: 28px;
+  filter: sepia(1) saturate(3) hue-rotate(10deg) brightness(1.1);
+}
+
+.login-name {
+  font-size: 28px;
+  font-weight: 800;
+  color: #F5EDE0;
+  letter-spacing: -0.5px;
+}
+
+.login-dot {
+  color: #C98A3A;
+}
+
+.login-sub {
+  text-align: center;
+  color: #7C7264;
+  font-size: 13px;
+  margin: 0 0 28px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9A8F82;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.login-input {
+  background: #26211A;
+  border: 1px solid #3A3028;
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #F5EDE0;
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.login-input:focus {
+  border-color: #C98A3A;
+}
+
+.login-input:disabled {
+  opacity: 0.5;
+}
+
+.login-error {
+  background: rgba(220, 60, 60, 0.12);
+  border: 1px solid rgba(220, 60, 60, 0.3);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #e87070;
+  font-size: 13px;
+}
+
+.login-btn {
+  background: #C98A3A;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  margin-top: 4px;
+}
+
+.login-btn:hover:not(:disabled) {
+  background: #B8792A;
+}
+
+.login-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
