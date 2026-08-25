@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Loader2, Lock, Plus, Smartphone, X } from "lucide-react";
+import { CheckCircle2, Loader2, Lock, Plus, RotateCcw, Smartphone, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Field, Input } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -51,6 +51,7 @@ export function ConnectWhatsApp({
   const [status, setStatus] = useState<Status | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
   const [savingServer, setSavingServer] = useState(false);
   const [phone, setPhone] = useState("");
   const [mode, setMode] = useState<"code" | "qr">("code");
@@ -191,6 +192,38 @@ export function ConnectWhatsApp({
       );
     } finally {
       setConnecting(false);
+    }
+  }
+
+  // Zera a instância no servidor (logout + delete). Reset de fábrica para quando
+  // a instância trava e nem reconectar resolve — depois é só conectar de novo.
+  async function resetInstance() {
+    if (!window.confirm(
+      "Zerar a instância apaga a conexão atual no servidor e recomeça do zero. " +
+        "Você vai precisar parear o número de novo (código/QR). Continuar?",
+    )) return;
+    setResetting(true);
+    setConnectError(null);
+    try {
+      const json = await apiPost("/api/v1/whatsapp/reset", undefined, 30000);
+      // Limpa o estado local — instância não existe mais até reconectar.
+      setStatus((s) => ({
+        ...(s as Status),
+        state: "close",
+        number: undefined,
+        pairingCode: undefined,
+        qrBase64: undefined,
+      }));
+      if (!json?.ok) {
+        setConnectError(
+          "Tentei zerar, mas o servidor não confirmou. Aguarde alguns segundos e tente conectar — se persistir, o servidor Evolution pode estar fora do ar.",
+        );
+      }
+      await refresh();
+    } catch {
+      setConnectError("O servidor demorou demais para zerar a instância. Tente de novo em instantes.");
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -422,6 +455,30 @@ export function ConnectWhatsApp({
               )}
             </div>
           )}
+
+          {/* Reset de fábrica — destrava a instância quando nada mais resolve. */}
+          <div className="mt-4 border-t border-border pt-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[11px] text-muted-foreground">
+                Travou e não conecta de jeito nenhum? Zere a instância e comece do zero.
+              </p>
+              <button
+                onClick={resetInstance}
+                disabled={resetting}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger/10 disabled:opacity-60"
+              >
+                {resetting ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Zerando…
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="h-3.5 w-3.5" /> Zerar instância
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </Card>
       )}
 
