@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { FunctionCallingConfigMode, GoogleGenAI, Type, type Content, type FunctionDeclaration, type Part } from "@google/genai";
 import {
   CUSTOMER_STATUS_LABELS,
@@ -24,6 +25,7 @@ import {
   fullPriceTableText,
   resolveProductByText,
 } from "./site-pricing";
+import { createAgentSiteOrder } from "./site-orders";
 
 // Cliente reconhecido pelo número de WhatsApp (ou null se o número não bate
 // com nenhum cadastro). Passado ao agente para ele "conectar os pontos".
@@ -252,14 +254,46 @@ type ToolCtx = {
   phone?: string;
   customerId?: string | null;
   pushName?: string;
+  // Nome "de verdade" do cliente (cadastro, sem ser placeholder), resolvido em
+  // chatWithAgent — usado pra gravar o pedido do finalizar_pedido com um nome
+  // decente, e não o número de telefone.
+  customerName?: string;
   // Preenchido pelo finalizar_pedido quando o pedido fecha: fotos dos barris
   // pedidos, para o webhook mandar como mídia depois da resposta em texto.
   photosOut?: { url: string; label: string }[];
   // Preenchido pelo preco_por_bairro quando o cliente pede a TABELA COMPLETA:
   // a tabela já montada em código, colada abaixo da saudação do agente
-  // (garante formato/valores certos, sem depender do LLM formatar).
+  // (garante formato/valores certos, sem depender do LLM formatar). Usada como
+  // FALLBACK em texto quando não dá pra mandar a imagem.
   priceTableOut?: string;
+  // Preenchido pelo preco_por_bairro sempre que fala preço de um bairro coberto:
+  // a imagem da tabela (mesma fonte que o agente cota) pra mandar como mídia no
+  // WhatsApp e pré-visualizar no playground. Ver webhook do WhatsApp.
+  priceImagesOut?: { url: string; label: string }[];
 };
+
+// Base pública do próprio KegControl (onde a imagem da tabela é servida). Em
+// produção é a URL do Render; em dev, localhost:3020 (o navegador do playground
+// alcança; o Evolution remoto não — mesma limitação do webhook em dev).
+const APP_BASE = process.env.APP_URL?.replace(/\/$/, "") || "http://localhost:3020";
+
+// URL da imagem da tabela de preços para uma localidade coberta. Os preços saem
+// da MESMA fonte que o agente cota (getSitePricing/effectiveProductsForCity via
+// a rota /api/tabela-precos), então a imagem nunca descola do que o Lucas fala.
+function priceTableImageUrl(companyId: string, zona: { bairro: string; city: string }): {
+  url: string;
+  label: string;
+} {
+  const qs = new URLSearchParams({
+    cidade: zona.city,
+    bairro: zona.bairro,
+    company: companyId,
+  });
+  return {
+    url: `${APP_BASE}/api/tabela-precos?${qs.toString()}`,
+    label: `Tabela de preços · ${zona.bairro} · frete grátis`,
+  };
+}
 
 // Fechamento fixo colado depois da tabela de preços montada em código.
 const PRICE_TABLE_CLOSING = "É só me falar qual chopp e a litragem que eu já monto seu pedido! 🍺";
@@ -387,10 +421,18 @@ async function runTool(
       // com preço escalonado por quantidade (ex.: Brahma) vêm com as faixas.
       const products = effectiveProductsForCity(pricing, zona.city);
 
-      // MODO TABELA COMPLETA: o cliente pediu a lista de vários produtos. A
-      // tabela é montada em CÓDIGO e colada abaixo da saudação do agente (ver
-      // chatWithAgent) — o LLM NÃO escreve preço nenhum, só a saudação. Isso
-      // garante o formato bonito e os valores certos, 100% das vezes.
+      // Falou preço de bairro coberto → anexa a IMAGEM da tabela (mesma fonte
+      // dos valores cotados). O webhook manda como mídia no WhatsApp; o
+      // playground pré-visualiza. Vale nos dois modos (tabela e produto único).
+      if (ctx.priceImagesOut) {
+        const img = priceTableImageUrl(companyId, zona);
+        if (!ctx.priceImagesOut.some((p) => p.url === img.url)) ctx.priceImagesOut.push(img);
+      }
+
+      // MODO TABELA COMPLETA: o cliente pediu a lista de vários produtos. Os
+      // preços vão na IMAGEM (acima) — o LLM escreve SÓ a saudação. A tabela em
+      // texto fica guardada como fallback (ver chatWithAgent) para o caso de a
+      // imagem não poder ser enviada.
       if (input.tabela_completa) {
         if (ctx.priceTableOut !== undefined) {
           ctx.priceTableOut = fullPriceTableText(products);
@@ -401,13 +443,13 @@ async function runTool(
           cidade: zona.city,
           freteGratis: true,
           instrucao:
-            "A TABELA DE PREÇOS COMPLETA JÁ SERÁ COLADA AUTOMATICAMENTE logo abaixo da sua mensagem — você NÃO deve escrever nenhum preço, nome de produto nem a tabela. Escreva APENAS uma saudação curta de UMA linha, calorosa, citando o nome do cliente (se souber) e o bairro, terminando com algo como 'seguem os preços com frete grátis 👇'. NÃO faça pergunta e NÃO liste nada — só a saudação de abertura.",
+            "Os preços seguem em uma IMAGEM de tabela logo abaixo da sua mensagem — você NÃO deve escrever nenhum preço, nome de produto nem a tabela em texto. Escreva APENAS uma saudação curta de UMA linha, calorosa, citando o nome do cliente (se souber) e o bairro, terminando com algo como 'segue a tabela com frete grátis 👇'. NÃO faça pergunta e NÃO liste nada — só a saudação de abertura.",
         });
       }
 
       // MODO PRODUTO ÚNICO: o cliente perguntou de um item específico. Responde
       // natural, em uma frase, com a faixa daquele produto (o formato que o
-      // usuário gosta pra pergunta pontual).
+      // usuário gosta pra pergunta pontual). A imagem da tabela também vai junto.
       return JSON.stringify({
         coberto: true,
         bairro: zona.bairro,
@@ -415,7 +457,7 @@ async function runTool(
         freteGratis: true,
         blocosDePreco: products.map((p) => ({ id: p.id, nome: p.name, bloco: priceBlockFor(p) })),
         instrucao:
-          "PROIBIDO recalcular ou inventar preço — use os valores dos blocos. O cliente perguntou de UM produto: responda em UMA frase natural o preço dele (ex.: 'Belco 50L pra Xerém sai R$600 a unidade, R$550 levando 2, ou R$500 de 3+, com frete grátis') e siga pra próxima etapa. NÃO despeje a lista de todos os produtos. Se ele não deixou claro qual produto, diga só as marcas (Belco, Brahma, Heineken, Amstel, Chopp de Vinho) e pergunte qual — sem preços.",
+          "PROIBIDO recalcular ou inventar preço — use os valores dos blocos. O cliente perguntou de UM produto: responda em UMA frase natural o preço dele (ex.: 'Belco 50L pra Xerém sai R$600 a unidade, R$550 levando 2, ou R$500 de 3+, com frete grátis') e siga pra próxima etapa. NÃO despeje a lista de todos os produtos. Segue também uma imagem da tabela completa logo abaixo — não precisa comentar sobre ela. Se ele não deixou claro qual produto, diga só as marcas (Belco, Brahma, Heineken, Amstel, Chopp de Vinho) e pergunte qual — sem preços.",
       });
     }
     case "finalizar_pedido": {
@@ -432,7 +474,7 @@ async function runTool(
       }
       const products = effectiveProductsForCity(pricing, zona.city);
       const rawItens = Array.isArray(input.itens) ? (input.itens as Array<Record<string, unknown>>) : [];
-      const itens: Array<{ produto: string; quantidade: number; precoUnit: number; subtotal: number; economia: number }> = [];
+      const itens: Array<{ id: string; produto: string; quantidade: number; precoUnit: number; subtotal: number; economia: number }> = [];
       const naoReconhecidos: string[] = [];
       const fotosVistas = new Set<string>();
       const fotos: { url: string; label: string }[] = [];
@@ -448,7 +490,7 @@ async function runTool(
         // economia: quanto o cliente economizou no total vs. o preço de 1 unidade.
         const precoUnit = unitPriceFor(item, qtd);
         const economia = item.tiers ? Math.max(0, (item.tiers[0] - precoUnit) * qtd) : 0;
-        itens.push({ produto: item.name, quantidade: qtd, precoUnit, subtotal: precoUnit * qtd, economia });
+        itens.push({ id: item.id, produto: item.name, quantidade: qtd, precoUnit, subtotal: precoUnit * qtd, economia });
         const fotoUrl = photoUrlForProduct(item.id);
         if (fotoUrl && !fotosVistas.has(fotoUrl)) {
           fotosVistas.add(fotoUrl);
@@ -467,6 +509,27 @@ async function runTool(
       if (ctx.photosOut) ctx.photosOut.push(...fotos);
       const total = itens.reduce((s, i) => s + i.subtotal, 0);
       const economiaTotal = itens.reduce((s, i) => s + i.economia, 0);
+      const deliveryMethod = /retirada/i.test(String(input.entrega ?? "")) ? "retirada" : "entrega";
+      // Grava o pedido como fonte de verdade (origin AGENTE) — é o que permite
+      // ao comprovante de PIX (casado por telefone, ver payment-proofs.ts) achar
+      // este pedido e aparecer pra revisão em Pedidos do Site/Verificação.
+      // Só quando veio de canal com número (WhatsApp) — no Playground não há
+      // telefone real, então não grava (mesmo critério de salvar_cliente).
+      if (ctx.phone) {
+        await createAgentSiteOrder(companyId, {
+          customerName: ctx.customerName?.trim() || `Cliente ${ctx.phone}`,
+          phone: ctx.phone,
+          deliveryMethod,
+          neighborhood: zona.bairro,
+          city: zona.city,
+          street: input.endereco ? String(input.endereco) : null,
+          items: itens.map((i) => ({ id: i.id, name: i.produto, quantity: i.quantidade, unitPrice: i.precoUnit })),
+          total,
+        }).catch((e) => {
+          console.error("[agent] createAgentSiteOrder falhou:", e);
+          Sentry.captureException(e, { tags: { companyId, tool: "finalizar_pedido" } });
+        });
+      }
       // PIX real vem do Setting (pix_key/pix_nome). Enquanto não configurado,
       // usa um PIX de TESTE — seguro porque esta ferramenta só roda no
       // playground (channel === PLAYGROUND). Ao configurar o PIX real, ele assume.
@@ -476,7 +539,7 @@ async function runTool(
         ok: true,
         bairro: zona.bairro,
         cidade: zona.city,
-        entrega: String(input.entrega ?? ""),
+        entrega: deliveryMethod,
         endereco: input.endereco ? String(input.endereco) : null,
         itens: itens.map((i) => ({ produto: i.produto, quantidade: i.quantidade, precoUnit: i.precoUnit, subtotal: i.subtotal, economia: i.economia || undefined })),
         freteGratis: true,
@@ -670,6 +733,13 @@ export async function chatWithAgent(
   // Fotos de barril a enviar como mídia depois do texto (preenchido quando o
   // pedido fecha via finalizar_pedido — ver webhook do WhatsApp).
   photos: { url: string; label: string }[];
+  // Imagem(ns) da tabela de preços a enviar como mídia depois do texto
+  // (preenchido quando o cliente pergunta preço de um bairro coberto).
+  priceImages: { url: string; label: string }[];
+  // Tabela de preços montada em TEXTO (código), para o webhook usar como
+  // fallback se o envio da IMAGEM falhar — assim o cliente nunca fica com a
+  // saudação "segue a tabela 👇" apontando para nada. "" quando não se aplica.
+  priceTableText: string;
 }> {
   const config = await getAgentConfig(companyId);
   const userMessage = history.at(-1);
@@ -683,7 +753,7 @@ export async function chatWithAgent(
     await prisma.agentMessage.deleteMany({ where: { companyId, sessionId } });
     const greeting =
       config.greeting?.trim() || "Oi! 🍺 Aqui é o atendimento da SS-Chopp. Como posso ajudar?";
-    return { reply: greeting, toolsUsed: [], simulated: false, photos: [] };
+    return { reply: greeting, toolsUsed: [], simulated: false, photos: [], priceImages: [], priceTableText: "" };
   }
 
   // Contexto de identidade (só quando veio de um canal com número, ex.: WhatsApp).
@@ -714,27 +784,41 @@ export async function chatWithAgent(
   let toolsUsed: string[] = [];
   let simulated = false;
   let photos: { url: string; label: string }[] = [];
+  let priceImages: { url: string; label: string }[] = [];
+  let priceTableText = "";
 
   if (process.env.GEMINI_API_KEY) {
+    // Nome "de verdade" pra gravar o pedido (finalizar_pedido): o do cadastro,
+    // se não for o placeholder "Cliente <telefone>" — senão o pushName do
+    // WhatsApp. Mesma regra de exibição usada em buildIdentityContext.
+    const rawName = opts.identifiedCustomer?.name?.trim();
+    const customerName =
+      rawName && !PLACEHOLDER_NAME.test(rawName) ? rawName : opts.pushName;
     const result = await runGeminiLoop(companyId, systemInstruction, history, {
       channel,
       phone: opts.phone,
       customerId,
       pushName: opts.pushName,
+      customerName,
     });
     reply = result.reply;
     toolsUsed = result.toolsUsed;
     photos = result.photos;
-    // Tabela de preços pedida: cola a tabela montada em CÓDIGO abaixo da
-    // saudação do agente + fechamento fixo. Pego SÓ a primeira linha não-vazia
-    // da resposta do LLM (a saudação) e descarto o resto — se ele inventar uma
-    // tabela/preços por conta própria, isso é jogado fora. Assim a única
-    // tabela que sobra é a do código (formato e valores sempre certos).
+    priceImages = result.priceImages;
+    priceTableText = result.priceTable;
+    // Tabela de preços pedida: em qualquer caso, corto a resposta do LLM para a
+    // PRIMEIRA linha não-vazia (a saudação) e descarto o resto — se ele inventar
+    // preços por conta própria, isso é jogado fora. Os preços "de verdade" vêm
+    // da IMAGEM (mesma fonte que o agente cota). Só quando NÃO há imagem pra
+    // enviar (fallback) é que colo a tabela em TEXTO montada em código.
     if (result.priceTable) {
       const intro =
         reply.split("\n").map((l) => l.trim()).find(Boolean) ||
-        "Beleza! Seguem os preços com frete grátis 👇";
-      reply = `${intro}\n\n${result.priceTable}\n\n${PRICE_TABLE_CLOSING}`;
+        "Beleza! Segue a tabela com frete grátis 👇";
+      reply =
+        priceImages.length > 0
+          ? intro
+          : `${intro}\n\n${result.priceTable}\n\n${PRICE_TABLE_CLOSING}`;
     }
   } else {
     // Sem chave da API: modo simulado — usa as MESMAS ferramentas com um
@@ -754,7 +838,7 @@ export async function chatWithAgent(
     data: { companyId, sessionId, role: "assistant", content: reply, customerId, channel },
   });
 
-  return { reply, toolsUsed, simulated, photos };
+  return { reply, toolsUsed, simulated, photos, priceImages, priceTableText };
 }
 
 async function runGeminiLoop(
@@ -767,6 +851,7 @@ async function runGeminiLoop(
   toolsUsed: string[];
   photos: { url: string; label: string }[];
   priceTable: string;
+  priceImages: { url: string; label: string }[];
 }> {
   const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const toolsUsed: string[] = [];
@@ -775,6 +860,10 @@ async function runGeminiLoop(
   // nunca é undefined nos returns abaixo.
   const photosOut: { url: string; label: string }[] = [];
   ctx.photosOut = photosOut;
+  // Idem para a imagem da tabela: preco_por_bairro empurra aqui a URL da imagem
+  // (mesma referência, para o TS saber que nunca é undefined nos returns).
+  const priceImagesOut: { url: string; label: string }[] = [];
+  ctx.priceImagesOut = priceImagesOut;
   // Idem para a tabela de preços: preco_por_bairro (modo tabela_completa)
   // grava aqui a tabela pronta. "" = nenhuma tabela pra colar nesta resposta.
   ctx.priceTableOut = "";
@@ -806,7 +895,7 @@ async function runGeminiLoop(
     const calls = response.functionCalls;
     if (!calls || calls.length === 0) {
       const text = (response.text ?? "").trim();
-      if (text) return { reply: text, toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "" };
+      if (text) return { reply: text, toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut };
       // Modelo devolveu vazio (acontece às vezes depois de uma ferramenta):
       // cutuca uma resposta curta mais uma vez antes de desistir — o cliente
       // NUNCA deve receber "(sem resposta)".
@@ -814,7 +903,7 @@ async function runGeminiLoop(
         contents.push({ role: "user", parts: [{ text: "Responda ao cliente agora, em 1-2 frases curtas." }] });
         continue;
       }
-      return { reply: "Desculpa, pode repetir? 😊", toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "" };
+      return { reply: "Desculpa, pode repetir? 😊", toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut };
     }
 
     // Ecoa a resposta do modelo (com as chamadas de função) antes dos resultados.
@@ -831,6 +920,9 @@ async function runGeminiLoop(
       try {
         output = await runTool(companyId, name, (call.args ?? {}) as Record<string, unknown>, ctx);
       } catch (e) {
+        // Mantém a mensagem amigável pro cliente E reporta — falha de uma
+        // ferramenta do agente em produção não pode ficar invisível.
+        Sentry.captureException(e, { tags: { companyId, tool: name }, extra: { args: call.args } });
         output = `Erro ao consultar: ${e instanceof Error ? e.message : "desconhecido"}`;
       }
       resultParts.push({
@@ -839,7 +931,7 @@ async function runGeminiLoop(
     }
     contents.push({ role: "user", parts: resultParts });
   }
-  return { reply: "Não consegui concluir a consulta agora. Pode repetir?", toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "" };
+  return { reply: "Não consegui concluir a consulta agora. Pode repetir?", toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut };
 }
 
 // Modo simulado: sem LLM, mas com os dados reais — suficiente para treinar

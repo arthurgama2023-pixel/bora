@@ -49,6 +49,7 @@ interface EvolutionWebhookPayload {
       conversation?: string;
       extendedTextMessage?: { text?: string };
       audioMessage?: { mimetype?: string };
+      imageMessage?: { mimetype?: string; caption?: string };
       base64?: string;
     };
   };
@@ -72,6 +73,9 @@ export interface IncomingMessage {
   text?: string;
   // Mensagem de voz a ser transcrita (quando não é texto).
   audio?: { key: EvolutionMessageKey; base64?: string; mimetype?: string };
+  // Foto (ex.: comprovante de PIX) — não passa pelo Gemini, só é guardada
+  // para revisão humana na aba Verificação (ver PaymentProof).
+  image?: { key: EvolutionMessageKey; base64?: string; mimetype?: string; caption?: string };
 }
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -92,6 +96,10 @@ export class WhatsAppEvolutionChannel {
     const data = payload?.data;
     const key = data?.key;
     if (!data || !key || key.fromMe) return null; // ignora eco das próprias mensagens
+    // JID de grupo termina em "@g.us" (contato individual termina em
+    // "@s.whatsapp.net"). O agente é pra atendimento 1:1 — nunca responde
+    // dentro de grupo, mesmo que alguém o mencione ou responda a ele lá.
+    if (key.remoteJid.endsWith("@g.us")) return null;
 
     const externalId = phoneFromJid(key.remoteJid);
     const text = data.message?.conversation ?? data.message?.extendedTextMessage?.text;
@@ -109,7 +117,44 @@ export class WhatsAppEvolutionChannel {
         },
       };
     }
+    // Foto: provável comprovante de PIX. Devolve a chave pra baixar depois —
+    // não tenta ler/validar aqui, só guarda pra revisão humana.
+    if (data.message?.imageMessage) {
+      return {
+        externalId,
+        pushName: data.pushName,
+        image: {
+          key,
+          base64: data.message.base64 ?? data.base64,
+          mimetype: data.message.imageMessage.mimetype,
+          caption: data.message.imageMessage.caption,
+        },
+      };
+    }
     return null;
+  }
+
+  // Busca o base64 de uma mídia (áudio ou imagem) no Evolution, se ela ainda
+  // não veio pronta no próprio webhook. Compartilhado por transcribeAudio e
+  // downloadImage — mesma chamada, o que muda é o que cada um faz depois.
+  private async fetchMediaBase64(
+    cfg: WhatsAppConfig,
+    key: EvolutionMessageKey,
+    base64Hint?: string,
+    mimetypeHint?: string,
+  ): Promise<{ base64: string; mimetype?: string } | null> {
+    if (base64Hint) return { base64: base64Hint, mimetype: mimetypeHint };
+    const res = await this.api(cfg, "POST", `/chat/getBase64FromMediaMessage/${cfg.instance}`, {
+      message: { key },
+      convertToMp4: false,
+    });
+    if (!res?.ok) {
+      console.error("[whatsapp] getBase64FromMediaMessage falhou:", res?.status);
+      return null;
+    }
+    const data = (await res.json().catch(() => null)) as { base64?: string; mimetype?: string } | null;
+    if (!data?.base64) return null;
+    return { base64: data.base64, mimetype: mimetypeHint ?? data.mimetype };
   }
 
   // Baixa o áudio (se necessário) e transcreve para texto em pt-BR.
@@ -119,29 +164,25 @@ export class WhatsAppEvolutionChannel {
   ): Promise<string | null> {
     const cfg = await getWhatsAppConfig(companyId);
     if (!cfg) return null;
-
-    let base64 = audio.base64;
-    let mimetype = audio.mimetype;
-    if (!base64) {
-      // Pede o base64 da mídia ao Evolution (a mensagem já está no store dele).
-      const res = await this.api(cfg, "POST", `/chat/getBase64FromMediaMessage/${cfg.instance}`, {
-        message: { key: audio.key },
-        convertToMp4: false,
-      });
-      if (!res?.ok) {
-        console.error("[whatsapp] getBase64FromMediaMessage falhou:", res?.status);
-        return null;
-      }
-      const data = (await res.json().catch(() => null)) as
-        | { base64?: string; mimetype?: string }
-        | null;
-      base64 = data?.base64;
-      mimetype = mimetype ?? data?.mimetype;
-    }
-    if (!base64) return null;
+    const media = await this.fetchMediaBase64(cfg, audio.key, audio.base64, audio.mimetype);
+    if (!media) return null;
     // "audio/ogg; codecs=opus" -> "audio/ogg" (o Gemini quer só o mime base).
-    const mime = (mimetype ?? "audio/ogg").split(";")[0].trim();
-    return transcribeWithGemini(base64, mime);
+    const mime = (media.mimetype ?? "audio/ogg").split(";")[0].trim();
+    return transcribeWithGemini(media.base64, mime);
+  }
+
+  // Baixa a foto (se necessário) — sem interpretar o conteúdo, só entrega
+  // pronta pra guardar como PaymentProof (ver webhook do WhatsApp).
+  async downloadImage(
+    companyId: string,
+    image: NonNullable<IncomingMessage["image"]>,
+  ): Promise<{ base64: string; mimetype: string } | null> {
+    const cfg = await getWhatsAppConfig(companyId);
+    if (!cfg) return null;
+    const media = await this.fetchMediaBase64(cfg, image.key, image.base64, image.mimetype);
+    if (!media) return null;
+    const mime = (media.mimetype ?? "image/jpeg").split(";")[0].trim();
+    return { base64: media.base64, mimetype: mime };
   }
 
   async sendMessage(companyId: string, externalId: string, text: string): Promise<void> {
@@ -165,32 +206,42 @@ export class WhatsAppEvolutionChannel {
   }
 
   // Envia uma imagem por URL pública (ex.: foto do barril publicada no site).
+  // `mimetype`/`fileName` podem ser passados explicitamente: a tabela de preços
+  // vem de uma URL com query-string (/api/tabela-precos?cidade=...), então o
+  // palpite por extensão de arquivo não funciona e cairia no webp por engano.
+  // Retorna `true` se a Evolution aceitou a mídia. O chamador pode usar isso
+  // para cair num fallback em texto (ex.: mandar a tabela de preços escrita se
+  // a imagem não foi entregue) — assim o cliente nunca fica sem a informação.
   async sendMedia(
     companyId: string,
     externalId: string,
     mediaUrl: string,
     caption?: string,
-  ): Promise<void> {
+    opts?: { mimetype?: string; fileName?: string },
+  ): Promise<boolean> {
     const cfg = await getWhatsAppConfig(companyId);
     if (!cfg) {
       console.warn("[whatsapp] Evolution não configurada — mídia não enviada:", mediaUrl);
-      return;
+      return false;
     }
-    const ext = mediaUrl.split(".").pop()?.toLowerCase();
+    const ext = mediaUrl.split("?")[0].split(".").pop()?.toLowerCase();
     const mimetype =
-      ext === "png" ? "image/png" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/webp";
+      opts?.mimetype ??
+      (ext === "png" ? "image/png" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/webp");
     const res = await this.api(cfg, "POST", `/message/sendMedia/${cfg.instance}`, {
       number: externalId,
       mediatype: "image",
       mimetype,
       media: mediaUrl,
       caption,
-      fileName: mediaUrl.split("/").pop(),
+      fileName: opts?.fileName ?? mediaUrl.split("?")[0].split("/").pop(),
       delay: 1000,
     });
     if (!res?.ok) {
       console.error("[whatsapp] falha ao enviar mídia:", res?.status, await res?.text().catch(() => ""));
+      return false;
     }
+    return true;
   }
 
   // ---- Gerenciamento de instância (aba Conectar) ----

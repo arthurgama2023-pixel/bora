@@ -32,3 +32,11 @@ Se o veredito for ❌ (algum critério de aceite não bate, ou build/teste/segur
 - `revisar-entrega` — portão de qualidade ao fim de cada tarefa (etapa **revisar**). Rode sempre que concluir algo.
 - `worktree` — para isolar trabalho urgente/paralelo no meio de mudanças pendentes.
 - `checkpoint` — salvar estado antes de reiniciar a sessão sem perder contexto.
+
+## Convenções técnicas
+
+### Tabela de preços que o agente manda no WhatsApp (imagem)
+- Quando o cliente pergunta preço de um **bairro coberto**, o agente (Lucas) manda a tabela como **IMAGEM**, não como texto. A imagem é gerada em `src/app/api/tabela-precos/route.tsx` (`next/og`, 1080x1350) a partir dos **preços vivos do banco** — a mesma fonte que o agente cota (`getSitePricing` + `effectiveProductsForCity(zona)`). Por isso a imagem **nunca descola** do que o Lucas fala: mudou o preço na aba **"Preços do Site"**, a imagem muda sozinha. **Não** precisa regerar nada à mão (os 5 PNGs estáticos em `ss-chopp/public/tabelas/*.png` ficaram obsoletos para o agente).
+- Encanamento: `preco_por_bairro` (em `agent.ts`) empurra a URL da imagem em `ctx.priceImagesOut` → `chatWithAgent` devolve `priceImages` → o webhook (`api/webhooks/whatsapp`) manda via `channel.sendMedia(..., { mimetype: "image/png" })`. O playground (`agent-studio.tsx`) pré-visualiza a mesma imagem na bolha.
+- A rota é **pública** (liberada em `src/proxy.ts`) porque a Evolution a busca por URL, sem sessão. A URL usa `APP_URL` como base (Render em prod, `localhost:3020` em dev — o Evolution remoto não alcança localhost, mesma limitação do webhook em dev).
+- Manutenção anual/preço: editar na aba "Preços do Site" (grava no `Setting` `site.pricing`). Nunca hardcodar preço no código do agente nem na rota da imagem.

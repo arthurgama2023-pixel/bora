@@ -17,6 +17,9 @@ type ChatMessage = {
   content: string;
   toolsUsed?: string[];
   simulated?: boolean;
+  // Imagem(ns) da tabela de preços que o agente manda no WhatsApp — aqui no
+  // playground a gente PRÉ-VISUALIZA o que o cliente recebe.
+  images?: { url: string; label: string }[];
 };
 
 // "comece de novo" → recomeça a conversa (tolera acento/caixa/pontuação).
@@ -113,6 +116,7 @@ export function AgentStudio({
             content: json.data.reply,
             toolsUsed: json.data.toolsUsed,
             simulated: json.data.simulated,
+            images: json.data.priceImages,
           },
         ]);
       }
@@ -229,6 +233,19 @@ export function AgentStudio({
                 )}
               >
                 {m.content}
+                {m.images && m.images.length > 0 && (
+                  <div className="mt-2 flex flex-col gap-2">
+                    {m.images.map((img, j) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        key={j}
+                        src={img.url}
+                        alt={img.label}
+                        className="w-full max-w-[280px] rounded-lg border border-border"
+                      />
+                    ))}
+                  </div>
+                )}
                 {m.toolsUsed && m.toolsUsed.length > 0 && (
                   <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
                     <Wrench className="h-3 w-3" />

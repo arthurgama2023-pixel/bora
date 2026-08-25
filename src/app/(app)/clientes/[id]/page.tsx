@@ -113,6 +113,118 @@ export default async function CustomerDetailPage({
         }
       />
 
+      <Card className="p-5">
+        <h2 className="mb-4 font-semibold">Histórico de pedidos</h2>
+        {orders.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Nenhuma entrega ou troca registrada para este cliente ainda.
+          </p>
+        ) : (
+          <>
+            <div className="mb-4 grid grid-cols-3 gap-3">
+              <StatCard label="Entrega" value={ordersTotals.entrega} hint="cheios entregues" />
+              <StatCard label="Retirada" value={ordersTotals.retirada} hint="vazios retirados" />
+              <StatCard
+                label="Saldo"
+                value={ordersSaldo > 0 ? `+${ordersSaldo}` : ordersSaldo}
+                hint="entrega − retirada"
+                accent
+              />
+            </div>
+            <div className="space-y-2">
+              {orders.map((o) => (
+                <div
+                  key={o.movement.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm"
+                >
+                  <div>
+                    <Link
+                      href={`/movimentacoes/${o.movement.id}`}
+                      className="font-mono text-xs font-semibold text-brand-strong hover:underline"
+                    >
+                      {movementCode(o.movement.number)}
+                    </Link>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {formatDateTime(o.movement.occurredAt)}
+                    </span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {o.movement.items
+                      .filter((i) => i.toLocation === "CUSTOMER")
+                      .map((i) => `${i.quantity}x ${i.kegType.code}`)
+                      .join(", ")}
+                  </span>
+                  <span className="font-semibold text-brand-strong">
+                    {o.value !== null ? formatCurrency(o.value) : "—"}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Últimos {orders.length} pedido(s) (entregas/trocas) · valor estimado com
+              base nos preços cadastrados deste cliente.
+            </p>
+          </>
+        )}
+      </Card>
+
+      <h2 className="mb-3 mt-6 text-lg font-semibold">
+        Extrato de movimentações
+      </h2>
+      {statement.rows.length === 0 ? (
+        <EmptyState message="Nenhuma movimentação registrada para este cliente." />
+      ) : (
+        <Table>
+          <thead>
+            <tr>
+              <Th>Data</Th>
+              <Th>Código</Th>
+              <Th>Tipo</Th>
+              <Th>Itens</Th>
+              <Th>Usuário</Th>
+              <Th className="text-right">Variação</Th>
+              <Th className="text-right">Saldo</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...statement.rows].reverse().map((r) => (
+              <tr key={r.movement.id} className="hover:bg-muted/40">
+                <Td className="text-xs">{formatDateTime(r.movement.occurredAt)}</Td>
+                <Td>
+                  <Link
+                    href={`/movimentacoes/${r.movement.id}`}
+                    className="font-mono text-xs font-semibold text-brand-strong hover:underline"
+                  >
+                    {movementCode(r.movement.number)}
+                  </Link>
+                </Td>
+                <Td>
+                  {MOVEMENT_TYPE_LABELS[r.movement.type as MovementType] ??
+                    r.movement.type}
+                </Td>
+                <Td className="text-xs text-muted-foreground">
+                  {r.movement.items
+                    .map((i) => `${i.quantity}x ${i.kegType.code}`)
+                    .join(", ")}
+                </Td>
+                <Td className="text-xs">{r.movement.user.name}</Td>
+                <Td
+                  className={cn(
+                    "text-right font-semibold",
+                    r.delta > 0 && "text-success",
+                    r.delta < 0 && "text-danger",
+                  )}
+                >
+                  {r.delta > 0 ? `+${r.delta}` : r.delta}
+                </Td>
+                <Td className="text-right font-bold">{r.balance}</Td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+
+      <h2 className="mb-3 mt-8 text-lg font-semibold">Informações do cliente</h2>
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="p-5">
           <h2 className="mb-4 font-semibold">Dados do cliente</h2>
@@ -239,116 +351,6 @@ export default async function CustomerDetailPage({
         </Card>
       )}
 
-      <Card className="mt-6 p-5">
-        <h2 className="mb-4 font-semibold">Histórico de pedidos</h2>
-        {orders.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Nenhuma entrega ou troca registrada para este cliente ainda.
-          </p>
-        ) : (
-          <>
-            <div className="mb-4 grid grid-cols-3 gap-3">
-              <StatCard label="Entrega" value={ordersTotals.entrega} hint="cheios entregues" />
-              <StatCard label="Retirada" value={ordersTotals.retirada} hint="vazios retirados" />
-              <StatCard
-                label="Saldo"
-                value={ordersSaldo > 0 ? `+${ordersSaldo}` : ordersSaldo}
-                hint="entrega − retirada"
-                accent
-              />
-            </div>
-            <div className="space-y-2">
-              {orders.map((o) => (
-                <div
-                  key={o.movement.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm"
-                >
-                  <div>
-                    <Link
-                      href={`/movimentacoes/${o.movement.id}`}
-                      className="font-mono text-xs font-semibold text-brand-strong hover:underline"
-                    >
-                      {movementCode(o.movement.number)}
-                    </Link>
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      {formatDateTime(o.movement.occurredAt)}
-                    </span>
-                  </div>
-                  <span className="text-xs text-muted-foreground">
-                    {o.movement.items
-                      .filter((i) => i.toLocation === "CUSTOMER")
-                      .map((i) => `${i.quantity}x ${i.kegType.code}`)
-                      .join(", ")}
-                  </span>
-                  <span className="font-semibold text-brand-strong">
-                    {o.value !== null ? formatCurrency(o.value) : "—"}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <p className="mt-3 text-xs text-muted-foreground">
-              Últimos {orders.length} pedido(s) (entregas/trocas) · valor estimado com
-              base nos preços cadastrados deste cliente.
-            </p>
-          </>
-        )}
-      </Card>
-
-      <h2 className="mb-3 mt-8 text-lg font-semibold">
-        Extrato de movimentações
-      </h2>
-      {statement.rows.length === 0 ? (
-        <EmptyState message="Nenhuma movimentação registrada para este cliente." />
-      ) : (
-        <Table>
-          <thead>
-            <tr>
-              <Th>Data</Th>
-              <Th>Código</Th>
-              <Th>Tipo</Th>
-              <Th>Itens</Th>
-              <Th>Usuário</Th>
-              <Th className="text-right">Variação</Th>
-              <Th className="text-right">Saldo</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {[...statement.rows].reverse().map((r) => (
-              <tr key={r.movement.id} className="hover:bg-muted/40">
-                <Td className="text-xs">{formatDateTime(r.movement.occurredAt)}</Td>
-                <Td>
-                  <Link
-                    href={`/movimentacoes/${r.movement.id}`}
-                    className="font-mono text-xs font-semibold text-brand-strong hover:underline"
-                  >
-                    {movementCode(r.movement.number)}
-                  </Link>
-                </Td>
-                <Td>
-                  {MOVEMENT_TYPE_LABELS[r.movement.type as MovementType] ??
-                    r.movement.type}
-                </Td>
-                <Td className="text-xs text-muted-foreground">
-                  {r.movement.items
-                    .map((i) => `${i.quantity}x ${i.kegType.code}`)
-                    .join(", ")}
-                </Td>
-                <Td className="text-xs">{r.movement.user.name}</Td>
-                <Td
-                  className={cn(
-                    "text-right font-semibold",
-                    r.delta > 0 && "text-success",
-                    r.delta < 0 && "text-danger",
-                  )}
-                >
-                  {r.delta > 0 ? `+${r.delta}` : r.delta}
-                </Td>
-                <Td className="text-right font-bold">{r.balance}</Td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
-      )}
     </>
   );
 }

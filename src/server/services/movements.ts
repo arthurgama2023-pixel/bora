@@ -239,7 +239,7 @@ export async function listMovements(
   companyId: string,
   opts: {
     customerId?: string;
-    type?: string;
+    type?: string | string[];
     from?: Date;
     to?: Date;
     take?: number;
@@ -249,7 +249,7 @@ export async function listMovements(
     where: {
       companyId,
       ...(opts.customerId ? { customerId: opts.customerId } : {}),
-      ...(opts.type ? { type: opts.type } : {}),
+      ...(opts.type ? { type: Array.isArray(opts.type) ? { in: opts.type } : opts.type } : {}),
       ...(opts.from || opts.to
         ? { occurredAt: { ...(opts.from ? { gte: opts.from } : {}), ...(opts.to ? { lte: opts.to } : {}) } }
         : {}),

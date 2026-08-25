@@ -45,7 +45,6 @@ const INITIAL: Prod[] = [
   { id: "vinho-30l", name: "Choppe de Vinho 30L", tag: "Vinho", emoji: "🍷", fixed: 450 },
   { id: "vinho-50l", name: "Choppe de Vinho 50L", tag: "Vinho", emoji: "🍷", fixed: 600 },
   { id: "kit-chopeira", name: "Chopeira Completa (diária)", tag: "Promoção", emoji: "🧊", fixed: 120 },
-  { id: "kit-extracao", name: "Kit Extração + Mesa", tag: "Equip.", emoji: "⚙️", fixed: 85 },
 ];
 
 type City = { city: string; n: number; eta: string };
@@ -173,12 +172,35 @@ export function PrecosSite() {
 
   const cloneBase = () =>
     prods.map((p) => ({ ...p, tiers: p.tiers ? ([...p.tiers] as [number, number, number]) : undefined }));
-  const effFor = (city: string) => overrides[city] ?? prods;
+
+  // Mescla a tabela base com o override da região: TODO produto da base
+  // aparece (usando o preço do override se existir); produtos que só existem
+  // no override — remanescentes de uma base antiga — são preservados no fim.
+  // Sem isso, um produto adicionado à base depois que a região ganhou override
+  // ficava invisível na tabela (bug do Amstel/Heineken 30L).
+  const mergeWithBase = (ov?: Prod[]): Prod[] => {
+    if (!ov) return cloneBase();
+    const byId = new Map(ov.map((p) => [p.id, p]));
+    const baseIds = new Set(prods.map((p) => p.id));
+    const merged = prods.map(
+      (p) =>
+        byId.get(p.id) ?? {
+          ...p,
+          tiers: p.tiers ? ([...p.tiers] as [number, number, number]) : undefined,
+        },
+    );
+    const extra = ov.filter((p) => !baseIds.has(p.id));
+    return [...merged, ...extra];
+  };
+
+  const effFor = (city: string) => (overrides[city] ? mergeWithBase(overrides[city]) : prods);
   const isCustom = (city: string) => !!overrides[city];
 
   function setRegionPrice(city: string, id: string, i: number, val: number) {
     setOverrides((prev) => {
-      const cur = prev[city] ?? cloneBase();
+      // Parte da lista MESCLADA para não perder produtos novos da base que
+      // ainda não estavam no override congelado da região.
+      const cur = mergeWithBase(prev[city]);
       const next = cur.map((p) => {
         if (p.id !== id) return p;
         if (p.fixed != null) return { ...p, fixed: val };
@@ -322,9 +344,12 @@ export function PrecosSite() {
   }
 
   // Carrega os preços salvos (fonte única no servidor) ao abrir a tela.
+  // cache: "no-store" — sem isso o navegador pode servir uma resposta antiga
+  // do cache HTTP mesmo depois de um F5 normal, escondendo produto/preço
+  // que acabou de mudar no banco até um hard-refresh forçar a busca de novo.
   useEffect(() => {
     let alive = true;
-    fetch("/api/v1/precos-site")
+    fetch("/api/v1/precos-site", { cache: "no-store" })
       .then((r) => r.json())
       .then((json) => {
         if (!alive || !json?.ok) return;

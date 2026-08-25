@@ -4,7 +4,15 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/session-token";
 const PUBLIC_PATHS = ["/login", "/api/v1/auth/login"];
 // Rotas de integração externa: sem cookie de sessão, autenticadas pelo próprio
 // token (webhook do Evolution via ?token=; keep-alive via KEEPALIVE_TOKEN opcional).
-const PUBLIC_PREFIXES = ["/api/webhooks/", "/api/whatsapp/keepalive", "/api/public/"];
+// /api/tabela-precos é a imagem pública da tabela — o Evolution a busca por URL
+// (sem sessão) pra mandar no WhatsApp, e o cliente a abre no celular.
+const PUBLIC_PREFIXES = [
+  "/api/webhooks/",
+  "/api/whatsapp/keepalive",
+  "/api/public/",
+  "/api/tabela-precos",
+  "/api/health/", // o "vigia" (cron externo) lê a saúde do agente sem sessão
+];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

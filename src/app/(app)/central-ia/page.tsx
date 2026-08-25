@@ -1,4 +1,4 @@
-import { ArrowRight, Bot, MessageSquare, Send, Smartphone, Users } from "lucide-react";
+import { ArrowRight, Bot, MessageSquare, ReceiptText, Send, Smartphone, Users } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Card, PageHeader, StatCard } from "@/components/ui";
@@ -15,11 +15,12 @@ export default async function CentralIaPage() {
   if (!session) redirect("/login");
   if (session.role === "STOCKIST") redirect("/dashboard");
 
-  const [config, crm, dispatchCount, messageCount] = await Promise.all([
+  const [config, crm, dispatchCount, messageCount, proofCount] = await Promise.all([
     getAgentConfig(session.companyId),
     getCrmSummary(session.companyId),
     prisma.dispatch.count({ where: { companyId: session.companyId } }),
     prisma.agentMessage.count({ where: { companyId: session.companyId } }),
+    prisma.paymentProof.count({ where: { companyId: session.companyId } }),
   ]);
 
   const hasKey = !!process.env.GEMINI_API_KEY;
@@ -31,7 +32,7 @@ export default async function CentralIaPage() {
         subtitle="Agente, CRM e disparos automáticos — ambiente de treino antes do WhatsApp"
       />
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
         <StatCard
           label="Agente"
           value={config.active ? "Ativo" : "Pausado"}
@@ -45,6 +46,7 @@ export default async function CentralIaPage() {
         />
         <StatCard label="Disparos gerados" value={dispatchCount} hint="fila de treino" />
         <StatCard label="Mensagens de treino" value={messageCount} hint="conversas no playground" />
+        <StatCard label="Comprovantes recebidos" value={proofCount} hint="aguardando conferência" />
       </div>
 
       <div className="mt-6 grid gap-6 md:grid-cols-2">
@@ -72,6 +74,12 @@ export default async function CentralIaPage() {
           icon={<Send className="h-8 w-8 text-brand-strong" />}
           title="Disparos automáticos"
           description="Regras de mensagens (cliente sumido, barril parado). Hoje geram uma fila simulada para revisão; quando o WhatsApp conectar, disparam de verdade."
+        />
+        <ModuleCard
+          href="/central-ia/verificacao"
+          icon={<ReceiptText className="h-8 w-8 text-brand-strong" />}
+          title="Verificação de Comprovantes"
+          description="Fotos de comprovante de PIX recebidas no WhatsApp aparecem aqui. O agente não valida nada — a conferência do pagamento é sempre sua."
         />
       </div>
 

@@ -30,6 +30,8 @@ model Company {
   campaignRules CampaignRule[]
   dispatches    Dispatch[]
   settings      Setting[]
+  siteOrders    SiteOrder[]
+  paymentProofs PaymentProof[]
 }
 
 // Configurações chave/valor por empresa (ex.: credenciais do WhatsApp/Evolution).
@@ -80,6 +82,8 @@ model Customer {
   notes        String?
   openBalance  Float    @default(0) // valor em aberto (dívida) — referência manual
   status       String   @default("ACTIVE") // ACTIVE | INACTIVE | BLOCKED
+  agentEnabled Boolean  @default(false) // agente IA só atende quem o dono liberar (trancado por padrão)
+  source       String   @default("MANUAL") // MANUAL (cadastrado no painel) | AGENTE (auto-criado pelo WhatsApp)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -196,6 +200,60 @@ model MovementItem {
   kegType  KegType  @relation(fields: [kegTypeId], references: [id])
 
   @@index([movementId])
+}
+
+// Pedido feito pelo SITE (ss-chopp) — capturado quando o cliente finaliza.
+// NÃO é movimentação de estoque: entra como PENDING e a SS-Chopp confirma no
+// painel (aí sim vira Movement, manualmente). É a ponte entre o site estático
+// e o controle interno, sem deixar um endpoint público mexer no patrimônio.
+model SiteOrder {
+  id             String   @id @default(cuid())
+  companyId      String
+  customerName   String
+  phone          String
+  email          String?
+  document       String? // CPF/CNPJ
+  deliveryMethod String // entrega | retirada
+  neighborhood   String?
+  city           String?
+  street         String?
+  number         String?
+  complement     String?
+  hasStairs      String? // sim | nao
+  venueType      String? // casa | salao
+  eventDate      String? // data do evento (texto vindo do site)
+  eventTime      String?
+  chopeiraType   String? // eletrica | gelo
+  items          String // JSON: [{ id, name, quantity, unitPrice }]
+  total          Float
+  status         String   @default("PENDING") // PENDING | CONFIRMED | CANCELLED
+  origin         String   @default("SITE") // SITE (formulário do site) | AGENTE (fechado pelo agente IA no WhatsApp)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, status])
+  @@index([companyId, phone])
+}
+
+// Comprovante de pagamento (foto) recebido no WhatsApp — o agente NÃO tenta
+// ler/validar o comprovante, só guarda pra revisão humana na aba Verificação.
+// Nenhuma imagem passa pelo Gemini nem vira dado de conversa.
+model PaymentProof {
+  id        String   @id @default(cuid())
+  companyId String
+  phone     String // quem mandou, no WhatsApp
+  pushName  String? // nome de exibição do WhatsApp, se veio no webhook
+  mimetype  String // image/jpeg, image/png, etc.
+  imageData Bytes // a imagem em si — MVP: direto no banco, sem storage externo
+  caption   String? // legenda que o cliente escreveu junto com a foto
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, createdAt])
 }
 
 // ─── Central IA: agente, CRM e disparos (módulo à parte, aditivo) ──────────

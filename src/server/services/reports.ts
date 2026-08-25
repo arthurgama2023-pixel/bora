@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/errors";
+import { MOVEMENT_TYPE_LABELS, MOVEMENT_TYPES, type MovementType } from "@/lib/enums";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -137,4 +138,162 @@ export async function getMonthlyMovementStats(companyId: string) {
     if (bucket) bucket.count++;
   }
   return months;
+}
+
+export type ReportPeriod = "semana" | "mes";
+
+// Intervalo do período (semana = últimos 7 dias corridos; mês = do dia 1 até
+// hoje) + o intervalo equivalente anterior, pra comparar "subiu ou caiu".
+export function getReportPeriodRange(period: ReportPeriod, now = new Date()) {
+  const to = new Date(now);
+  to.setHours(23, 59, 59, 999);
+
+  if (period === "semana") {
+    const from = new Date(now);
+    from.setDate(from.getDate() - 6);
+    from.setHours(0, 0, 0, 0);
+    const prevTo = new Date(from);
+    prevTo.setDate(prevTo.getDate() - 1);
+    prevTo.setHours(23, 59, 59, 999);
+    const prevFrom = new Date(prevTo);
+    prevFrom.setDate(prevFrom.getDate() - 6);
+    prevFrom.setHours(0, 0, 0, 0);
+    return { from, to, prevFrom, prevTo };
+  }
+
+  const from = new Date(now);
+  from.setDate(1);
+  from.setHours(0, 0, 0, 0);
+  const prevTo = new Date(from);
+  prevTo.setDate(0); // último dia do mês anterior
+  prevTo.setHours(23, 59, 59, 999);
+  const prevFrom = new Date(prevTo);
+  prevFrom.setDate(1);
+  prevFrom.setHours(0, 0, 0, 0);
+  return { from, to, prevFrom, prevTo };
+}
+
+export interface MovementPeriodSummary {
+  totalMovements: number;
+  totalBarris: number;
+  entregues: number;
+  retornados: number;
+  byType: { type: MovementType; label: string; count: number }[];
+  topCustomers: { id: string; name: string; quantity: number; value: number }[];
+  estimatedRevenue: number;
+  pricedOrders: number; // nº de movimentações que entraram no faturamento (tiveram preço)
+  unpricedQuantity: number; // barris entregues sem preço cadastrado — faturamento é subestimado nesse tanto
+}
+
+// Preço negociado por cliente e tipo de barril, companyId inteiro de uma vez
+// só — pra não repetir a query a cada chamada de getMovementPeriodSummary
+// (a página chama 2x: período atual + anterior).
+export async function getCustomerPriceMap(companyId: string): Promise<Map<string, number>> {
+  const prices = await prisma.customerPrice.findMany({
+    where: { companyId },
+    select: { customerId: true, kegTypeId: true, price: true },
+  });
+  return new Map(prices.map((p) => [`${p.customerId}:${p.kegTypeId}`, p.price]));
+}
+
+// Resumo de movimentação num intervalo — alimenta a aba Histórico Financeiro
+// (visão Semana/Mês) pra dono/gerente acompanhar sem precisar abrir o CSV.
+// Faturamento é uma ESTIMATIVA: qtd entregue ao cliente × preço negociado
+// (CustomerPrice); não há nota fiscal/pagamento registrado no sistema.
+export async function getMovementPeriodSummary(
+  companyId: string,
+  range: { from: Date; to: Date },
+  priceByCustomerType: Map<string, number>,
+): Promise<MovementPeriodSummary> {
+  const movements = await prisma.movement.findMany({
+    where: { companyId, occurredAt: { gte: range.from, lte: range.to } },
+    include: {
+      customer: { select: { id: true, name: true } },
+      items: true,
+    },
+  });
+
+  const byType = new Map<MovementType, number>();
+  let totalBarris = 0;
+  let entregues = 0;
+  let retornados = 0;
+  let estimatedRevenue = 0;
+  let pricedOrders = 0;
+  let unpricedQuantity = 0;
+  const customerAgg = new Map<string, { name: string; quantity: number; value: number }>();
+
+  for (const m of movements) {
+    byType.set(m.type as MovementType, (byType.get(m.type as MovementType) ?? 0) + 1);
+
+    let movementQty = 0;
+    let movementValue = 0;
+    for (const item of m.items) {
+      totalBarris += item.quantity;
+      movementQty += item.quantity;
+      if (item.fromLocation === "CUSTOMER") retornados += item.quantity;
+      if (item.toLocation === "CUSTOMER") {
+        entregues += item.quantity;
+        const price = m.customerId ? priceByCustomerType.get(`${m.customerId}:${item.kegTypeId}`) : undefined;
+        if (price) {
+          movementValue += item.quantity * price;
+        } else {
+          unpricedQuantity += item.quantity;
+        }
+      }
+    }
+
+    if (movementValue > 0) {
+      estimatedRevenue += movementValue;
+      pricedOrders++;
+    }
+
+    if (m.customer && movementQty > 0) {
+      const row = customerAgg.get(m.customer.id) ?? { name: m.customer.name, quantity: 0, value: 0 };
+      row.quantity += movementQty;
+      row.value += movementValue;
+      customerAgg.set(m.customer.id, row);
+    }
+  }
+
+  const topCustomers = [...customerAgg.entries()]
+    .map(([id, v]) => ({ id, name: v.name, quantity: v.quantity, value: v.value }))
+    .sort((a, b) => b.value - a.value || b.quantity - a.quantity)
+    .slice(0, 5);
+
+  return {
+    totalMovements: movements.length,
+    totalBarris,
+    entregues,
+    retornados,
+    byType: MOVEMENT_TYPES.map((type) => ({
+      type,
+      label: MOVEMENT_TYPE_LABELS[type],
+      count: byType.get(type) ?? 0,
+    })).filter((t) => t.count > 0),
+    topCustomers,
+    estimatedRevenue,
+    pricedOrders,
+    unpricedQuantity,
+  };
+}
+
+export interface OpenBalancesSummary {
+  total: number;
+  count: number;
+  customers: { id: string; name: string; openBalance: number }[];
+}
+
+// Contas em aberto: saldo devedor por cliente é um campo manual (não vem de
+// movimentação), então é sempre um retrato de AGORA — não filtra por período.
+export async function getOpenBalancesSummary(companyId: string): Promise<OpenBalancesSummary> {
+  const customers = await prisma.customer.findMany({
+    where: { companyId, openBalance: { gt: 0 } },
+    orderBy: { openBalance: "desc" },
+    select: { id: true, name: true, openBalance: true },
+  });
+  return {
+    total: customers.reduce((a, c) => a + c.openBalance, 0),
+    count: customers.length,
+    customers: customers.slice(0, 5),
+  };
 }
