@@ -22,6 +22,7 @@ import { countCustomersBySource, listCustomers } from "@/server/services/custome
 import { getAutoEnableNew } from "@/server/services/agent-access";
 import { AgentToggle } from "./agent-toggle";
 import { AutoEnableNewToggle } from "./auto-enable-toggle";
+import { AutoRefresh } from "./auto-refresh";
 import { CustomerFilters } from "./filters";
 
 export const metadata = { title: "Clientes" };
@@ -58,6 +59,9 @@ export default async function CustomersPage({
 
   return (
     <>
+      {/* Atualiza a contagem/lista sozinha — contatos novos do WhatsApp aparecem
+          em "Não registrados" quase em tempo real, sem recarregar. */}
+      <AutoRefresh />
       <PageHeader
         title="Clientes"
         subtitle={`${customers.length} cliente(s)`}
