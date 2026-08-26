@@ -25,28 +25,30 @@ export default function Header() {
           {zone && (
             <button
               onClick={clearZone}
-              className="flex items-center gap-1 rounded-full bg-brand-black/40 px-3 py-1.5 text-xs font-semibold text-brand-cream ring-1 ring-brand-cream/20 transition hover:bg-brand-black/60"
+              className="flex items-center gap-1 whitespace-nowrap rounded-full bg-brand-black/40 px-3 py-2 text-xs font-semibold text-brand-cream ring-1 ring-brand-cream/20 transition hover:bg-brand-black/60 sm:text-sm"
               title="Trocar bairro"
             >
-              📍 {zone.name}
-              <span className="text-brand-gold">· trocar</span>
+              📍 <span className="inline-block max-w-[38vw] truncate align-middle sm:max-w-none">{zone.name}</span>
+              <span className="hidden text-brand-gold sm:inline">· trocar</span>
             </button>
           )}
           {phone && (
             <button
               onClick={() => setShowPedidos(true)}
-              className="flex items-center gap-1 rounded-full bg-brand-black/40 px-3 py-1.5 text-xs font-semibold text-brand-cream ring-1 ring-brand-cream/20 transition hover:bg-brand-black/60"
+              aria-label="Meus Pedidos"
+              className="flex items-center gap-1 whitespace-nowrap rounded-full bg-brand-black/40 px-3 py-2 text-xs font-semibold text-brand-cream ring-1 ring-brand-cream/20 transition hover:bg-brand-black/60 sm:text-sm"
             >
-              📦 Meus Pedidos
+              📦 <span className="hidden sm:inline">Meus Pedidos</span>
             </button>
           )}
           <Link
             href="/carrinho"
-            className="relative flex items-center gap-2 rounded-full bg-brand-gold px-4 py-2 font-bold text-brand-black transition hover:brightness-110"
+            aria-label="Carrinho"
+            className="relative flex items-center gap-1 whitespace-nowrap rounded-full bg-brand-gold px-3 py-2 text-xs font-bold text-brand-black transition hover:brightness-110 sm:gap-2 sm:px-4 sm:text-sm"
           >
-            🛒 Carrinho
+            🛒 <span className="hidden sm:inline">Carrinho</span>
             {itemCount > 0 && (
-              <span className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-brand-amber text-xs text-white">
+              <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-brand-amber text-[11px] font-bold text-white">
                 {itemCount}
               </span>
             )}

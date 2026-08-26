@@ -8,6 +8,34 @@ completa antes de fechar entrega: `npx tsc --noEmit` · `npx eslint .`
 verificação manual no navegador (dev server porta 3004) do fluxo tocado.
 
 ---
+## 2026-08-26 (2) — Fix mobile: botões do topo + campos data/horário
+
+- **Sintoma (iPhone):** botões do header (Meus Pedidos, Carrinho, pill de bairro)
+  com o texto quebrando em 2-3 linhas → alturas diferentes (60/64/44px) e visual
+  desalinhado; campos `date`/`time` no carrinho colapsando/vazando lado a lado.
+- **O que mudou:**
+  1. `Header.tsx`: `whitespace-nowrap` em todas as pílulas; no mobile os rótulos
+     "Meus Pedidos"/"Carrinho" e o "· trocar" viram `hidden sm:inline` (ícone-only
+     no mobile), nome do bairro com `truncate max-w-[38vw]`. Alturas uniformes
+     (32px) e sem overflow. Tablet/desktop mantêm rótulos completos.
+  2. `carrinho/page.tsx` (data/horário): grid `grid-cols-1 sm:grid-cols-2`
+     (empilha no mobile), `min-w-0` nos wrappers e nos inputs, `appearance-none`
+     + `[&::-webkit-date-and-time-value]:text-left` (fix conhecido de iOS Safari
+     pra input date/time), altura fixa `h-11` igual aos outros campos.
+- **Typecheck:** ✅ (exit 0) · **Lint:** não rodado isolado (bloqueado no
+  ambiente) · **Regressões:** nenhuma
+- **Prova (medições no DOM, emulação mobile 375px e tablet 768px — screenshot
+  indisponível, painel do browser não exibido):**
+  - Mobile: 3 pílulas do header com altura uniforme 32px, borda direita em 359 <
+    375 (sem overflow); data e horário empilhados, largura total 310px, mesma
+    altura 44px, sem overflow.
+  - Tablet 768px (breakpoint `sm`): rótulos "Meus Pedidos"/"Carrinho"/"· trocar"
+    visíveis; data e horário lado a lado.
+  - Limitação: emulação usa Chrome/Android; o bug original é do iOS Safari. O fix
+    aplicado é o padrão conhecido pra iOS; validado visualmente pelo dono no
+    iPhone antes do deploy.
+
+---
 ## 2026-08-26 — Telefone no pedido + reordenação da mensagem + seletor de forma de pagamento
 
 - **O que mudou** (`src/app/carrinho/page.tsx`, só esse arquivo):
