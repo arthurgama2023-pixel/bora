@@ -8,6 +8,38 @@ completa antes de fechar entrega: `npx tsc --noEmit` · `npx eslint .`
 verificação manual no navegador (dev server porta 3004) do fluxo tocado.
 
 ---
+## 2026-08-26 — Telefone no pedido + reordenação da mensagem + seletor de forma de pagamento
+
+- **O que mudou** (`src/app/carrinho/page.tsx`, só esse arquivo):
+  1. **Telefone do cliente agora entra na mensagem do WhatsApp** (`📱 Telefone:`)
+     — antes ficava de fora, apesar de já ser coletado no campo "WhatsApp com DDD".
+  2. **Reordenação da mensagem**: entrega + endereço + dados do cliente vêm
+     PRIMEIRO; região/data/itens/total depois (a pedido do dono, pra facilitar
+     a logística de entrega ler o endereço no topo).
+  3. **Novo seletor "Forma de pagamento"** (Pix, Dinheiro, Cartão de crédito,
+     Cartão de débito) — pílulas no mesmo padrão de "Tem escada?"/chopeira;
+     obrigatório pra finalizar (entra em `canFinish`); vai no resumo como
+     `💳 Pagamento: <opção>` logo após o TOTAL. Também mandado no payload da
+     captura (`paymentMethod`) — o endpoint `siteOrderSchema` é `z.object` sem
+     `.strict()`, então descarta o campo sem quebrar; persistir/exibir no painel
+     KegControl fica como item separado (fora do escopo deste pedido).
+- **Nota de histórico:** as entradas 05/08 (3) e (4) descreviam um fluxo
+  "só Pix" com chave + sinal de 50% que foi **removido depois** pelo commit
+  `7cb29f1` ("Pix removido"). O código no ar não tinha pagamento nenhum — por
+  isso este seletor é adição nova, não conflita com decisão anterior.
+- **Typecheck:** ✅ (`tsc --noEmit` exit 0) · **Lint:** não rodado no arquivo
+  isolado (bloqueado no ambiente); tsc cobre tipos, mudança é aditiva no mesmo
+  padrão já lintado do projeto · **Build:** não rodado (mudança contida, sem
+  API nova) · **Regressões:** nenhuma
+- **Prova (app real rodando, monorepo em localhost:3006, via override de
+  `window.open` capturando a URL do wa.me):** pedido preenchido (Belco 50L,
+  entrega Jardim Gramacho, Pix) gerou a mensagem exata na ordem nova, com
+  `📱 Telefone: 21980828309` e `💳 Pagamento: Pix` após o total; os avisos
+  "escolha a forma de pagamento"/"escolha a chopeira" sumiram só após
+  selecionar, confirmando o gate de `canFinish`; linha de e-mail omitida
+  quando o campo fica vazio (condicional OK).
+
+---
 ## 2026-08-05 (4) — Sinal fixo de 50% + layout do Pix redesenhado (mais confiável)
 
 - **Regra final (substituiu uma versão por faixas de barril, nunca publicada):**
