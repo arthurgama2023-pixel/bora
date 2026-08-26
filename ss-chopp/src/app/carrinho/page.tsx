@@ -449,23 +449,23 @@ export default function CarrinhoPage() {
           ))}
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <div>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-2">
+          <div className="min-w-0">
             <label className="mb-1 block text-xs font-semibold text-gray-500">Para qual data?</label>
             <input
               type="date"
               value={address.dataEvento}
               onChange={(e) => setAddress({ ...address, dataEvento: e.target.value })}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="block h-11 w-full min-w-0 appearance-none rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 [&::-webkit-date-and-time-value]:text-left"
             />
           </div>
-          <div>
+          <div className="min-w-0">
             <label className="mb-1 block text-xs font-semibold text-gray-500">Horário do evento?</label>
             <input
               type="time"
               value={address.horarioEvento}
               onChange={(e) => setAddress({ ...address, horarioEvento: e.target.value })}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="block h-11 w-full min-w-0 appearance-none rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 [&::-webkit-date-and-time-value]:text-left"
             />
           </div>
         </div>
