@@ -18,6 +18,16 @@ const CHOPEIRA_VARIANTS = [
   { value: "gelo", label: "De gelo" },
 ];
 
+// Forma de pagamento — o cliente escolhe no carrinho pra já chegar "mastigado"
+// no WhatsApp (a SS-Chopp não precisa perguntar depois). Combina na venda com
+// e sem chopeira; é obrigatório pra finalizar (igual à chopeira).
+const PAYMENT_METHODS = [
+  { value: "pix", label: "Pix" },
+  { value: "dinheiro", label: "Dinheiro" },
+  { value: "credito", label: "Cartão de crédito" },
+  { value: "debito", label: "Cartão de débito" },
+];
+
 type DeliveryMethod = "entrega" | "retirada";
 
 function validateCPF(cpf: string): boolean {
@@ -91,6 +101,7 @@ export default function CarrinhoPage() {
   const { zone, phone, setPhone, whatsappNumber } = useLocation();
   const [sent, setSent] = useState(false);
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("entrega");
+  const [paymentMethod, setPaymentMethod] = useState("");
   const [telefone, setTelefone] = useState(phone);
   const [address, setAddress] = useState({
     nome: "",
@@ -160,7 +171,8 @@ export default function CarrinhoPage() {
     !!address.nome &&
     telefoneOk &&
     (deliveryMethod === "retirada" || addressComplete) &&
-    chopeiraEscolhida;
+    chopeiraEscolhida &&
+    !!paymentMethod;
 
   const isCPFValid = !address.cpfCnpj || isValidCPFOrCNPJ(address.cpfCnpj);
 
@@ -184,6 +196,7 @@ export default function CarrinhoPage() {
       eventDate: address.dataEvento || null,
       eventTime: address.horarioEvento || null,
       chopeiraType: hasChopeira ? chopeiraType : null,
+      paymentMethod: paymentMethod || null,
       items: items.map((it) => {
         const p = getProductById(it.productId);
         return {
@@ -216,6 +229,10 @@ export default function CarrinhoPage() {
       ? CHOPEIRA_VARIANTS.find((v) => v.value === chopeiraType)?.label ?? chopeiraType
       : null;
 
+    const paymentLabel = paymentMethod
+      ? PAYMENT_METHODS.find((p) => p.value === paymentMethod)?.label ?? paymentMethod
+      : null;
+
     const deliveryLabel = deliveryMethod === "entrega" ? "🚚 Entrega" : "🏪 Retirada na loja";
     const zoneLine = zone
       ? [`📍 *REGIÃO*: ${zone.name} — ${zone.city}${zone.eta ? ` (entrega ${zone.eta.toLowerCase()})` : ""}`, ""]
@@ -244,6 +261,14 @@ export default function CarrinhoPage() {
       "║  🍺 PEDIDO SS-CHOPP DISTRIBUIDORA  ║",
       "╚════════════════════════════════╝",
       "",
+      `${deliveryLabel}`,
+      ...addressLines,
+      "",
+      `👤 Nome: ${address.nome}`,
+      ...(address.email ? [`📧 E-mail: ${address.email}`] : []),
+      `🪪 CPF/CNPJ: ${address.cpfCnpj}`,
+      ...(telefone ? [`📱 Telefone: ${telefone}`] : []),
+      "",
       ...zoneLine,
       ...(eventoLines.length ? [...eventoLines, ""] : []),
       "📦 *ITENS DO PEDIDO*",
@@ -257,13 +282,7 @@ export default function CarrinhoPage() {
       `✅ *TOTAL: ${formatPrice(finalTotal)}*`,
       "─────────────────────────────────",
       "",
-      `${deliveryLabel}`,
-      ...addressLines,
-      "",
-      `👤 Nome: ${address.nome}`,
-      ...(address.email ? [`📧 E-mail: ${address.email}`] : []),
-      `🪪 CPF/CNPJ: ${address.cpfCnpj}`,
-      "",
+      ...(paymentLabel ? [`💳 Pagamento: ${paymentLabel}`, ""] : []),
       "💬 Confirme o pedido por favor!",
     ].join("\n");
 
@@ -350,6 +369,11 @@ export default function CarrinhoPage() {
       {!chopeiraEscolhida && (
         <p className="mt-4 rounded-lg bg-yellow-50 px-4 py-2 text-sm text-yellow-800">
           Escolha qual chopeira você prefere (elétrica ou de gelo) para finalizar.
+        </p>
+      )}
+      {!paymentMethod && (
+        <p className="mt-4 rounded-lg bg-yellow-50 px-4 py-2 text-sm text-yellow-800">
+          Escolha a forma de pagamento para finalizar.
         </p>
       )}
 
@@ -531,6 +555,26 @@ export default function CarrinhoPage() {
             </div>
           </div>
         )}
+      </div>
+
+      <div className="mt-6 rounded-xl border border-brand-black/10 bg-white p-4 shadow-sm">
+        <h2 className="mb-3 font-bold text-brand-black">Forma de pagamento</h2>
+        <div className="grid grid-cols-2 gap-2">
+          {PAYMENT_METHODS.map((p) => (
+            <button
+              key={p.value}
+              type="button"
+              onClick={() => setPaymentMethod(p.value)}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                paymentMethod === p.value
+                  ? "bg-brand-black text-brand-cream"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="mt-6 rounded-xl border border-brand-black/10 bg-white p-4 shadow-sm">
