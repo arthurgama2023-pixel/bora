@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Clock, Loader2, MapPin, MessageCircle, Phone, Send, ShoppingBag } from "lucide-react";
+import { Clock, Loader2, MapPin, MessageCircle, PauseCircle, Phone, Send, ShoppingBag } from "lucide-react";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
 import { Visitas } from "./visitas";
 
@@ -245,6 +245,9 @@ export function PedidosSite() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
+  // Interruptor mestre do disparo automático (null = ainda carregando).
+  const [autoDispatch, setAutoDispatch] = useState<boolean | null>(null);
+  const [savingAuto, setSavingAuto] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -252,11 +255,13 @@ export function PedidosSite() {
     Promise.all([
       fetch("/api/v1/pedidos-site?status=ALL", { cache: "no-store" }).then((r) => r.json()),
       fetch("/api/v1/site-visits", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/v1/site-visits/auto-dispatch", { cache: "no-store" }).then((r) => r.json()),
     ])
-      .then(([po, vi]) => {
+      .then(([po, vi, ad]) => {
         if (!alive) return;
         if (po?.ok) setPedidos(po.data);
         if (vi?.ok) setVisits(vi.data);
+        if (ad?.ok) setAutoDispatch(Boolean(ad.data?.enabled));
       })
       .catch(() => {})
       .finally(() => alive && setLoading(false));
@@ -264,6 +269,28 @@ export function PedidosSite() {
       alive = false;
     };
   }, []);
+
+  // Liga/desliga o disparo automático. Otimista: reflete na hora e reverte se
+  // o PUT falhar.
+  async function toggleAutoDispatch() {
+    if (savingAuto || autoDispatch === null) return;
+    const next = !autoDispatch;
+    setAutoDispatch(next);
+    setSavingAuto(true);
+    try {
+      const res = await fetch("/api/v1/site-visits/auto-dispatch", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: next }),
+      });
+      const j = await res.json();
+      if (!j?.ok) throw new Error(j?.error ?? "falha");
+    } catch {
+      setAutoDispatch(!next); // reverte
+    } finally {
+      setSavingAuto(false);
+    }
+  }
 
   const finalizou = pedidos.filter((p) => p.status !== "CANCELLED");
   const orderKeys = new Set(finalizou.map((p) => phoneKey(p.phone)).filter(Boolean));
@@ -341,30 +368,81 @@ export function PedidosSite() {
                 ))}
               </div>
             )
-          ) : naoFinalizou.length === 0 ? (
-            <EmptyState message="Ninguém preencheu e parou no meio — bom sinal. 🍺" />
           ) : (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              {naoFinalizou.map((v) => {
-                const badge = v.dispatchedAt ? (
-                  <div className="flex items-center gap-1.5 rounded-lg bg-brand/10 px-3 py-2 text-sm font-semibold text-brand-strong">
-                    <Send className="h-4 w-4" /> Disparado — agente chamou no WhatsApp · {fmt(v.dispatchedAt)}
+            <>
+              <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 text-sm font-semibold">
+                    {autoDispatch === false ? (
+                      <PauseCircle className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <Send className="h-4 w-4 text-brand-strong" />
+                    )}
+                    Disparo automático
                   </div>
-                ) : (
-                  <div className="flex items-center gap-1.5 rounded-lg bg-warning/10 px-3 py-2 text-sm font-semibold text-warning">
-                    <Clock className="h-4 w-4" /> Não finalizou — disparo automático em breve
-                  </div>
-                );
-                return (
-                  <PedidoCard
-                    key={v.id}
-                    data={visitToCard(v)}
-                    accent={v.dispatchedAt ? "border-l-brand" : "border-l-warning"}
-                    badge={badge}
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {autoDispatch === false
+                      ? "Pausado — quem preenche e para no meio não recebe mensagem automática."
+                      : "Ligado — o agente chama sozinho, no WhatsApp, quem preencheu e não finalizou."}
+                  </p>
+                </div>
+                <button
+                  role="switch"
+                  aria-checked={autoDispatch === true}
+                  aria-label={
+                    autoDispatch === false
+                      ? "Disparo automático pausado — clique para ligar"
+                      : "Disparo automático ligado — clique para pausar"
+                  }
+                  title={
+                    autoDispatch === false
+                      ? "Disparo automático pausado (clique para ligar)"
+                      : "Disparo automático ligado (clique para pausar)"
+                  }
+                  onClick={toggleAutoDispatch}
+                  disabled={savingAuto || autoDispatch === null}
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    autoDispatch === false ? "bg-muted-foreground/30" : "bg-brand"
+                  } ${savingAuto || autoDispatch === null ? "opacity-60" : ""}`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                      autoDispatch === false ? "" : "translate-x-5"
+                    }`}
                   />
-                );
-              })}
-            </div>
+                </button>
+              </div>
+
+              {naoFinalizou.length === 0 ? (
+                <EmptyState message="Ninguém preencheu e parou no meio — bom sinal. 🍺" />
+              ) : (
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  {naoFinalizou.map((v) => {
+                    const badge = v.dispatchedAt ? (
+                      <div className="flex items-center gap-1.5 rounded-lg bg-brand/10 px-3 py-2 text-sm font-semibold text-brand-strong">
+                        <Send className="h-4 w-4" /> Disparado — agente chamou no WhatsApp · {fmt(v.dispatchedAt)}
+                      </div>
+                    ) : autoDispatch === false ? (
+                      <div className="flex items-center gap-1.5 rounded-lg bg-muted px-3 py-2 text-sm font-semibold text-muted-foreground">
+                        <PauseCircle className="h-4 w-4" /> Disparo pausado — ligue para o agente chamar
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 rounded-lg bg-warning/10 px-3 py-2 text-sm font-semibold text-warning">
+                        <Clock className="h-4 w-4" /> Não finalizou — disparo automático em breve
+                      </div>
+                    );
+                    return (
+                      <PedidoCard
+                        key={v.id}
+                        data={visitToCard(v)}
+                        accent={v.dispatchedAt ? "border-l-brand" : "border-l-warning"}
+                        badge={badge}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </>
       )}

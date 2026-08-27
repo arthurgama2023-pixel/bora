@@ -191,6 +191,29 @@ const phoneKey = (p?: string | null) => {
   return d.length >= 8 ? d.slice(-8) : "";
 };
 
+// Chave-mestra "disparo automático de carrinho abandonado" (por empresa, model
+// Setting). LIGADA (padrão): a varredura chama sozinha, no WhatsApp, quem
+// preencheu e não finalizou. DESLIGADA: a varredura não dispara nada — o dono
+// pausou; os leads continuam aparecendo no funil, só sem contato automático.
+const AUTO_DISPATCH_KEY = "site_dispatch.auto_enabled";
+
+export async function getAutoDispatchEnabled(companyId: string): Promise<boolean> {
+  const row = await prisma.setting.findUnique({
+    where: { companyId_key: { companyId, key: AUTO_DISPATCH_KEY } },
+    select: { value: true },
+  });
+  return row?.value !== "false"; // ausente = ligado (preserva o comportamento atual)
+}
+
+export async function setAutoDispatchEnabled(companyId: string, on: boolean): Promise<void> {
+  const value = on ? "true" : "false";
+  await prisma.setting.upsert({
+    where: { companyId_key: { companyId, key: AUTO_DISPATCH_KEY } },
+    update: { value },
+    create: { companyId, key: AUTO_DISPATCH_KEY, value },
+  });
+}
+
 // VARREDURA AUTOMÁTICA de carrinho abandonado (chamada por um agendador, ~a
 // cada 10 min). Dispara o agente de recuperação pra quem: está em PREENCHENDO,
 // ainda NÃO foi disparado, tem telefone, está PARADO há mais de `idleMinutes`
@@ -199,7 +222,12 @@ const phoneKey = (p?: string | null) => {
 export async function autoDispatchAbandoned(
   companyId: string,
   opts: { idleMinutes?: number } = {},
-): Promise<{ dispatched: number; skipped: number }> {
+): Promise<{ dispatched: number; skipped: number; disabled?: boolean }> {
+  // Interruptor mestre: se o dono pausou o disparo automático, não chama ninguém.
+  if (!(await getAutoDispatchEnabled(companyId))) {
+    return { dispatched: 0, skipped: 0, disabled: true };
+  }
+
   const idleMin = opts.idleMinutes ?? 5; // folga padrão: 5 min parado = abandonou
   const cutoff = new Date(Date.now() - idleMin * 60_000);
 
