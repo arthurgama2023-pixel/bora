@@ -36,6 +36,8 @@ const PUBLICAS: Record<string, string> = {
   "v1/auth/logout": "só apaga o cookie; não lê nem devolve dado",
   "public/site-pricing": "preços do site, público por definição",
   "public/pedidos": "histórico de pedidos do site por telefone, público por definição (mesmo padrão de 'rastrear meu pedido')",
+  "public/visitas": "funil do checkout do site ss-chopp — o site estático posta o progresso do carrinho; público por definição, mesmo padrão de public/pedidos e public/site-pricing (valida com zod e devolve erro genérico, sem vazar stack)",
+  "cron/disparar-carrinho": "varredura de carrinho abandonado pro agendador (GitHub Action); idempotente, exige KEEPALIVE_TOKEN quando definido, como o whatsapp/keepalive",
   "webhooks/whatsapp": "autentica pelo ?token= da Evolution (401 sem ele)",
   "webhooks/sentry": "autentica pelo ?token= (SENTRY_WEBHOOK_TOKEN) quando definido, como o keepalive",
   "whatsapp/keepalive": "endpoint idempotente; exige KEEPALIVE_TOKEN quando definido",
