@@ -215,10 +215,11 @@ export async function setAutoDispatchEnabled(companyId: string, on: boolean): Pr
 }
 
 // VARREDURA AUTOMÁTICA de carrinho abandonado (chamada por um agendador, ~a
-// cada 10 min). Dispara o agente de recuperação pra quem: está em PREENCHENDO,
-// ainda NÃO foi disparado, tem telefone, está PARADO há mais de `idleMinutes`
-// (abandonou de fato) e NÃO tem um pedido do mesmo telefone (não finalizou por
-// outro caminho). É o que faz o card virar "Disparado" sozinho.
+// cada 10 min). Dispara o agente de recuperação pra quem: NÃO finalizou
+// (INICIOU ou PREENCHENDO), ainda NÃO foi disparado, TEM telefone (dá pra
+// contatar), está PARADO há mais de `idleMinutes` (abandonou de fato) e NÃO tem
+// um pedido do mesmo telefone (não finalizou por outro caminho). É o que faz o
+// card virar "Disparado" sozinho. Mesma regra da aba "Não finalizou" do painel.
 export async function autoDispatchAbandoned(
   companyId: string,
   opts: { idleMinutes?: number } = {},
@@ -234,9 +235,9 @@ export async function autoDispatchAbandoned(
   const candidates = await prisma.siteVisit.findMany({
     where: {
       companyId,
-      stage: "PREENCHENDO",
+      stage: { not: "FINALIZOU" }, // qualquer um que não finalizou (INICIOU ou PREENCHENDO)
       dispatchedAt: null,
-      phone: { not: null },
+      phone: { not: null }, // precisa de telefone pra contatar
       updatedAt: { lt: cutoff },
     },
     select: { id: true, phone: true },
