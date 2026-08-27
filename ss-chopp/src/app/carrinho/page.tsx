@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { getProductById } from "@/data/products";
 import { useCart, formatPrice } from "@/lib/cart-context";
 import { useLocation } from "@/lib/location-context";
 import { getCaxiasSavings } from "@/data/caxias-pricing";
-import { PEDIDOS_URL } from "@/lib/tabela";
+import { PEDIDOS_URL, VISITAS_URL } from "@/lib/tabela";
 
 // Número de WhatsApp agora vem do painel (KegControl → Preços do Site), via
 // useLocation().whatsappNumber — com fallback embutido no contexto.
@@ -127,6 +127,156 @@ export default function CarrinhoPage() {
   useEffect(() => {
     if (phone) setTelefone((t) => t || phone);
   }, [phone]);
+
+  // ─── Funil do site (visitas) ──────────────────────────────────────────────
+  // Manda ao KegControl o PROGRESSO do checkout (best-effort, nunca trava a
+  // venda). Cada visitante = 1 sessionId (localStorage) que só avança de
+  // estágio: INICIOU (entrou com itens) → PREENCHENDO (começou a se
+  // identificar) → FINALIZOU (clicou pra ir pro WhatsApp).
+  const visitIdRef = useRef<string>("");
+  if (!visitIdRef.current) {
+    const gen = () => `v_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+    try {
+      const k = "ss-visit-id";
+      let id = typeof window !== "undefined" ? localStorage.getItem(k) : null;
+      if (!id) {
+        id = gen();
+        if (typeof window !== "undefined") localStorage.setItem(k, id);
+      }
+      visitIdRef.current = id;
+    } catch {
+      visitIdRef.current = gen();
+    }
+  }
+
+  function sendVisit(stage: "INICIOU" | "PREENCHENDO" | "FINALIZOU") {
+    if (!visitIdRef.current) return;
+    const total = subtotal + (deliveryMethod === "entrega" ? deliveryFee : 0);
+    const payload = {
+      sessionId: visitIdRef.current,
+      stage,
+      customerName: address.nome || null,
+      phone: telefone || null,
+      neighborhood: address.bairro || zone?.name || null,
+      city: zone?.city || null,
+      deliveryMethod,
+      itemsCount: items.reduce((a, it) => a + it.quantity, 0),
+      total,
+      // Snapshot do que já foi preenchido — pro painel mostrar o card completo,
+      // "de acordo com o que foi preenchido" (mesmo formato do pedido finalizado).
+      details: JSON.stringify({
+        email: address.email || null,
+        document: address.cpfCnpj || null,
+        street: address.rua || null,
+        number: address.numero || null,
+        complement: address.complemento || null,
+        hasStairs: address.temEscada || null,
+        venueType: address.tipoLocal || null,
+        eventDate: address.dataEvento || null,
+        eventTime: address.horarioEvento || null,
+        chopeiraType: hasChopeira ? chopeiraType : null,
+        items: items.map((it) => {
+          const p = getProductById(it.productId);
+          return {
+            id: it.productId,
+            name: p?.name ?? it.productId,
+            quantity: it.quantity,
+            unitPrice: unitPrice(it.productId, it.quantity),
+          };
+        }),
+      }),
+    };
+    const body = JSON.stringify(payload);
+    try {
+      // sendBeacon é o mais confiável quando a pessoa está SAINDO da página (o
+      // navegador garante o envio mesmo com a aba fechando); cai pro fetch
+      // keepalive se não existir. Usa text/plain de propósito: é cross-origin
+      // (site → painel), e application/json exigiria preflight CORS que o
+      // sendBeacon não faz (falharia calado). O servidor parseia o JSON igual.
+      if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+        const ok = navigator.sendBeacon(VISITAS_URL, new Blob([body], { type: "text/plain;charset=UTF-8" }));
+        if (ok) return;
+      }
+      fetch(VISITAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        keepalive: true,
+      }).catch(() => {});
+    } catch {
+      // best-effort — nunca atrapalha o checkout
+    }
+  }
+
+  // "Começou o formulário" = tocou em QUALQUER campo que ele mesmo preenche.
+  // NÃO conta o bairro (já vem do modal de localização, sem ação no formulário).
+  // Basta isso pra a visita virar "preencheu e não finalizou".
+  const comecouAPreencher = !!(
+    address.nome ||
+    telefone ||
+    address.email ||
+    address.rua ||
+    address.numero ||
+    address.complemento ||
+    address.cpfCnpj ||
+    address.dataEvento ||
+    address.horarioEvento ||
+    address.temEscada ||
+    address.tipoLocal ||
+    paymentMethod ||
+    (hasChopeira && !!chopeiraType)
+  );
+
+  // INICIOU: dispara uma vez, quando o carrinho passa a ter itens.
+  const iniciouRef = useRef(false);
+  useEffect(() => {
+    if (!iniciouRef.current && items.length > 0) {
+      iniciouRef.current = true;
+      sendVisit("INICIOU");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length]);
+
+  // PREENCHENDO: assim que o cliente mexe em qualquer campo, com debounce pra
+  // não mandar a cada tecla. Reage a todos os campos do formulário.
+  useEffect(() => {
+    if (!comecouAPreencher || items.length === 0) return;
+    const t = window.setTimeout(() => sendVisit("PREENCHENDO"), 1200);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    address.nome, telefone, address.email, address.rua, address.numero,
+    address.complemento, address.cpfCnpj, address.dataEvento, address.horarioEvento,
+    address.temEscada, address.tipoLocal, paymentMethod, chopeiraType, deliveryMethod, items.length,
+  ]);
+
+  // FLUSH AO SAIR: quem preencheu algo e fecha/troca de aba sem finalizar é
+  // capturado na hora (sendBeacon) — sem isso, quem sai em menos de 1s escapa.
+  // Lê sempre o estado MAIS RECENTE via ref, e registra os listeners uma vez.
+  // O backend nunca rebaixa quem já finalizou, então disparar aqui é seguro.
+  const flushRef = useRef<{ comecou: boolean; itens: number; send: typeof sendVisit }>({
+    comecou: false,
+    itens: 0,
+    send: sendVisit,
+  });
+  useEffect(() => {
+    flushRef.current = { comecou: comecouAPreencher, itens: items.length, send: sendVisit };
+  });
+  useEffect(() => {
+    const flush = () => {
+      const s = flushRef.current;
+      if (s.comecou && s.itens > 0) s.send("PREENCHENDO");
+    };
+    const onVis = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
 
   if (sent) {
     return (
@@ -288,6 +438,7 @@ export default function CarrinhoPage() {
 
     // Dispara a captura ANTES de abrir o WhatsApp (o open pode trocar de aba /
     // congelar o contexto no mobile). Não aguardamos — é best-effort.
+    sendVisit("FINALIZOU");
     capturarPedido();
 
     const url = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(summary)}`;

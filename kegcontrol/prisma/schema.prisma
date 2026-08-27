@@ -32,6 +32,7 @@ model Company {
   settings      Setting[]
   siteOrders    SiteOrder[]
   paymentProofs PaymentProof[]
+  siteVisits    SiteVisit[]
 }
 
 // Configurações chave/valor por empresa (ex.: credenciais do WhatsApp/Evolution).
@@ -236,6 +237,40 @@ model SiteOrder {
 
   @@index([companyId, status])
   @@index([companyId, phone])
+}
+
+// Visita/funil do checkout do SITE (ss-chopp). Cada visitante que chega no
+// carrinho é UMA linha (chave: sessionId do navegador dele) que progride de
+// estágio conforme preenche — sem esperar finalizar. É isso que dá visão de
+// quem PAROU no meio (INICIOU), quem PREENCHEU mas não mandou (PREENCHENDO) e
+// quem clicou finalizar no WhatsApp (FINALIZOU). Guarda só o que o cliente já
+// tinha digitado (nome/telefone/bairro/itens/total) pra a SS-Chopp poder ligar.
+model SiteVisit {
+  id             String   @id @default(cuid())
+  companyId      String
+  sessionId      String // id do navegador do visitante (localStorage)
+  stage          String   @default("INICIOU") // INICIOU | PREENCHENDO | FINALIZOU
+  customerName   String?
+  phone          String?
+  neighborhood   String?
+  city           String?
+  deliveryMethod String?
+  itemsCount     Int      @default(0)
+  total          Float    @default(0)
+  // Snapshot JSON do que o cliente já tinha preenchido no formulário (endereço,
+  // data/horário do evento, chopeira, itens, CPF, e-mail) — pra o card mostrar
+  // "de acordo com o que foi preenchido", no mesmo formato do pedido finalizado.
+  details        String?
+  // Quando o agente foi DISPARADO pra esse lead (recuperação de carrinho). Nulo
+  // = ainda não disparado; preenchido = card mostra "Disparado".
+  dispatchedAt   DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, sessionId])
+  @@index([companyId, stage])
 }
 
 // Comprovante de pagamento (foto) recebido no WhatsApp — o agente NÃO tenta
