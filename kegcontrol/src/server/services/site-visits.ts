@@ -240,21 +240,37 @@ export async function autoDispatchAbandoned(
       phone: { not: null }, // precisa de telefone pra contatar
       updatedAt: { lt: cutoff },
     },
-    select: { id: true, phone: true },
+    select: { id: true, phone: true, updatedAt: true },
   });
   if (candidates.length === 0) return { dispatched: 0, skipped: 0 };
 
-  // Pula quem já virou pedido (finalizou por outro caminho).
+  // Pula quem finalizou ESTE carrinho por outro canal: pedido do mesmo telefone
+  // feito DEPOIS que a visita começou (folga de 15min). Pedido ANTIGO não conta
+  // — cliente que já comprou e hoje abandona um carrinho novo é recuperável.
   const orders = await prisma.siteOrder.findMany({
     where: { companyId, status: { not: "CANCELLED" } },
-    select: { phone: true },
+    select: { phone: true, createdAt: true },
   });
-  const orderKeys = new Set(orders.map((o) => phoneKey(o.phone)).filter(Boolean));
+  const orderTimes = new Map<string, number[]>();
+  for (const o of orders) {
+    const k = phoneKey(o.phone);
+    if (!k) continue;
+    const arr = orderTimes.get(k) ?? [];
+    arr.push(o.createdAt.getTime());
+    orderTimes.set(k, arr);
+  }
+  const GRACE_MS = 15 * 60_000;
+  const finalizouEsteCarrinho = (phone: string | null, visitUpdatedAt: Date) => {
+    const times = orderTimes.get(phoneKey(phone));
+    if (!times) return false;
+    const threshold = visitUpdatedAt.getTime() - GRACE_MS;
+    return times.some((t) => t >= threshold);
+  };
 
   let dispatched = 0;
   let skipped = 0;
   for (const c of candidates) {
-    if (orderKeys.has(phoneKey(c.phone))) {
+    if (finalizouEsteCarrinho(c.phone, c.updatedAt)) {
       skipped++;
       continue;
     }
