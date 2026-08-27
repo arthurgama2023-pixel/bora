@@ -315,8 +315,11 @@ export function PedidosSite() {
 
   const finalizou = pedidos.filter((p) => p.status !== "CANCELLED");
   const orderKeys = new Set(finalizou.map((p) => phoneKey(p.phone)).filter(Boolean));
+  // "Não finalizou" = qualquer visita que NÃO finalizou e TEM telefone (dá pra
+  // contatar), sem um pedido do mesmo número. Inclui quem só iniciou mas já
+  // deixou o telefone (no modal do bairro) — esses também dá pra recuperar.
   const naoFinalizou = visits.filter(
-    (v) => v.stage === "PREENCHENDO" && !orderKeys.has(phoneKey(v.phone)),
+    (v) => v.stage !== "FINALIZOU" && !!v.phone && !orderKeys.has(phoneKey(v.phone)),
   );
 
   const ABAS = [
