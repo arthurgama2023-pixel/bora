@@ -314,12 +314,29 @@ export function PedidosSite() {
   }
 
   const finalizou = pedidos.filter((p) => p.status !== "CANCELLED");
-  const orderKeys = new Set(finalizou.map((p) => phoneKey(p.phone)).filter(Boolean));
+  // Mapa telefone -> horários dos pedidos não-cancelados (ms). Uma visita só é
+  // excluída se existe um pedido do MESMO telefone feito DEPOIS que ela começou
+  // (finalizou ESTE carrinho por outro canal). Pedido ANTIGO não exclui — quem
+  // já comprou antes e hoje abandona um carrinho novo continua recuperável.
+  const orderTimes = new Map<string, number[]>();
+  for (const p of finalizou) {
+    const k = phoneKey(p.phone);
+    if (!k) continue;
+    const arr = orderTimes.get(k) ?? [];
+    arr.push(new Date(p.createdAt).getTime());
+    orderTimes.set(k, arr);
+  }
+  const GRACE_MS = 15 * 60_000; // folga p/ pedido feito pouco antes do último beacon
+  const finalizouEsteCarrinho = (phone: string | null, whenIso: string) => {
+    const times = orderTimes.get(phoneKey(phone));
+    if (!times) return false;
+    const threshold = new Date(whenIso).getTime() - GRACE_MS;
+    return times.some((t) => t >= threshold);
+  };
   // "Não finalizou" = qualquer visita que NÃO finalizou e TEM telefone (dá pra
-  // contatar), sem um pedido do mesmo número. Inclui quem só iniciou mas já
-  // deixou o telefone (no modal do bairro) — esses também dá pra recuperar.
+  // contatar) e NÃO finalizou este carrinho por outro canal.
   const naoFinalizou = visits.filter(
-    (v) => v.stage !== "FINALIZOU" && !!v.phone && !orderKeys.has(phoneKey(v.phone)),
+    (v) => v.stage !== "FINALIZOU" && !!v.phone && !finalizouEsteCarrinho(v.phone, v.updatedAt),
   );
 
   const ABAS = [
