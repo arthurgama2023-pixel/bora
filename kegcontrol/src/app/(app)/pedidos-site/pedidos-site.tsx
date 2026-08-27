@@ -248,6 +248,8 @@ export function PedidosSite() {
   // Interruptor mestre do disparo automático (null = ainda carregando).
   const [autoDispatch, setAutoDispatch] = useState<boolean | null>(null);
   const [savingAuto, setSavingAuto] = useState(false);
+  // Qual visita está sendo disparada manualmente (com o automático pausado).
+  const [dispatchingId, setDispatchingId] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -289,6 +291,25 @@ export function PedidosSite() {
       setAutoDispatch(!next); // reverte
     } finally {
       setSavingAuto(false);
+    }
+  }
+
+  // Dispara manualmente uma visita agendada (só faz sentido com o automático
+  // pausado). Marca a visita como disparada na hora quando o POST volta ok, pra
+  // o card virar "Disparado".
+  async function dispararVisita(id: string) {
+    if (dispatchingId) return;
+    setDispatchingId(id);
+    try {
+      const res = await fetch(`/api/v1/site-visits/${id}/disparar`, { method: "POST" });
+      const j = await res.json();
+      if (!j?.ok) throw new Error(j?.error ?? "falha");
+      const at = j.data?.dispatchedAt ?? new Date().toISOString();
+      setVisits((prev) => prev.map((v) => (v.id === id ? { ...v, dispatchedAt: at } : v)));
+    } catch {
+      // silencioso: o card continua com o botão pra tentar de novo
+    } finally {
+      setDispatchingId(null);
     }
   }
 
@@ -382,7 +403,7 @@ export function PedidosSite() {
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {autoDispatch === false
-                      ? "Pausado — quem preenche e para no meio não recebe mensagem automática."
+                      ? "Pausado — nada sai sozinho. Dispare manualmente clicando em cada card abaixo."
                       : "Ligado — o agente chama sozinho, no WhatsApp, quem preencheu e não finalizou."}
                   </p>
                 </div>
@@ -423,9 +444,24 @@ export function PedidosSite() {
                         <Send className="h-4 w-4" /> Disparado — agente chamou no WhatsApp · {fmt(v.dispatchedAt)}
                       </div>
                     ) : autoDispatch === false ? (
-                      <div className="flex items-center gap-1.5 rounded-lg bg-muted px-3 py-2 text-sm font-semibold text-muted-foreground">
-                        <PauseCircle className="h-4 w-4" /> Disparo pausado — ligue para o agente chamar
-                      </div>
+                      v.phone ? (
+                        <button
+                          onClick={() => dispararVisita(v.id)}
+                          disabled={dispatchingId === v.id}
+                          className="flex items-center justify-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white transition hover:bg-brand-strong disabled:opacity-60"
+                        >
+                          {dispatchingId === v.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
+                          {dispatchingId === v.id ? "Disparando…" : "Disparar agora"}
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-1.5 rounded-lg bg-muted px-3 py-2 text-sm font-semibold text-muted-foreground">
+                          <PauseCircle className="h-4 w-4" /> Sem telefone — não dá pra disparar
+                        </div>
+                      )
                     ) : (
                       <div className="flex items-center gap-1.5 rounded-lg bg-warning/10 px-3 py-2 text-sm font-semibold text-warning">
                         <Clock className="h-4 w-4" /> Não finalizou — disparo automático em breve
