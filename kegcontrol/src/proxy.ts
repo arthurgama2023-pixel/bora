@@ -12,6 +12,7 @@ const PUBLIC_PREFIXES = [
   "/api/public/",
   "/api/tabela-precos",
   "/api/health/", // o "vigia" (cron externo) lê a saúde do agente sem sessão
+  "/api/cron/", // varreduras agendadas (ex.: carrinho abandonado), token opcional
 ];
 
 export async function proxy(request: NextRequest) {
