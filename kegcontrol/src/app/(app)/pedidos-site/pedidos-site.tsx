@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Clock, Loader2, MapPin, MessageCircle, PauseCircle, Phone, Send, ShoppingBag } from "lucide-react";
+import { ChevronDown, Clock, Loader2, MapPin, MessageCircle, MessageSquare, PauseCircle, Phone, Send, ShoppingBag } from "lucide-react";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
 import { Visitas } from "./visitas";
 
@@ -250,6 +250,12 @@ export function PedidosSite() {
   const [savingAuto, setSavingAuto] = useState(false);
   // Qual visita está sendo disparada manualmente (com o automático pausado).
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
+  // Template da mensagem do disparo (editável).
+  const [dispatchMsg, setDispatchMsg] = useState<string | null>(null);
+  const [dispatchMsgDefault, setDispatchMsgDefault] = useState("");
+  const [showMsgEditor, setShowMsgEditor] = useState(false);
+  const [savingMsg, setSavingMsg] = useState(false);
+  const [savedMsg, setSavedMsg] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -258,12 +264,17 @@ export function PedidosSite() {
       fetch("/api/v1/pedidos-site?status=ALL", { cache: "no-store" }).then((r) => r.json()),
       fetch("/api/v1/site-visits", { cache: "no-store" }).then((r) => r.json()),
       fetch("/api/v1/site-visits/auto-dispatch", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/v1/site-visits/dispatch-message", { cache: "no-store" }).then((r) => r.json()),
     ])
-      .then(([po, vi, ad]) => {
+      .then(([po, vi, ad, dm]) => {
         if (!alive) return;
         if (po?.ok) setPedidos(po.data);
         if (vi?.ok) setVisits(vi.data);
         if (ad?.ok) setAutoDispatch(Boolean(ad.data?.enabled));
+        if (dm?.ok) {
+          setDispatchMsg(dm.data?.message ?? "");
+          setDispatchMsgDefault(dm.data?.default ?? "");
+        }
       })
       .catch(() => {})
       .finally(() => alive && setLoading(false));
@@ -271,6 +282,37 @@ export function PedidosSite() {
       alive = false;
     };
   }, []);
+
+  // Prévia local do template (mesma limpeza do backend), com dados de exemplo.
+  function renderMsg(tpl: string): string {
+    return tpl
+      .replace(/\{nome\}/g, "Maria")
+      .replace(/\{itens\}/g, "do seu 2x Belco 30L")
+      .replace(/,\s*([!?.:])/g, "$1")
+      .replace(/\s+([,.!?:])/g, "$1")
+      .replace(/[ \t]{2,}/g, " ")
+      .trim();
+  }
+
+  async function saveDispatchMsg() {
+    if (savingMsg || dispatchMsg == null || dispatchMsg.trim().length < 5) return;
+    setSavingMsg(true);
+    try {
+      const res = await fetch("/api/v1/site-visits/dispatch-message", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: dispatchMsg }),
+      });
+      const j = await res.json();
+      if (!j?.ok) throw new Error(j?.error ?? "falha");
+      setSavedMsg(true);
+      setTimeout(() => setSavedMsg(false), 2500);
+    } catch {
+      // mantém o texto pra tentar de novo
+    } finally {
+      setSavingMsg(false);
+    }
+  }
 
   // Liga/desliga o disparo automático. Otimista: reflete na hora e reverte se
   // o PUT falhar.
@@ -452,6 +494,58 @@ export function PedidosSite() {
                     }`}
                   />
                 </button>
+              </div>
+
+              {/* Editor da mensagem do disparo */}
+              <div className="mb-4 rounded-xl border border-border bg-muted/20 px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => setShowMsgEditor((v) => !v)}
+                  className="flex w-full items-center gap-1.5 text-sm font-semibold"
+                >
+                  <MessageSquare className="h-4 w-4 text-brand-strong" />
+                  Mensagem do disparo
+                  <ChevronDown
+                    className={`ml-auto h-4 w-4 transition ${showMsgEditor ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {showMsgEditor && dispatchMsg !== null && (
+                  <div className="mt-3 space-y-2">
+                    <textarea
+                      value={dispatchMsg}
+                      onChange={(e) => setDispatchMsg(e.target.value)}
+                      className="h-28 w-full rounded-lg border border-border bg-background p-2.5 text-sm leading-relaxed"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Marcadores: <code className="rounded bg-muted px-1">{"{nome}"}</code> (primeiro nome) ·{" "}
+                      <code className="rounded bg-muted px-1">{"{itens}"}</code> (o que estava no carrinho). Somem
+                      sozinhos quando faltar.
+                    </p>
+                    <div className="rounded-lg border border-border bg-background p-2.5">
+                      <div className="mb-1 text-[11px] font-semibold text-muted-foreground">
+                        Prévia (exemplo: Maria · 2x Belco 30L)
+                      </div>
+                      <p className="whitespace-pre-wrap text-sm">{renderMsg(dispatchMsg)}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={saveDispatchMsg}
+                        disabled={savingMsg || dispatchMsg.trim().length < 5}
+                        className="rounded-full bg-brand px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-strong disabled:opacity-60"
+                      >
+                        {savingMsg ? "Salvando…" : "Salvar mensagem"}
+                      </button>
+                      <button
+                        onClick={() => setDispatchMsg(dispatchMsgDefault)}
+                        disabled={savingMsg || !dispatchMsgDefault}
+                        className="rounded-full bg-muted px-4 py-1.5 text-sm font-semibold text-muted-foreground transition hover:bg-muted/70 disabled:opacity-60"
+                      >
+                        Restaurar padrão
+                      </button>
+                      {savedMsg && <span className="text-sm text-success">Salvo ✓</span>}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {naoFinalizou.length === 0 ? (

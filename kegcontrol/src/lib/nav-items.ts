@@ -8,6 +8,7 @@ import {
   Beer,
   Bot,
   LayoutDashboard,
+  ReceiptText,
   ShoppingBag,
   Tags,
   Users,
@@ -89,6 +90,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "Pedidos do Site",
     description: "Pedidos feitos no site aguardando confirmação",
     icon: ShoppingBag,
+    roles: ["ADMIN", "MANAGER"],
+  },
+  {
+    href: "/verificacao",
+    label: "Verificação de Comprovantes",
+    description: "Comprovantes de PIX recebidos no WhatsApp, aguardando conferência",
+    icon: ReceiptText,
     roles: ["ADMIN", "MANAGER"],
   },
 ] as const;
