@@ -114,25 +114,53 @@ export async function listSiteVisits(companyId: string, limit = 300): Promise<Si
   });
 }
 
-// Mensagem de recuperação de carrinho, personalizada com o nome e o que o
-// cliente tinha no carrinho (montada em código — não passa pelo LLM).
-function nudgeMessage(name: string | null, details: string | null): string {
+// Mensagem de recuperação de carrinho — TEMPLATE editável no painel (por empresa,
+// model Setting). Marcadores: {nome} = primeiro nome do cliente; {itens} = o que
+// ele tinha no carrinho ("do seu 2x Belco 30L"). Não passa pelo LLM.
+const DISPATCH_MESSAGE_KEY = "site_dispatch.message";
+export const DEFAULT_DISPATCH_MESSAGE =
+  "Oi, {nome}! 🍺 Aqui é a SS-Chopp. Vi que você começou um pedido {itens} no nosso site " +
+  "mas não chegou a finalizar. Quer que eu feche pra você por aqui? Confirmo o valor e a entrega rapidinho 😉";
+
+export async function getDispatchMessageTemplate(companyId: string): Promise<string> {
+  const row = await prisma.setting.findUnique({
+    where: { companyId_key: { companyId, key: DISPATCH_MESSAGE_KEY } },
+    select: { value: true },
+  });
+  const v = row?.value?.trim();
+  return v ? v : DEFAULT_DISPATCH_MESSAGE;
+}
+
+export async function setDispatchMessageTemplate(companyId: string, message: string): Promise<void> {
+  const value = message.trim();
+  await prisma.setting.upsert({
+    where: { companyId_key: { companyId, key: DISPATCH_MESSAGE_KEY } },
+    update: { value },
+    create: { companyId, key: DISPATCH_MESSAGE_KEY, value },
+  });
+}
+
+// Preenche o template com o nome e os itens. Limpa artefatos quando falta algo
+// (ex.: sem nome, "Oi, {nome}!" não pode virar "Oi, !").
+export function nudgeMessage(template: string, name: string | null, details: string | null): string {
   const primeiro = (name ?? "").trim().split(/\s+/)[0] ?? "";
-  const oi = primeiro ? `Oi, ${primeiro}!` : "Oi!";
   let itensTxt = "";
   try {
     const d = details ? JSON.parse(details) : null;
     const itens = Array.isArray(d?.items) ? d.items : [];
     if (itens.length) {
-      itensTxt = ` do seu ${itens.map((i: { quantity: number; name: string }) => `${i.quantity}x ${i.name}`).join(", ")}`;
+      itensTxt = `do seu ${itens.map((i: { quantity: number; name: string }) => `${i.quantity}x ${i.name}`).join(", ")}`;
     }
   } catch {
     // sem itens — mensagem genérica
   }
-  return (
-    `${oi} 🍺 Aqui é a SS-Chopp. Vi que você começou um pedido${itensTxt} no nosso site ` +
-    `mas não chegou a finalizar. Quer que eu feche pra você por aqui? Confirmo o valor e a entrega rapidinho 😉`
-  );
+  return (template || DEFAULT_DISPATCH_MESSAGE)
+    .replace(/\{nome\}/g, primeiro)
+    .replace(/\{itens\}/g, itensTxt)
+    .replace(/,\s*([!?.:])/g, "$1") // "Oi, !" -> "Oi!"
+    .replace(/\s+([,.!?:])/g, "$1") // espaço antes de pontuação
+    .replace(/[ \t]{2,}/g, " ") // colapsa espaços (ex.: "pedido  no" quando sem itens)
+    .trim();
 }
 
 // DISPARA a recuperação pra um lead que preencheu e não finalizou:
@@ -171,7 +199,8 @@ export async function dispatchToVisit(companyId: string, visitId: string) {
 
   // Manda a mensagem de recuperação (best-effort — se o WhatsApp não estiver
   // conectado, não trava o disparo; o status reflete a ação do operador).
-  const message = nudgeMessage(visit.customerName, visit.details);
+  const template = await getDispatchMessageTemplate(companyId);
+  const message = nudgeMessage(template, visit.customerName, visit.details);
   await getWhatsAppChannel()
     .sendMessage(companyId, visit.phone, message)
     .catch((e) => {

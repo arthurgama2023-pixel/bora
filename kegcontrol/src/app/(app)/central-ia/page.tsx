@@ -1,4 +1,4 @@
-import { ArrowRight, Bot, MessageSquare, Palette, ReceiptText, Send, Smartphone, Users } from "lucide-react";
+import { ArrowRight, Bot, MessageSquare, Palette, Send, Smartphone, Users } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Card, PageHeader, StatCard } from "@/components/ui";
@@ -74,12 +74,6 @@ export default async function CentralIaPage() {
           icon={<Send className="h-8 w-8 text-brand-strong" />}
           title="Disparos automáticos"
           description="Regras de mensagens (cliente sumido, barril parado). Hoje geram uma fila simulada para revisão; quando o WhatsApp conectar, disparam de verdade."
-        />
-        <ModuleCard
-          href="/central-ia/verificacao"
-          icon={<ReceiptText className="h-8 w-8 text-brand-strong" />}
-          title="Verificação de Comprovantes"
-          description="Fotos de comprovante de PIX recebidas no WhatsApp aparecem aqui. O agente não valida nada — a conferência do pagamento é sempre sua."
         />
         <ModuleCard
           href="/central-ia/aparencia"
