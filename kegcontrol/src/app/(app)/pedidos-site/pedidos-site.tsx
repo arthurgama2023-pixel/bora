@@ -460,8 +460,13 @@ export function PedidosSite() {
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                   {naoFinalizou.map((v) => {
                     const badge = v.dispatchedAt ? (
-                      <div className="flex items-center gap-1.5 rounded-lg bg-brand/10 px-3 py-2 text-sm font-semibold text-brand-strong">
-                        <Send className="h-4 w-4" /> Disparado — agente chamou no WhatsApp · {fmt(v.dispatchedAt)}
+                      <div className="flex flex-col gap-0.5 rounded-lg bg-brand/10 px-3 py-2 text-brand-strong">
+                        <span className="flex items-center gap-1.5 text-sm font-semibold">
+                          <Send className="h-4 w-4" /> Mensagem enviada · {fmt(v.dispatchedAt)}
+                        </span>
+                        <span className="text-xs font-normal text-muted-foreground">
+                          Pra o agente continuar a conversa, ligue o botão “Agente IA” desse cliente.
+                        </span>
                       </div>
                     ) : autoDispatch === false ? (
                       v.phone ? (

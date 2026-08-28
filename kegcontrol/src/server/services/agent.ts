@@ -8,6 +8,7 @@ import {
   type CustomerType,
   type MovementType,
 } from "@/lib/enums";
+import { ApiError } from "@/lib/errors";
 import { phoneMatchKey } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -97,6 +98,75 @@ export async function updateAgentConfig(
 ) {
   await getAgentConfig(companyId); // garante que existe
   return prisma.agentConfig.update({ where: { companyId }, data });
+}
+
+// EDITOR CONVERSACIONAL da personalidade. Recebe uma instrução em linguagem
+// natural do operador ("deixa mais brincalhão", "adiciona que entregamos até
+// meia-noite") e devolve a personalidade COMPLETA já reescrita — SEM salvar (a
+// UI mostra a prévia e o operador confirma). As regras cruciais (preço sempre
+// pela ferramenta, cadastro silencioso, uso de ferramentas) NÃO fazem parte
+// deste texto — vivem em NATURAL_CUSTOMER_RULES, no código — então nunca são
+// alteradas aqui; se a instrução tentar mexer nelas, o modelo recusa e explica
+// em `blocked`.
+const PERSONALITY_EDITOR_RULES = `Você é um EDITOR do texto de PERSONALIDADE de um agente de atendimento de WhatsApp de uma distribuidora de chope (SS-Chopp). Recebe a PERSONALIDADE ATUAL e uma INSTRUÇÃO do operador (o dono do negócio). Sua tarefa: aplicar a instrução ao texto, preservando todo o resto, e devolver a personalidade COMPLETA já atualizada (o texto inteiro, não um trecho).
+
+REGRAS INVIOLÁVEIS — você NUNCA adiciona, enfraquece, contradiz ou remove nada sobre:
+1. PREÇO: o agente sempre consulta a ferramenta de preço por bairro; nunca fala preço/produto/marca de memória; preço vem do site por localidade.
+2. CADASTRO: é silencioso; o agente nunca diz que está cadastrando/salvando nem que o cliente "não tem cadastro".
+3. USO DE FERRAMENTAS: o agente usa as ferramentas do sistema para consultar dados; nunca inventa.
+Essas regras já são garantidas pelo sistema, fora deste texto. Se a INSTRUÇÃO pedir para mexer em qualquer uma delas (ex.: "pode falar o preço de cabeça", "diga que vai cadastrar"), NÃO faça — mantenha o texto seguro e explique o que foi ignorado no campo "blocked".
+
+Preserve o idioma (português do Brasil) e o formato do texto. Não invente fatos do negócio que o operador não pediu.
+
+Responda SOMENTE com um JSON válido, sem markdown, exatamente neste formato:
+{"personality": "<a personalidade completa, já com a alteração>", "summary": "<1-2 frases, em pt-BR, do que você mudou>", "blocked": "<null se nada foi bloqueado; senão, explique o que foi ignorado por ser regra crucial>"}`;
+
+export async function editPersonality(
+  companyId: string,
+  instruction: string,
+): Promise<{ personality: string; summary: string; blocked: string | null }> {
+  const config = await getAgentConfig(companyId);
+
+  if (!process.env.GEMINI_API_KEY) {
+    throw new ApiError(
+      503,
+      "A edição por conversa precisa da GEMINI_API_KEY configurada. Sem ela, edite a personalidade manualmente.",
+    );
+  }
+
+  const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const userMsg = `PERSONALIDADE ATUAL:\n"""\n${config.personality}\n"""\n\nINSTRUÇÃO DO OPERADOR:\n"""\n${instruction}\n"""`;
+
+  const response = await client.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: [{ role: "user", parts: [{ text: userMsg }] }],
+    config: {
+      systemInstruction: PERSONALITY_EDITOR_RULES,
+      responseMimeType: "application/json",
+      thinkingConfig: { thinkingBudget: 1024 },
+    },
+  });
+
+  const raw = (response.text ?? "").trim();
+  let parsed: { personality?: unknown; summary?: unknown; blocked?: unknown };
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new ApiError(502, "A IA devolveu um formato inesperado. Tente reformular a instrução.");
+  }
+
+  const personality = typeof parsed.personality === "string" ? parsed.personality.trim() : "";
+  if (personality.length < 10) {
+    throw new ApiError(502, "A IA não conseguiu gerar a personalidade. Reformule a instrução.");
+  }
+  const summary =
+    typeof parsed.summary === "string" && parsed.summary.trim()
+      ? parsed.summary.trim()
+      : "Alteração aplicada.";
+  const blockedRaw = typeof parsed.blocked === "string" ? parsed.blocked.trim() : "";
+  const blocked = blockedRaw && blockedRaw.toLowerCase() !== "null" ? blockedRaw : null;
+
+  return { personality, summary, blocked };
 }
 
 // ─── Foto do produto (a mesma do site, publicada no Netlify) ──────────────
