@@ -135,10 +135,13 @@ function nudgeMessage(name: string | null, details: string | null): string {
   );
 }
 
-// DISPARA o agente pra um lead que preencheu e não finalizou (recuperação):
+// DISPARA a recuperação pra um lead que preencheu e não finalizou:
 //  1) manda a mensagem de recuperação no WhatsApp (best-effort);
-//  2) LIBERA o agente pra esse contato (cria/atualiza o cliente com
-//     agentEnabled=true) — assim, quando ele responder, o agente atende;
+//  2) garante que o contato existe no CRM (pra aparecer na aba Clientes e o dono
+//     poder LIGAR o agente), mas NÃO liga o agente sozinho — o disparo só manda
+//     a mensagem; a conversa só continua se o dono ligar o botão "Agente IA" do
+//     cliente. Contato já existente NÃO tem o agentEnabled mexido (respeita o
+//     que o dono já decidiu);
 //  3) marca a visita como "disparada" (dispatchedAt) pro card mostrar.
 export async function dispatchToVisit(companyId: string, visitId: string) {
   const visit = await prisma.siteVisit.findFirst({
@@ -148,14 +151,11 @@ export async function dispatchToVisit(companyId: string, visitId: string) {
   if (!visit) throw new ApiError(404, "Visita não encontrada");
   if (!visit.phone) throw new ApiError(400, "Essa visita não tem telefone — não dá pra disparar");
 
-  // Libera o agente pra esse contato (cria se não existir). Assim a resposta
-  // dele cai no agente, e não fica bloqueada pela trava por cliente.
+  // Só garante que o contato existe (trancado por padrão). NÃO liga o agente: o
+  // disparo apenas manda a mensagem. A conversa só continua se o dono ligar o
+  // botão do agente desse cliente.
   const existing = await findCustomerByPhone(companyId, visit.phone);
-  if (existing) {
-    if (!existing.agentEnabled) {
-      await prisma.customer.update({ where: { id: existing.id }, data: { agentEnabled: true } });
-    }
-  } else {
+  if (!existing) {
     await prisma.customer.create({
       data: {
         companyId,
@@ -164,7 +164,7 @@ export async function dispatchToVisit(companyId: string, visitId: string) {
         type: "COMERCIO",
         status: "ACTIVE",
         source: "AGENTE",
-        agentEnabled: true,
+        agentEnabled: false, // trancado — só dispara; o dono libera manualmente
       },
     });
   }
