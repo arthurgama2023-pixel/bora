@@ -25,22 +25,29 @@ export const dynamic = "force-dynamic";
 // Executa um comando do TREINADOR (número autorizado): aplica o ajuste na
 // personalidade, desfaz o último, ou explica como usar. Devolve o texto de
 // resposta pro WhatsApp. Nunca mexe nas regras cruciais (protegidas em
-// editPersonality).
-async function runTrainerCommand(companyId: string, instruction: string): Promise<string> {
+// editPersonality). Ao aplicar/desfazer, ZERA a conversa deste número — assim o
+// treinador testa do zero (respostas primárias) com a nova personalidade e monta
+// o fluxo certo.
+async function runTrainerCommand(companyId: string, phone: string, instruction: string): Promise<string> {
   const inst = instruction.trim();
+  const resetConversa = () =>
+    prisma.agentMessage.deleteMany({ where: { companyId, sessionId: `wa-${phone}` } }).catch(() => {});
+
   if (!inst) {
     return 'Pra ajustar o agente, manda assim: "ajuste: seja mais brincalhão". Pra reverter o último: "ajuste desfazer".';
   }
   if (/^(desfazer|desfaz|desfa[çc]a|voltar|volta|undo)\b/i.test(inst)) {
     const ok = await undoLastPersonality(companyId);
-    return ok
-      ? "↩️ Desfeito — voltei pra personalidade anterior."
-      : "Não tenho um ajuste anterior pra desfazer.";
+    if (!ok) return "Não tenho um ajuste anterior pra desfazer.";
+    await resetConversa();
+    return "↩️ Desfeito — voltei pra personalidade anterior.\n🔄 Zerei nossa conversa: manda um 'oi' pra testar do zero.";
   }
   try {
     const { summary, blocked } = await applyPersonalityInstruction(companyId, inst);
+    await resetConversa();
     let msg = `✅ Ajustei o agente: ${summary}`;
     if (blocked) msg += `\n⚠️ Não mexi em (regra travada): ${blocked}`;
+    msg += `\n🔄 Zerei nossa conversa: manda um 'oi' pra testar do zero.`;
     msg += `\n(pra reverter: "ajuste desfazer")`;
     return msg;
   } catch (e) {
@@ -116,7 +123,7 @@ export async function POST(req: NextRequest) {
   if (incoming.text) {
     const cmd = parseTrainerCommand(incoming.text);
     if (cmd.isCommand && (await isTrainerNumber(companyId, incoming.externalId))) {
-      const reply = await runTrainerCommand(companyId, cmd.instruction);
+      const reply = await runTrainerCommand(companyId, incoming.externalId, cmd.instruction);
       await channel.sendMessage(companyId, incoming.externalId, reply);
       return NextResponse.json({ ok: true });
     }
