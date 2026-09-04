@@ -4,6 +4,7 @@ import { handle } from "@/lib/api";
 import { assertRole, requireSession } from "@/lib/auth";
 import { ApiError } from "@/lib/errors";
 import {
+  deleteSiteOrder,
   SITE_ORDER_STATUSES,
   updateSiteOrderStatus,
 } from "@/server/services/site-orders";
@@ -22,5 +23,17 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
     const updated = await updateSiteOrderStatus(session.companyId, id, status);
     if (!updated) throw new ApiError(404, "Pedido não encontrado");
     return updated;
+  });
+}
+
+// Exclui o pedido DE VEZ (lixeira do painel). Restrito a ADMIN/MANAGER.
+export async function DELETE(_request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  return handle(async () => {
+    const session = await requireSession();
+    assertRole(session, ["ADMIN", "MANAGER"]);
+    const { id } = await ctx.params;
+    const ok = await deleteSiteOrder(session.companyId, id);
+    if (!ok) throw new ApiError(404, "Pedido não encontrado");
+    return { deleted: true };
   });
 }

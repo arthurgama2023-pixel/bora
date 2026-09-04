@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronDown, Clock, Loader2, MapPin, MessageCircle, MessageSquare, PauseCircle, Phone, Send, ShoppingBag } from "lucide-react";
+import { CalendarCheck, ChevronDown, Clock, Loader2, MapPin, MessageSquare, PauseCircle, Phone, Send, ShoppingBag, Trash2 } from "lucide-react";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
 import { Visitas } from "./visitas";
 
@@ -24,7 +24,8 @@ type Pedido = {
   chopeiraType: string | null;
   items: string;
   total: number;
-  status: "PENDING" | "CONFIRMED" | "CANCELLED";
+  status: "PENDING" | "SCHEDULED" | "CONFIRMED" | "CANCELLED";
+  scheduledAt: string | null;
   createdAt: string;
 };
 type Visit = {
@@ -233,15 +234,78 @@ function PedidoCard({
   );
 }
 
-const badgeFinalizou = (
-  <div className="flex items-center gap-1.5 rounded-lg bg-success/10 px-3 py-2 text-sm font-semibold text-success">
-    <MessageCircle className="h-4 w-4" /> Finalizou no WhatsApp
-  </div>
-);
+// Linha do tempo do pedido: encaminhado ao WhatsApp (createdAt) → entrega
+// agendada (scheduledAt, se já agendou).
+function PedidoTimeline({ createdAt, scheduledAt }: { createdAt: string; scheduledAt: string | null }) {
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs">
+      <div className="flex items-center gap-2">
+        <span className="h-2 w-2 shrink-0 rounded-full bg-warning" />
+        <span className="text-muted-foreground">
+          Encaminhado ao WhatsApp · <span className="font-medium text-foreground">{fmt(createdAt)}</span>
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${scheduledAt ? "bg-success" : "bg-muted-foreground/30"}`} />
+        <span className="text-muted-foreground">
+          {scheduledAt ? (
+            <>
+              Entrega agendada · <span className="font-medium text-foreground">{fmt(scheduledAt)}</span>
+            </>
+          ) : (
+            "Entrega agendada · pendente"
+          )}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Botão "Excluir" com confirmação em 2 toques (sem lixeira intermediária).
+function DeleteControl({ onDelete }: { onDelete: () => Promise<void> | void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  if (!confirming) {
+    return (
+      <button
+        onClick={() => setConfirming(true)}
+        className="flex items-center gap-1 self-start text-xs text-muted-foreground transition hover:text-danger"
+      >
+        <Trash2 className="h-3.5 w-3.5" /> Excluir
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="font-medium text-danger">Excluir de vez?</span>
+      <button
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await onDelete();
+          } finally {
+            setBusy(false);
+          }
+        }}
+        className="rounded-full bg-danger px-2.5 py-1 font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
+      >
+        {busy ? "Excluindo…" : "Sim, excluir"}
+      </button>
+      <button
+        onClick={() => setConfirming(false)}
+        disabled={busy}
+        className="rounded-full bg-muted px-2.5 py-1 font-semibold text-muted-foreground hover:bg-muted/70"
+      >
+        Cancelar
+      </button>
+    </div>
+  );
+}
 
 export function PedidosSite() {
   const [view, setView] = useState<"pedidos" | "visitas">("pedidos");
-  const [aba, setAba] = useState<"finalizou" | "naofinalizou">("finalizou");
+  const [aba, setAba] = useState<"encaminhado" | "agendada" | "naofinalizou">("encaminhado");
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -355,6 +419,20 @@ export function PedidosSite() {
     }
   }
 
+  // Exclui um pedido DE VEZ (com confirmação no card). Remove da lista na hora.
+  async function excluirPedido(id: string) {
+    const res = await fetch(`/api/v1/pedidos-site/${id}`, { method: "DELETE" });
+    const j = await res.json();
+    if (j?.ok) setPedidos((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  // Exclui uma visita DE VEZ (com confirmação no card).
+  async function excluirVisita(id: string) {
+    const res = await fetch(`/api/v1/site-visits/${id}`, { method: "DELETE" });
+    const j = await res.json();
+    if (j?.ok) setVisits((prev) => prev.filter((v) => v.id !== id));
+  }
+
   const finalizou = pedidos.filter((p) => p.status !== "CANCELLED");
   // Mapa telefone -> horários dos pedidos não-cancelados (ms). Uma visita só é
   // excluída se existe um pedido do MESMO telefone feito DEPOIS que ela começou
@@ -381,8 +459,14 @@ export function PedidosSite() {
     (v) => v.stage !== "FINALIZOU" && !!v.phone && !finalizouEsteCarrinho(v.phone, v.updatedAt),
   );
 
+  // Etapas do pedido: Encaminhado ao WhatsApp (PENDING) → Entrega agendada
+  // (SCHEDULED, e CONFIRMED legado). Cancelados ficam de fora das abas ativas.
+  const encaminhado = pedidos.filter((p) => p.status === "PENDING");
+  const agendada = pedidos.filter((p) => p.status === "SCHEDULED" || p.status === "CONFIRMED");
+
   const ABAS = [
-    { key: "finalizou" as const, label: "Finalizou no WhatsApp", count: finalizou.length },
+    { key: "encaminhado" as const, label: "Encaminhado ao WhatsApp", count: encaminhado.length },
+    { key: "agendada" as const, label: "Entrega agendada", count: agendada.length },
     { key: "naofinalizou" as const, label: "Não finalizou", count: naoFinalizou.length },
   ];
 
@@ -441,13 +525,56 @@ export function PedidosSite() {
             <div className="flex items-center gap-2 p-8 text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
             </div>
-          ) : aba === "finalizou" ? (
-            finalizou.length === 0 ? (
-              <EmptyState message="Nenhum pedido finalizado no WhatsApp ainda." />
+          ) : aba === "encaminhado" ? (
+            encaminhado.length === 0 ? (
+              <EmptyState message="Nenhum pedido encaminhado ao WhatsApp ainda." />
             ) : (
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                {finalizou.map((p) => (
-                  <PedidoCard key={p.id} data={pedidoToCard(p)} accent="border-l-success" badge={badgeFinalizou} />
+                {encaminhado.map((p) => (
+                  <PedidoCard
+                    key={p.id}
+                    data={pedidoToCard(p)}
+                    accent="border-l-warning"
+                    badge={
+                      <div className="flex flex-col gap-2">
+                        <PedidoTimeline createdAt={p.createdAt} scheduledAt={p.scheduledAt} />
+                        <div
+                          aria-disabled="true"
+                          title="Vira 'entrega agendada' sozinho quando o agente fecha a entrega no WhatsApp"
+                          className="flex cursor-default select-none items-center justify-center gap-1.5 rounded-lg border border-dashed border-muted-foreground/40 bg-muted px-3 py-2 text-sm font-semibold text-muted-foreground"
+                        >
+                          <Clock className="h-4 w-4" /> Entrega agendada — pendente
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          Muda sozinho quando o agente fecha a entrega no WhatsApp.
+                        </p>
+                        <DeleteControl onDelete={() => excluirPedido(p.id)} />
+                      </div>
+                    }
+                  />
+                ))}
+              </div>
+            )
+          ) : aba === "agendada" ? (
+            agendada.length === 0 ? (
+              <EmptyState message="Nenhuma entrega agendada ainda. O agente marca aqui quando fecha a entrega no WhatsApp." />
+            ) : (
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {agendada.map((p) => (
+                  <PedidoCard
+                    key={p.id}
+                    data={pedidoToCard(p)}
+                    accent="border-l-success"
+                    badge={
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-1.5 rounded-lg bg-success/10 px-3 py-2 text-sm font-semibold text-success">
+                          <CalendarCheck className="h-4 w-4" /> Entrega agendada
+                        </div>
+                        <PedidoTimeline createdAt={p.createdAt} scheduledAt={p.scheduledAt} />
+                        <DeleteControl onDelete={() => excluirPedido(p.id)} />
+                      </div>
+                    }
+                  />
                 ))}
               </div>
             )
@@ -591,7 +718,12 @@ export function PedidosSite() {
                         key={v.id}
                         data={visitToCard(v)}
                         accent={v.dispatchedAt ? "border-l-brand" : "border-l-warning"}
-                        badge={badge}
+                        badge={
+                          <div className="flex flex-col gap-2">
+                            {badge}
+                            <DeleteControl onDelete={() => excluirVisita(v.id)} />
+                          </div>
+                        }
                       />
                     );
                   })}

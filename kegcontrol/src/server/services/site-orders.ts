@@ -37,7 +37,9 @@ export const siteOrderSchema = z.object({
 
 export type SiteOrderInput = z.infer<typeof siteOrderSchema>;
 
-export const SITE_ORDER_STATUSES = ["PENDING", "CONFIRMED", "CANCELLED"] as const;
+// PENDING = encaminhado ao WhatsApp · SCHEDULED = entrega agendada ·
+// CONFIRMED = legado (tratado como agendada) · CANCELLED.
+export const SITE_ORDER_STATUSES = ["PENDING", "SCHEDULED", "CONFIRMED", "CANCELLED"] as const;
 export type SiteOrderStatus = (typeof SITE_ORDER_STATUSES)[number];
 
 export async function createSiteOrder(companyId: string, data: SiteOrderInput) {
@@ -98,7 +100,13 @@ export async function updateSiteOrderStatus(
 ) {
   const found = await prisma.siteOrder.findFirst({ where: { id, companyId } });
   if (!found) return null;
-  return prisma.siteOrder.update({ where: { id }, data: { status } });
+  // Ao virar "entrega agendada" (SCHEDULED/CONFIRMED), carimba a data uma vez —
+  // é o "agendado em Y" da linha do tempo do pedido.
+  const becameScheduled = (status === "SCHEDULED" || status === "CONFIRMED") && !found.scheduledAt;
+  return prisma.siteOrder.update({
+    where: { id },
+    data: { status, ...(becameScheduled ? { scheduledAt: new Date() } : {}) },
+  });
 }
 
 // Pedido fechado pelo AGENTE IA no WhatsApp (finalizar_pedido). Diferente de
@@ -115,10 +123,41 @@ export async function createAgentSiteOrder(
     neighborhood?: string | null;
     city?: string | null;
     street?: string | null;
+    eventDate?: string | null; // dia combinado da entrega/retirada (se o cliente definiu)
     items: { id: string; name: string; quantity: number; unitPrice: number }[];
     total: number;
   },
 ) {
+  // Se já existe um pedido "encaminhado" (PENDING) recente desse telefone,
+  // marca ELE como "entrega agendada" — assim a linha do tempo fica num pedido
+  // só (encaminhado em X → agendada em Y), em vez de duplicar.
+  const key = phoneMatchKey(data.phone);
+  if (key) {
+    const recentes = await prisma.siteOrder.findMany({
+      where: { companyId, status: "PENDING" },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+    const match = recentes.find((o) => phoneMatchKey(o.phone) === key);
+    if (match) {
+      return prisma.siteOrder.update({
+        where: { id: match.id },
+        data: {
+          status: "SCHEDULED",
+          scheduledAt: new Date(),
+          deliveryMethod: data.deliveryMethod,
+          neighborhood: data.neighborhood ?? match.neighborhood,
+          city: data.city ?? match.city,
+          street: data.street ?? match.street,
+          eventDate: data.eventDate ?? match.eventDate,
+          items: JSON.stringify(data.items),
+          total: data.total,
+        },
+      });
+    }
+  }
+
+  // Senão, cria um pedido do agente já como "entrega agendada".
   return prisma.siteOrder.create({
     data: {
       companyId,
@@ -128,11 +167,21 @@ export async function createAgentSiteOrder(
       neighborhood: data.neighborhood ?? null,
       city: data.city ?? null,
       street: data.street ?? null,
+      eventDate: data.eventDate ?? null,
       items: JSON.stringify(data.items),
       total: data.total,
       origin: "AGENTE",
+      status: "SCHEDULED",
+      scheduledAt: new Date(),
     },
   });
+}
+
+// Exclui um pedido do site DE VEZ (hard delete). Escopo por empresa. Retorna
+// true se apagou algo. Usado pela "lixeira" do painel (excluir testes/lixo).
+export async function deleteSiteOrder(companyId: string, id: string): Promise<boolean> {
+  const res = await prisma.siteOrder.deleteMany({ where: { id, companyId } });
+  return res.count > 0;
 }
 
 // Parse seguro dos itens (guardados como JSON string).
