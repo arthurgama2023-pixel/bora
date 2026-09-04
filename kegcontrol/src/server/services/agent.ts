@@ -169,6 +169,90 @@ export async function editPersonality(
   return { personality, summary, blocked };
 }
 
+// ─── Treinador pelo WhatsApp ────────────────────────────────────────────────
+// Números autorizados a MOLDAR o agente por mensagem no WhatsApp. Uma mensagem
+// que começa com a palavra-chave "ajuste" (ou treino/ajustar/treinar) vira uma
+// instrução de personalidade — aplicada na hora, protegendo as regras cruciais.
+// O resto das mensagens desse número seguem o fluxo normal (ele testa como
+// cliente). Guardado por empresa no model Setting.
+const TRAINER_KEY = "agent.trainer_numbers";
+const PERSONALITY_PREV_KEY = "agent.personality_prev";
+
+export async function getTrainerNumbers(companyId: string): Promise<string[]> {
+  const row = await prisma.setting.findUnique({
+    where: { companyId_key: { companyId, key: TRAINER_KEY } },
+    select: { value: true },
+  });
+  return (row?.value ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+export async function setTrainerNumbers(companyId: string, raw: string): Promise<string> {
+  // guarda só os dígitos de cada número (>= 8 dígitos), separados por vírgula
+  const value = raw
+    .split(",")
+    .map((s) => s.replace(/\D/g, ""))
+    .filter((s) => s.length >= 8)
+    .join(",");
+  await prisma.setting.upsert({
+    where: { companyId_key: { companyId, key: TRAINER_KEY } },
+    update: { value },
+    create: { companyId, key: TRAINER_KEY, value },
+  });
+  return value;
+}
+
+export async function isTrainerNumber(companyId: string, phone: string): Promise<boolean> {
+  const key = phoneMatchKey(phone);
+  if (!key) return false;
+  const nums = await getTrainerNumbers(companyId);
+  return nums.some((n) => phoneMatchKey(n) === key);
+}
+
+// "ajuste: seja mais brincalhão" → { isCommand:true, instruction:"seja mais brincalhão" }.
+// Palavras-chave (início da mensagem): ajuste(s), ajustar, treino, treinar. ":" opcional.
+export function parseTrainerCommand(text: string): { isCommand: boolean; instruction: string } {
+  const m = text.match(/^\s*(?:ajustes?|ajustar|treino|treinar)\s*:?\s*([\s\S]*)$/i);
+  if (!m) return { isCommand: false, instruction: "" };
+  return { isCommand: true, instruction: (m[1] ?? "").trim() };
+}
+
+// Aplica (e SALVA) uma instrução do treinador na personalidade, guardando a
+// versão anterior pra permitir "desfazer". Pode lançar ApiError (ex.: sem chave
+// de IA). Protege as regras cruciais via editPersonality.
+export async function applyPersonalityInstruction(
+  companyId: string,
+  instruction: string,
+): Promise<{ summary: string; blocked: string | null }> {
+  const config = await getAgentConfig(companyId);
+  const result = await editPersonality(companyId, instruction);
+  await prisma.setting.upsert({
+    where: { companyId_key: { companyId, key: PERSONALITY_PREV_KEY } },
+    update: { value: config.personality },
+    create: { companyId, key: PERSONALITY_PREV_KEY, value: config.personality },
+  });
+  await updateAgentConfig(companyId, { personality: result.personality });
+  return { summary: result.summary, blocked: result.blocked };
+}
+
+// Desfaz o último ajuste: troca a personalidade atual pela anterior (e vice-versa
+// — vira um liga/desliga de um nível). Retorna false se não há versão anterior.
+export async function undoLastPersonality(companyId: string): Promise<boolean> {
+  const row = await prisma.setting.findUnique({
+    where: { companyId_key: { companyId, key: PERSONALITY_PREV_KEY } },
+    select: { value: true },
+  });
+  const prev = row?.value?.trim();
+  if (!prev) return false;
+  const current = (await getAgentConfig(companyId)).personality;
+  await updateAgentConfig(companyId, { personality: prev });
+  await prisma.setting.upsert({
+    where: { companyId_key: { companyId, key: PERSONALITY_PREV_KEY } },
+    update: { value: current },
+    create: { companyId, key: PERSONALITY_PREV_KEY, value: current },
+  });
+  return true;
+}
+
 // ─── Foto do produto (a mesma do site, publicada no Netlify) ──────────────
 // Enviada pelo WhatsApp junto com a confirmação do pedido (ver finalizar_pedido).
 
@@ -292,6 +376,11 @@ const TOOLS: FunctionDeclaration[] = [
         bairro: { type: Type.STRING, description: "Bairro do cliente (para preço e frete)" },
         entrega: { type: Type.STRING, description: "'entrega' ou 'retirada'" },
         endereco: { type: Type.STRING, description: "Endereço completo (só quando for entrega)" },
+        data_entrega: {
+          type: Type.STRING,
+          description:
+            "Dia/data combinado para a entrega ou retirada, SE o cliente já definiu (ex.: '25/12', 'sábado', 'hoje à noite'). Opcional — deixe vazio se ainda não combinaram a data.",
+        },
         itens: {
           type: Type.ARRAY,
           description: "Itens do pedido",
@@ -593,6 +682,7 @@ async function runTool(
           neighborhood: zona.bairro,
           city: zona.city,
           street: input.endereco ? String(input.endereco) : null,
+          eventDate: input.data_entrega ? String(input.data_entrega) : null,
           items: itens.map((i) => ({ id: i.id, name: i.produto, quantity: i.quantidade, unitPrice: i.precoUnit })),
           total,
         }).catch((e) => {

@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
-import { chatWithAgent, ORDER_PHOTO_FOLLOWUP, type ChatTurn } from "@/server/services/agent";
+import {
+  applyPersonalityInstruction,
+  chatWithAgent,
+  isTrainerNumber,
+  ORDER_PHOTO_FOLLOWUP,
+  parseTrainerCommand,
+  undoLastPersonality,
+  type ChatTurn,
+} from "@/server/services/agent";
 import { getAutoEnableNew } from "@/server/services/agent-access";
 import { findCustomerByPhone, upsertCustomerFromAgent } from "@/server/services/customers";
 import { savePaymentProof } from "@/server/services/payment-proofs";
@@ -13,6 +21,33 @@ import { findCompanyByWebhookToken } from "@/server/services/whatsapp/config";
 const IMAGE_RECEIVED_ACK = "📥 Recebi sua imagem! Se for comprovante de pagamento, vamos conferir e te avisamos por aqui.";
 
 export const dynamic = "force-dynamic";
+
+// Executa um comando do TREINADOR (número autorizado): aplica o ajuste na
+// personalidade, desfaz o último, ou explica como usar. Devolve o texto de
+// resposta pro WhatsApp. Nunca mexe nas regras cruciais (protegidas em
+// editPersonality).
+async function runTrainerCommand(companyId: string, instruction: string): Promise<string> {
+  const inst = instruction.trim();
+  if (!inst) {
+    return 'Pra ajustar o agente, manda assim: "ajuste: seja mais brincalhão". Pra reverter o último: "ajuste desfazer".';
+  }
+  if (/^(desfazer|desfaz|desfa[çc]a|voltar|volta|undo)\b/i.test(inst)) {
+    const ok = await undoLastPersonality(companyId);
+    return ok
+      ? "↩️ Desfeito — voltei pra personalidade anterior."
+      : "Não tenho um ajuste anterior pra desfazer.";
+  }
+  try {
+    const { summary, blocked } = await applyPersonalityInstruction(companyId, inst);
+    let msg = `✅ Ajustei o agente: ${summary}`;
+    if (blocked) msg += `\n⚠️ Não mexi em (regra travada): ${blocked}`;
+    msg += `\n(pra reverter: "ajuste desfazer")`;
+    return msg;
+  } catch (e) {
+    Sentry.captureException(e, { tags: { companyId, whatsapp: "trainer" } });
+    return "Não consegui ajustar agora 😕 (pode faltar a chave de IA no servidor). Tenta de novo em instantes.";
+  }
+}
 
 /**
  * Webhook do Evolution API. A aba Conectar aponta a instância para:
@@ -71,6 +106,20 @@ export async function POST(req: NextRequest) {
       console.error("[whatsapp] upsertCustomerFromAgent (pushName) falhou:", e);
       Sentry.captureException(e, { tags: { companyId, whatsapp: "upsert-pushname" } });
     });
+  }
+
+  // TREINADOR pelo WhatsApp: número autorizado a MOLDAR o agente. Uma mensagem
+  // que começa com a palavra-chave "ajuste" vira uma instrução de personalidade
+  // (aplicada na hora, protegendo as regras cruciais). É atendido AQUI, antes da
+  // trava por cliente — não precisa estar liberado como cliente. As demais
+  // mensagens dele caem no fluxo normal abaixo (ele testa como cliente).
+  if (incoming.text) {
+    const cmd = parseTrainerCommand(incoming.text);
+    if (cmd.isCommand && (await isTrainerNumber(companyId, incoming.externalId))) {
+      const reply = await runTrainerCommand(companyId, cmd.instruction);
+      await channel.sendMessage(companyId, incoming.externalId, reply);
+      return NextResponse.json({ ok: true });
+    }
   }
 
   // TRAVA POR CLIENTE (aba Clientes → "Liberar Agente IA"): o agente só atua

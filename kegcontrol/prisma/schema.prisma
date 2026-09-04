@@ -227,9 +227,10 @@ model SiteOrder {
   chopeiraType   String? // eletrica | gelo
   items          String // JSON: [{ id, name, quantity, unitPrice }]
   total          Float
-  status         String   @default("PENDING") // PENDING | CONFIRMED | CANCELLED
+  status         String   @default("PENDING") // PENDING (encaminhado ao WhatsApp) | SCHEDULED (entrega agendada) | CONFIRMED (legado = agendada) | CANCELLED
   origin         String   @default("SITE") // SITE (formulário do site) | AGENTE (fechado pelo agente IA no WhatsApp)
   notes          String?
+  scheduledAt    DateTime? // quando virou "entrega agendada" — linha do tempo do pedido
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

@@ -70,6 +70,46 @@ export function AgentStudio({
   const [savedMeta, setSavedMeta] = useState(false);
   const [metaError, setMetaError] = useState("");
 
+  // ── Treinar pelo WhatsApp (números autorizados a moldar o agente) ────────
+  const [trainers, setTrainers] = useState("");
+  const [savingTrainers, setSavingTrainers] = useState(false);
+  const [savedTrainers, setSavedTrainers] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/v1/agent/trainers", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (alive && j?.ok) setTrainers((j.data?.numbers ?? []).join(", "));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function saveTrainers() {
+    setSavingTrainers(true);
+    setSavedTrainers(false);
+    try {
+      const res = await fetch("/api/v1/agent/trainers", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ numbers: trainers }),
+      });
+      const j = await res.json();
+      if (j?.ok) {
+        setTrainers((j.data?.numbers ?? []).join(", "));
+        setSavedTrainers(true);
+        setTimeout(() => setSavedTrainers(false), 2500);
+      }
+    } catch {
+      // mantém pra tentar de novo
+    } finally {
+      setSavingTrainers(false);
+    }
+  }
+
   // ── Editor conversacional da personalidade ──────────────────────────────
   const [editMsgs, setEditMsgs] = useState<EditMessage[]>([]);
   const [editInput, setEditInput] = useState("");
@@ -292,6 +332,29 @@ export function AgentStudio({
             </Button>
             {savedMeta && <span className="text-xs text-success">Salvo ✓</span>}
             {metaError && <span className="text-xs text-danger">{metaError}</span>}
+          </div>
+        </div>
+
+        {/* Treinar pelo WhatsApp */}
+        <div className="border-b border-border px-4 py-3">
+          <Field label="Treinar pelo WhatsApp — números autorizados (separados por vírgula)">
+            <Input
+              value={trainers}
+              onChange={(e) => setTrainers(e.target.value)}
+              placeholder="5521993765465"
+            />
+          </Field>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+            Esses números moldam o agente mandando no WhatsApp uma mensagem que começa com{" "}
+            <code className="rounded bg-muted px-1">ajuste:</code> — ex.: “ajuste: seja mais
+            brincalhão”. Pra reverter o último: “ajuste desfazer”. As outras mensagens deles seguem
+            normais (dá pra testar o agente pelo mesmo número). As regras cruciais continuam travadas.
+          </p>
+          <div className="mt-2 flex items-center gap-3">
+            <Button size="sm" variant="outline" onClick={saveTrainers} disabled={savingTrainers}>
+              {savingTrainers ? "Salvando…" : "Salvar números"}
+            </Button>
+            {savedTrainers && <span className="text-xs text-success">Salvo ✓</span>}
           </div>
         </div>
 

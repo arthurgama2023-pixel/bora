@@ -214,6 +214,13 @@ export async function dispatchToVisit(companyId: string, visitId: string) {
   });
 }
 
+// Exclui uma visita do funil DE VEZ (hard delete). Escopo por empresa. Usado
+// pela "lixeira" do painel (limpar teste/lixo direto na UI).
+export async function deleteSiteVisit(companyId: string, id: string): Promise<boolean> {
+  const res = await prisma.siteVisit.deleteMany({ where: { id, companyId } });
+  return res.count > 0;
+}
+
 // Chave de telefone tolerante a formato (últimos 8 dígitos).
 const phoneKey = (p?: string | null) => {
   const d = (p ?? "").replace(/\D/g, "");
