@@ -77,7 +77,11 @@ export function decideTrainerAction(
   const m = text.trim().match(ENTER_RE);
   if (m) {
     const instruction = (m[2] ?? "").trim();
-    return instruction ? { kind: "enter", instruction } : { kind: "enter" };
+    // Só conta como "já veio um ajuste" se sobrar conteúdo de verdade (letra ou
+    // número). "ajuste", "ajuste!" ou "ajuste:" sozinhos só LIGAM o modo.
+    return /[\p{L}\p{N}]/u.test(instruction)
+      ? { kind: "enter", instruction }
+      : { kind: "enter" };
   }
   return { kind: "passthrough" };
 }

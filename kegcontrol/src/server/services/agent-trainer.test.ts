@@ -12,6 +12,14 @@ describe("decideTrainerAction — ocioso", () => {
     expect(decideTrainerAction("modo ajuste", idle)).toEqual({ kind: "enter" });
   });
 
+  // Pedido explícito do dono: a palavra "ajuste" sozinha entra em modo edição.
+  it("a palavra 'ajuste' sozinha entra em modo edição", () => {
+    expect(decideTrainerAction("ajuste", idle)).toEqual({ kind: "enter" });
+    expect(decideTrainerAction("Ajuste", idle)).toEqual({ kind: "enter" });
+    expect(decideTrainerAction("ajuste!", idle)).toEqual({ kind: "enter" });
+    expect(decideTrainerAction("ajuste:", idle)).toEqual({ kind: "enter" });
+  });
+
   it("liga o modo JÁ com um ajuste quando o gatilho traz texto", () => {
     expect(decideTrainerAction("ajuste: fala mais curto", idle)).toEqual({
       kind: "enter",
