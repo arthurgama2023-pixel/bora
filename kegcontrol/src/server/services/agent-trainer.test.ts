@@ -25,9 +25,10 @@ describe("decideTrainerAction — ocioso", () => {
       kind: "enter",
       instruction: "fala mais curto",
     });
+    // sem ":", a frase inteira vira a instrução (o Gemini extrai a intenção)
     expect(decideTrainerAction("ajustar seja mais rápido", idle)).toEqual({
       kind: "enter",
-      instruction: "seja mais rápido",
+      instruction: "ajustar seja mais rápido",
     });
   });
 
@@ -42,6 +43,21 @@ describe("decideTrainerAction — ocioso", () => {
   it("gatilho no meio da frase liga o modo", () => {
     expect(decideTrainerAction("faça um ajuste", idle)).toEqual({ kind: "enter" });
     expect(decideTrainerAction("pode ajustar aí", idle)).toEqual({ kind: "enter" });
+  });
+
+  // QUALQUER palavra com a raiz "ajust" liga o modo (pedido do dono).
+  it("qualquer forma de 'ajustar' liga o modo", () => {
+    for (const t of [
+      "ajusta pra mim",
+      "ajustando",
+      "ajustei",
+      "quero que ajuste",
+      "ajusta ai",
+      "AJUSTA",
+      "reajuste",
+    ]) {
+      expect(decideTrainerAction(t, idle), t).toEqual({ kind: "enter" });
+    }
   });
 
   it("frase com gatilho E pedido vira instrução (a frase inteira)", () => {
