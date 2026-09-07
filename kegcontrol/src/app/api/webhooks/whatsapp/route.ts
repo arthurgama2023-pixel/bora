@@ -2,12 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import {
-  applyPersonalityInstruction,
   chatWithAgent,
+  handleTrainerMessage,
   isTrainerNumber,
   ORDER_PHOTO_FOLLOWUP,
-  parseTrainerCommand,
-  undoLastPersonality,
   type ChatTurn,
 } from "@/server/services/agent";
 import { getAutoEnableNew } from "@/server/services/agent-access";
@@ -21,40 +19,6 @@ import { findCompanyByWebhookToken } from "@/server/services/whatsapp/config";
 const IMAGE_RECEIVED_ACK = "📥 Recebi sua imagem! Se for comprovante de pagamento, vamos conferir e te avisamos por aqui.";
 
 export const dynamic = "force-dynamic";
-
-// Executa um comando do TREINADOR (número autorizado): aplica o ajuste na
-// personalidade, desfaz o último, ou explica como usar. Devolve o texto de
-// resposta pro WhatsApp. Nunca mexe nas regras cruciais (protegidas em
-// editPersonality). Ao aplicar/desfazer, ZERA a conversa deste número — assim o
-// treinador testa do zero (respostas primárias) com a nova personalidade e monta
-// o fluxo certo.
-async function runTrainerCommand(companyId: string, phone: string, instruction: string): Promise<string> {
-  const inst = instruction.trim();
-  const resetConversa = () =>
-    prisma.agentMessage.deleteMany({ where: { companyId, sessionId: `wa-${phone}` } }).catch(() => {});
-
-  if (!inst) {
-    return 'Pra ajustar o agente, manda assim: "ajuste: seja mais brincalhão". Pra reverter o último: "ajuste desfazer".';
-  }
-  if (/^(desfazer|desfaz|desfa[çc]a|voltar|volta|undo)\b/i.test(inst)) {
-    const ok = await undoLastPersonality(companyId);
-    if (!ok) return "Não tenho um ajuste anterior pra desfazer.";
-    await resetConversa();
-    return "↩️ Desfeito — voltei pra personalidade anterior.\n🔄 Zerei nossa conversa: manda um 'oi' pra testar do zero.";
-  }
-  try {
-    const { summary, blocked } = await applyPersonalityInstruction(companyId, inst);
-    await resetConversa();
-    let msg = `✅ Ajustei o agente: ${summary}`;
-    if (blocked) msg += `\n⚠️ Não mexi em (regra travada): ${blocked}`;
-    msg += `\n🔄 Zerei nossa conversa: manda um 'oi' pra testar do zero.`;
-    msg += `\n(pra reverter: "ajuste desfazer")`;
-    return msg;
-  } catch (e) {
-    Sentry.captureException(e, { tags: { companyId, whatsapp: "trainer" } });
-    return "Não consegui ajustar agora 😕 (pode faltar a chave de IA no servidor). Tenta de novo em instantes.";
-  }
-}
 
 /**
  * Webhook do Evolution API. A aba Conectar aponta a instância para:
@@ -115,16 +79,22 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // TREINADOR pelo WhatsApp: número autorizado a MOLDAR o agente. Uma mensagem
-  // que começa com a palavra-chave "ajuste" vira uma instrução de personalidade
-  // (aplicada na hora, protegendo as regras cruciais). É atendido AQUI, antes da
-  // trava por cliente — não precisa estar liberado como cliente. As demais
-  // mensagens dele caem no fluxo normal abaixo (ele testa como cliente).
-  if (incoming.text) {
-    const cmd = parseTrainerCommand(incoming.text);
-    if (cmd.isCommand && (await isTrainerNumber(companyId, incoming.externalId))) {
-      const reply = await runTrainerCommand(companyId, incoming.externalId, cmd.instruction);
-      await channel.sendMessage(companyId, incoming.externalId, reply);
+  // TREINADOR pelo WhatsApp: número autorizado a MOLDAR o agente em português
+  // normal. Um gatilho ("ajustar", "configurar") liga o modo ajuste; nele, cada
+  // mensagem vira uma instrução — o agente mostra o que vai mudar e só aplica
+  // com um "sim". Atendido AQUI, antes da trava por cliente. Se a mensagem não
+  // for de ajuste (handled=null), cai no fluxo normal abaixo (ele testa como
+  // cliente). Ao aplicar/desfazer, ZERA a conversa de teste deste número — pra
+  // ele testar do zero, com respostas primárias, a nova personalidade.
+  if (incoming.text && (await isTrainerNumber(companyId, incoming.externalId))) {
+    const handled = await handleTrainerMessage(companyId, incoming.externalId, incoming.text);
+    if (handled) {
+      if (handled.resetConversa) {
+        await prisma.agentMessage
+          .deleteMany({ where: { companyId, sessionId: `wa-${incoming.externalId}` } })
+          .catch(() => {});
+      }
+      await channel.sendMessage(companyId, incoming.externalId, handled.reply);
       return NextResponse.json({ ok: true });
     }
   }

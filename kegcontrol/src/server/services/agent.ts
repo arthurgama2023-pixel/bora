@@ -36,6 +36,7 @@ import {
   renderPersonality,
   type PersonalitySections,
 } from "./agent-personality";
+import { decideTrainerAction, type TrainerMode } from "./agent-trainer";
 
 // Cliente reconhecido pelo número de WhatsApp (ou null se o número não bate
 // com nenhum cadastro). Passado ao agente para ele "conectar os pontos".
@@ -178,75 +179,6 @@ export async function savePersonalitySections(
   return { personality };
 }
 
-// EDITOR CONVERSACIONAL da personalidade. Recebe uma instrução em linguagem
-// natural do operador ("deixa mais brincalhão", "adiciona que entregamos até
-// meia-noite") e devolve a personalidade COMPLETA já reescrita — SEM salvar (a
-// UI mostra a prévia e o operador confirma). As regras cruciais (preço sempre
-// pela ferramenta, cadastro silencioso, uso de ferramentas) NÃO fazem parte
-// deste texto — vivem em NATURAL_CUSTOMER_RULES, no código — então nunca são
-// alteradas aqui; se a instrução tentar mexer nelas, o modelo recusa e explica
-// em `blocked`.
-const PERSONALITY_EDITOR_RULES = `Você é um EDITOR do texto de PERSONALIDADE de um agente de atendimento de WhatsApp de uma distribuidora de chope (SS-Chopp). Recebe a PERSONALIDADE ATUAL e uma INSTRUÇÃO do operador (o dono do negócio). Sua tarefa: aplicar a instrução ao texto, preservando todo o resto, e devolver a personalidade COMPLETA já atualizada (o texto inteiro, não um trecho).
-
-REGRAS INVIOLÁVEIS — você NUNCA adiciona, enfraquece, contradiz ou remove nada sobre:
-1. PREÇO: o agente sempre consulta a ferramenta de preço por bairro; nunca fala preço/produto/marca de memória; preço vem do site por localidade.
-2. CADASTRO: é silencioso; o agente nunca diz que está cadastrando/salvando nem que o cliente "não tem cadastro".
-3. USO DE FERRAMENTAS: o agente usa as ferramentas do sistema para consultar dados; nunca inventa.
-Essas regras já são garantidas pelo sistema, fora deste texto. Se a INSTRUÇÃO pedir para mexer em qualquer uma delas (ex.: "pode falar o preço de cabeça", "diga que vai cadastrar"), NÃO faça — mantenha o texto seguro e explique o que foi ignorado no campo "blocked".
-
-Preserve o idioma (português do Brasil) e o formato do texto. Não invente fatos do negócio que o operador não pediu.
-
-Responda SOMENTE com um JSON válido, sem markdown, exatamente neste formato:
-{"personality": "<a personalidade completa, já com a alteração>", "summary": "<1-2 frases, em pt-BR, do que você mudou>", "blocked": "<null se nada foi bloqueado; senão, explique o que foi ignorado por ser regra crucial>"}`;
-
-export async function editPersonality(
-  companyId: string,
-  instruction: string,
-): Promise<{ personality: string; summary: string; blocked: string | null }> {
-  const config = await getAgentConfig(companyId);
-
-  if (!process.env.GEMINI_API_KEY) {
-    throw new ApiError(
-      503,
-      "A edição por conversa precisa da GEMINI_API_KEY configurada. Sem ela, edite a personalidade manualmente.",
-    );
-  }
-
-  const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  const userMsg = `PERSONALIDADE ATUAL:\n"""\n${config.personality}\n"""\n\nINSTRUÇÃO DO OPERADOR:\n"""\n${instruction}\n"""`;
-
-  const response = await client.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: [{ role: "user", parts: [{ text: userMsg }] }],
-    config: {
-      systemInstruction: PERSONALITY_EDITOR_RULES,
-      responseMimeType: "application/json",
-      thinkingConfig: { thinkingBudget: 1024 },
-    },
-  });
-
-  const raw = (response.text ?? "").trim();
-  let parsed: { personality?: unknown; summary?: unknown; blocked?: unknown };
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new ApiError(502, "A IA devolveu um formato inesperado. Tente reformular a instrução.");
-  }
-
-  const personality = typeof parsed.personality === "string" ? parsed.personality.trim() : "";
-  if (personality.length < 10) {
-    throw new ApiError(502, "A IA não conseguiu gerar a personalidade. Reformule a instrução.");
-  }
-  const summary =
-    typeof parsed.summary === "string" && parsed.summary.trim()
-      ? parsed.summary.trim()
-      : "Alteração aplicada.";
-  const blockedRaw = typeof parsed.blocked === "string" ? parsed.blocked.trim() : "";
-  const blocked = blockedRaw && blockedRaw.toLowerCase() !== "null" ? blockedRaw : null;
-
-  return { personality, summary, blocked };
-}
-
 // EDITOR POR SEÇÃO (v2). Em vez de reescrever o texto inteiro ("preserve todo o
 // resto", que deixava contradições), identifica quais SEÇÕES a instrução afeta
 // e reescreve CADA UMA por inteiro — as demais ficam intactas por construção.
@@ -378,32 +310,6 @@ export async function isTrainerNumber(companyId: string, phone: string): Promise
   return nums.some((n) => phoneMatchKey(n) === key);
 }
 
-// "ajuste: seja mais brincalhão" → { isCommand:true, instruction:"seja mais brincalhão" }.
-// Palavras-chave (início da mensagem): ajuste(s), ajustar, treino, treinar. ":" opcional.
-export function parseTrainerCommand(text: string): { isCommand: boolean; instruction: string } {
-  const m = text.match(/^\s*(?:ajustes?|ajustar|treino|treinar)\s*:?\s*([\s\S]*)$/i);
-  if (!m) return { isCommand: false, instruction: "" };
-  return { isCommand: true, instruction: (m[1] ?? "").trim() };
-}
-
-// Aplica (e SALVA) uma instrução do treinador na personalidade, guardando a
-// versão anterior pra permitir "desfazer". Pode lançar ApiError (ex.: sem chave
-// de IA). Protege as regras cruciais via editPersonality.
-export async function applyPersonalityInstruction(
-  companyId: string,
-  instruction: string,
-): Promise<{ summary: string; blocked: string | null }> {
-  const config = await getAgentConfig(companyId);
-  const result = await editPersonality(companyId, instruction);
-  await prisma.setting.upsert({
-    where: { companyId_key: { companyId, key: PERSONALITY_PREV_KEY } },
-    update: { value: config.personality },
-    create: { companyId, key: PERSONALITY_PREV_KEY, value: config.personality },
-  });
-  await updateAgentConfig(companyId, { personality: result.personality });
-  return { summary: result.summary, blocked: result.blocked };
-}
-
 // Desfaz o último ajuste: troca a personalidade atual pela anterior (e vice-versa
 // — vira um liga/desliga de um nível). Retorna false se não há versão anterior.
 export async function undoLastPersonality(companyId: string): Promise<boolean> {
@@ -421,6 +327,182 @@ export async function undoLastPersonality(companyId: string): Promise<boolean> {
     create: { companyId, key: PERSONALITY_PREV_KEY, value: current },
   });
   return true;
+}
+
+// ─── Ajuste pelo WhatsApp: modo ajuste + confirmação (para leigo) ────────────
+// Estado por número treinador (modo ligado/desligado + a prévia aguardando
+// "sim"), guardado como JSON num Setting. A decisão do que fazer com cada
+// mensagem é pura (decideTrainerAction, em agent-trainer.ts); aqui a gente
+// executa: gera a prévia, aplica, desfaz, liga/desliga o modo.
+const TRAINER_SESSION_PREFIX = "agent.trainer_session.";
+
+type TrainerPending = {
+  sections: PersonalitySections;
+  changedKeys: string[];
+  summary: string;
+  blocked: string | null;
+};
+type TrainerSession = { mode: TrainerMode; pending: TrainerPending | null };
+
+function trainerSessionKey(phone: string): string {
+  return `${TRAINER_SESSION_PREFIX}${phoneMatchKey(phone) || phone}`;
+}
+
+async function getTrainerSession(companyId: string, phone: string): Promise<TrainerSession> {
+  const row = await prisma.setting.findUnique({
+    where: { companyId_key: { companyId, key: trainerSessionKey(phone) } },
+    select: { value: true },
+  });
+  if (row?.value?.trim()) {
+    try {
+      const j = JSON.parse(row.value) as Partial<TrainerSession>;
+      return {
+        mode: j.mode === "adjusting" ? "adjusting" : "idle",
+        pending: j.pending ?? null,
+      };
+    } catch {
+      // estado corrompido → começa limpo
+    }
+  }
+  return { mode: "idle", pending: null };
+}
+
+async function setTrainerSession(
+  companyId: string,
+  phone: string,
+  session: TrainerSession,
+): Promise<void> {
+  const key = trainerSessionKey(phone);
+  const value = JSON.stringify(session);
+  await prisma.setting.upsert({
+    where: { companyId_key: { companyId, key } },
+    update: { value },
+    create: { companyId, key, value },
+  });
+}
+
+// Monta a prévia em texto amigável pro WhatsApp (linguagem de leigo).
+function previewTextForWhatsApp(pending: TrainerPending): string {
+  const nomes = pending.changedKeys
+    .map((k) => SECTION_META.find((m) => m.key === k)?.titulo ?? k)
+    .join(", ");
+  let msg = `📝 ${pending.summary}`;
+  if (nomes) msg += `\n(muda: ${nomes})`;
+  if (pending.blocked) msg += `\n⚠️ Não mexi no que é regra travada: ${pending.blocked}`;
+  msg += `\n\nAplico? responde *sim* pra valer, *não* pra descartar.`;
+  return msg;
+}
+
+// Orquestra uma mensagem de um número TREINADOR. Devolve a resposta pro
+// WhatsApp e se a conversa de teste deve ser zerada; ou null quando a mensagem
+// não é ajuste (o webhook então trata como cliente normal).
+export async function handleTrainerMessage(
+  companyId: string,
+  phone: string,
+  text: string,
+): Promise<{ reply: string; resetConversa: boolean } | null> {
+  const session = await getTrainerSession(companyId, phone);
+  const action = decideTrainerAction(text, {
+    mode: session.mode,
+    hasPending: Boolean(session.pending),
+  });
+
+  const HELP =
+    "🛠️ Modo ajuste: me diz em português o que mudar no jeito do atendente (ex.: “seja mais rápido pra fechar”, “ofereça sempre a chopeira”). Eu mostro o que vai mudar e só aplico com o seu *sim*. “desfazer” volta o último, “sair” desliga.";
+
+  // Gera a prévia de uma instrução e guarda como pendente. Mensagens de erro
+  // amigáveis (a IA pode não entender, ou faltar chave).
+  const proposeEdit = async (instruction: string): Promise<string> => {
+    try {
+      const p = await editPersonalitySections(companyId, instruction);
+      await setTrainerSession(companyId, phone, {
+        mode: "adjusting",
+        pending: {
+          sections: p.sections,
+          changedKeys: p.changedKeys,
+          summary: p.summary,
+          blocked: p.blocked,
+        },
+      });
+      return previewTextForWhatsApp({
+        sections: p.sections,
+        changedKeys: p.changedKeys,
+        summary: p.summary,
+        blocked: p.blocked,
+      });
+    } catch (e) {
+      const status = e instanceof ApiError ? e.status : 0;
+      if (status === 422) {
+        return "Não entendi bem o que mudar 🤔 Me explica de outro jeito (ex.: “deixa a saudação mais curta”).";
+      }
+      Sentry.captureException(e, { tags: { companyId, whatsapp: "trainer-edit" } });
+      return "Não consegui ajustar agora 😕 Tenta de novo em instantes.";
+    }
+  };
+
+  switch (action.kind) {
+    case "ignore":
+    case "passthrough":
+      return null;
+
+    case "enter": {
+      if (action.instruction) {
+        const reply = await proposeEdit(action.instruction);
+        return { reply, resetConversa: false };
+      }
+      await setTrainerSession(companyId, phone, { mode: "adjusting", pending: null });
+      return {
+        reply:
+          "🛠️ Modo ajuste ligado! Me diz o que você quer mudar no jeito do atendente. " +
+          "Eu mostro o que vai mudar e peço um *sim* antes de aplicar. (manda “sair” quando terminar)",
+        resetConversa: false,
+      };
+    }
+
+    case "exit":
+      await setTrainerSession(companyId, phone, { mode: "idle", pending: null });
+      return {
+        reply: "👍 Modo ajuste desligado. Suas próximas mensagens voltam a ser atendidas normalmente.",
+        resetConversa: false,
+      };
+
+    case "help":
+      return { reply: HELP, resetConversa: false };
+
+    case "undo": {
+      const ok = await undoLastPersonality(companyId);
+      await setTrainerSession(companyId, phone, { mode: "adjusting", pending: null });
+      if (!ok) return { reply: "Não tenho um ajuste anterior pra desfazer.", resetConversa: false };
+      return {
+        reply: "↩️ Desfeito — voltei pro jeito anterior.\n🔄 Zerei a conversa de teste: manda um “oi” pra ver.",
+        resetConversa: true,
+      };
+    }
+
+    case "cancel":
+      await setTrainerSession(companyId, phone, { mode: "adjusting", pending: null });
+      return { reply: "Beleza, não mexi 👍 Manda outro ajuste ou “sair”.", resetConversa: false };
+
+    case "confirm": {
+      if (!session.pending) {
+        return { reply: "Não tenho nada pendente pra aplicar. Me diz o que mudar 🙂", resetConversa: false };
+      }
+      await savePersonalitySections(companyId, session.pending.sections);
+      const summary = session.pending.summary;
+      await setTrainerSession(companyId, phone, { mode: "adjusting", pending: null });
+      return {
+        reply:
+          `✅ Feito! ${summary}\n🔄 Zerei a conversa de teste: manda um “oi” pra ver como ficou.\n` +
+          "(pra reverter: “desfazer” · pra sair: “sair”)",
+        resetConversa: true,
+      };
+    }
+
+    case "instruct": {
+      const reply = await proposeEdit(action.instruction);
+      return { reply, resetConversa: false };
+    }
+  }
 }
 
 // ─── Foto do produto (a mesma do site, publicada no Netlify) ──────────────
