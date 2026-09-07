@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Button, Card, Field, Input, Select } from "@/components/ui";
+import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
 type Config = {
@@ -23,6 +23,10 @@ type Config = {
   greeting: string | null;
   active: boolean;
 };
+
+// Seções canônicas da personalidade (chaves espelham o backend).
+type Sections = Record<string, string>;
+type SectionMeta = { key: string; titulo: string; descricao: string };
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -35,13 +39,25 @@ type ChatMessage = {
 };
 
 // Uma rodada do editor por conversa: a instrução do operador e a resposta da IA
-// (resumo do que mudou + se alguma coisa foi bloqueada + se foi aplicada).
+// (resumo do que mudou + seções afetadas + se foi bloqueada/aplicada).
 type EditMessage =
   | { role: "user"; text: string }
-  | { role: "assistant"; summary: string; blocked: string | null; applied: boolean };
+  | {
+      role: "assistant";
+      summary: string;
+      blocked: string | null;
+      changedTitles: string[];
+      applied: boolean;
+    };
 
-// Proposta de alteração aguardando confirmação (prévia).
-type Proposal = { personality: string; summary: string; blocked: string | null };
+// Proposta de alteração aguardando confirmação: as seções JÁ com a mudança
+// (prévia, não salva) e quais mudaram.
+type Proposal = {
+  sections: Sections;
+  changedKeys: string[];
+  summary: string;
+  blocked: string | null;
+};
 
 // "comece de novo" → recomeça a conversa (tolera acento/caixa/pontuação).
 // Mesma regra do backend (agent.ts) para o comportamento bater nos dois lados.
@@ -75,12 +91,29 @@ export function AgentStudio({
   const [savingTrainers, setSavingTrainers] = useState(false);
   const [savedTrainers, setSavedTrainers] = useState(false);
 
+  // ── Seções da personalidade (fonte de verdade do que o dono edita) ───────
+  const [sections, setSections] = useState<Sections>({});
+  const [sectionMeta, setSectionMeta] = useState<SectionMeta[]>([]);
+  const [drafts, setDrafts] = useState<Sections>({});
+  const [showSections, setShowSections] = useState(false);
+  const [savingSections, setSavingSections] = useState(false);
+  const [savedSections, setSavedSections] = useState(false);
+
   useEffect(() => {
     let alive = true;
     fetch("/api/v1/agent/trainers", { cache: "no-store" })
       .then((r) => r.json())
       .then((j) => {
         if (alive && j?.ok) setTrainers((j.data?.numbers ?? []).join(", "));
+      })
+      .catch(() => {});
+    fetch("/api/v1/agent/sections", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (!alive || !j?.ok) return;
+        setSections(j.data?.sections ?? {});
+        setDrafts(j.data?.sections ?? {});
+        setSectionMeta(j.data?.meta ?? []);
       })
       .catch(() => {});
     return () => {
@@ -117,8 +150,7 @@ export function AgentStudio({
   const [editError, setEditError] = useState("");
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [applying, setApplying] = useState(false);
-  const [showProposalText, setShowProposalText] = useState(false);
-  const [showCurrent, setShowCurrent] = useState(false);
+  const [showProposalDetail, setShowProposalDetail] = useState(false);
   const editEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -135,6 +167,8 @@ export function AgentStudio({
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
+
+  const titleOf = (key: string) => sectionMeta.find((m) => m.key === key)?.titulo ?? key;
 
   async function patchConfig(patch: Partial<Config>) {
     const res = await fetch("/api/v1/agent/config", {
@@ -161,7 +195,38 @@ export function AgentStudio({
     }
   }
 
-  // Pede à IA uma alteração na personalidade — só a PRÉVIA, não salva.
+  // Salva as seções (PUT) e sincroniza o estado canônico + o texto montado.
+  async function persistSections(next: Sections): Promise<void> {
+    const res = await fetch("/api/v1/agent/sections", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sections: next }),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error ?? "Erro ao salvar as seções");
+    setSections(next);
+    setDrafts(next);
+    if (typeof json.data?.personality === "string") {
+      setConfig((c) => ({ ...c, personality: json.data.personality }));
+    }
+  }
+
+  // Salvar edição manual das seções (textareas).
+  async function saveSectionDrafts() {
+    setSavingSections(true);
+    setSavedSections(false);
+    try {
+      await persistSections(drafts);
+      setSavedSections(true);
+      setTimeout(() => setSavedSections(false), 2500);
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : "Erro ao salvar as seções");
+    } finally {
+      setSavingSections(false);
+    }
+  }
+
+  // Pede à IA uma alteração — só a PRÉVIA (não salva).
   async function requestEdit(e: React.FormEvent) {
     e.preventDefault();
     const instruction = editInput.trim();
@@ -183,10 +248,16 @@ export function AgentStudio({
       }
       const p: Proposal = json.data;
       setProposal(p);
-      setShowProposalText(false);
+      setShowProposalDetail(true);
       setEditMsgs((m) => [
         ...m,
-        { role: "assistant", summary: p.summary, blocked: p.blocked, applied: false },
+        {
+          role: "assistant",
+          summary: p.summary,
+          blocked: p.blocked,
+          changedTitles: p.changedKeys.map(titleOf),
+          applied: false,
+        },
       ]);
     } catch {
       setEditError("Erro de conexão com o servidor");
@@ -195,14 +266,13 @@ export function AgentStudio({
     }
   }
 
-  // Confirma a prévia: salva a nova personalidade de verdade.
+  // Confirma a prévia: salva as seções alteradas de verdade.
   async function applyProposal() {
     if (!proposal || applying) return;
     setApplying(true);
     setEditError("");
     try {
-      await patchConfig({ personality: proposal.personality });
-      setConfig((c) => ({ ...c, personality: proposal.personality }));
+      await persistSections(proposal.sections);
       setEditMsgs((m) => {
         const copy = [...m];
         for (let i = copy.length - 1; i >= 0; i--) {
@@ -215,7 +285,7 @@ export function AgentStudio({
         return copy;
       });
       setProposal(null);
-      setShowProposalText(false);
+      setShowProposalDetail(false);
     } catch (e) {
       setEditError(e instanceof Error ? e.message : "Erro ao salvar");
     } finally {
@@ -225,7 +295,7 @@ export function AgentStudio({
 
   function discardProposal() {
     setProposal(null);
-    setShowProposalText(false);
+    setShowProposalDetail(false);
   }
 
   async function send(e: React.FormEvent) {
@@ -297,7 +367,7 @@ export function AgentStudio({
             <Wand2 className="h-4 w-4 text-brand-strong" /> Editar personalidade por conversa
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Peça a alteração em linguagem natural. A IA reescreve a personalidade, você revê e salva.
+            Peça a alteração em linguagem natural. A IA muda só a seção afetada, você revê e salva.
           </p>
         </div>
 
@@ -345,10 +415,10 @@ export function AgentStudio({
             />
           </Field>
           <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-            Esses números moldam o agente mandando no WhatsApp uma mensagem que começa com{" "}
-            <code className="rounded bg-muted px-1">ajuste:</code> — ex.: “ajuste: seja mais
-            brincalhão”. Pra reverter o último: “ajuste desfazer”. As outras mensagens deles seguem
-            normais (dá pra testar o agente pelo mesmo número). As regras cruciais continuam travadas.
+            Esses números podem ajustar o agente escrevendo no WhatsApp em português normal (ex.:
+            “deixa ele mais rápido no fechamento”). O agente mostra o que vai mudar e pede um{" "}
+            <strong>sim</strong> antes de aplicar. Pra reverter: “desfazer”. As regras cruciais
+            continuam travadas.
           </p>
           <div className="mt-2 flex items-center gap-3">
             <Button size="sm" variant="outline" onClick={saveTrainers} disabled={savingTrainers}>
@@ -403,6 +473,18 @@ export function AgentStudio({
                     <Wand2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-strong" />
                     <span>{m.summary}</span>
                   </div>
+                  {m.changedTitles.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {m.changedTitles.map((t) => (
+                        <span
+                          key={t}
+                          className="rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-medium text-brand-strong"
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {m.blocked && (
                     <div className="flex items-start gap-1.5 rounded-lg bg-warning/15 px-2.5 py-1.5 text-[11px] text-warning">
                       <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -419,22 +501,49 @@ export function AgentStudio({
             ),
           )}
 
-          {/* Prévia pendente: confirmar ou descartar */}
+          {/* Prévia pendente: mostra o antes/depois de cada seção; confirmar/descartar */}
           {proposal && (
             <div className="rounded-xl border border-brand/40 bg-brand/5 p-3">
-              <div className="mb-2 text-xs font-semibold text-brand-strong">Prévia da alteração</div>
-              <button
-                type="button"
-                onClick={() => setShowProposalText((v) => !v)}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-              >
-                <ChevronDown className={cn("h-3.5 w-3.5 transition", showProposalText && "rotate-180")} />
-                {showProposalText ? "Esconder" : "Ver"} o texto novo da personalidade
-              </button>
-              {showProposalText && (
-                <pre className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-background p-2.5 font-mono text-[11px] leading-relaxed text-muted-foreground">
-                  {proposal.personality}
-                </pre>
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-xs font-semibold text-brand-strong">
+                  Prévia — {proposal.changedKeys.length}{" "}
+                  {proposal.changedKeys.length === 1 ? "seção muda" : "seções mudam"}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowProposalDetail((v) => !v)}
+                  className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronDown className={cn("h-3.5 w-3.5 transition", showProposalDetail && "rotate-180")} />
+                  {showProposalDetail ? "Esconder" : "Ver"} o antes/depois
+                </button>
+              </div>
+              {showProposalDetail && (
+                <div className="space-y-2">
+                  {proposal.changedKeys.map((key) => (
+                    <div key={key} className="rounded-lg bg-background p-2">
+                      <div className="mb-1 text-[11px] font-semibold">{titleOf(key)}</div>
+                      <div className="grid gap-1.5 sm:grid-cols-2">
+                        <div>
+                          <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Antes
+                          </div>
+                          <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap rounded bg-danger/5 p-1.5 font-mono text-[10px] leading-relaxed text-muted-foreground">
+                            {sections[key]?.trim() || "(vazia)"}
+                          </pre>
+                        </div>
+                        <div>
+                          <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-wide text-success">
+                            Depois
+                          </div>
+                          <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap rounded bg-success/5 p-1.5 font-mono text-[10px] leading-relaxed text-foreground">
+                            {proposal.sections[key]?.trim() || "(vazia)"}
+                          </pre>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
               <div className="mt-3 flex items-center gap-2">
                 <Button size="sm" onClick={applyProposal} disabled={applying}>
@@ -458,20 +567,37 @@ export function AgentStudio({
           <div ref={editEndRef} />
         </div>
 
-        {/* Ver personalidade atual (read-only) */}
+        {/* Ver / editar as seções direto */}
         <div className="border-t border-border px-4 py-2">
           <button
             type="button"
-            onClick={() => setShowCurrent((v) => !v)}
+            onClick={() => setShowSections((v) => !v)}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
           >
-            <ChevronDown className={cn("h-3.5 w-3.5 transition", showCurrent && "rotate-180")} />
-            {showCurrent ? "Esconder" : "Ver"} personalidade atual
+            <ChevronDown className={cn("h-3.5 w-3.5 transition", showSections && "rotate-180")} />
+            {showSections ? "Esconder" : "Ver"} as seções da personalidade
           </button>
-          {showCurrent && (
-            <pre className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-lg bg-muted p-2.5 font-mono text-[11px] leading-relaxed text-muted-foreground">
-              {config.personality}
-            </pre>
+          {showSections && (
+            <div className="mt-2 space-y-3">
+              {sectionMeta.map((m) => (
+                <div key={m.key}>
+                  <label className="text-[11px] font-semibold">{m.titulo}</label>
+                  <p className="mb-1 text-[10px] text-muted-foreground">{m.descricao}</p>
+                  <Textarea
+                    rows={3}
+                    value={drafts[m.key] ?? ""}
+                    onChange={(e) => setDrafts((d) => ({ ...d, [m.key]: e.target.value }))}
+                    className="font-mono text-[11px] leading-relaxed"
+                  />
+                </div>
+              ))}
+              <div className="flex items-center gap-3 pb-1">
+                <Button size="sm" variant="outline" onClick={saveSectionDrafts} disabled={savingSections}>
+                  {savingSections ? "Salvando…" : "Salvar seções"}
+                </Button>
+                {savedSections && <span className="text-xs text-success">Salvo ✓</span>}
+              </div>
+            </div>
           )}
         </div>
 
