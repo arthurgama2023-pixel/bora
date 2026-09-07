@@ -9,6 +9,12 @@ import {
   caxiasTiers,
 } from "@/data/caxias-pricing";
 import { PRICING_URL, idsRemotos } from "@/lib/tabela";
+import {
+  readPricingCache,
+  writePricingCache,
+  type RemoteProd,
+  type RemotePricing,
+} from "@/lib/pricing-cache";
 
 const STORAGE_KEY = "ss-chopp-zone";
 const PHONE_KEY = "ss-chopp-phone";
@@ -23,16 +29,8 @@ export const FALLBACK_WHATSAPP = "5521993765465";
 // quebra o preço nem o seletor de bairro). URL e mapa de ids vivem em
 // lib/tabela.ts — mesma fonte que o cartão de preços do agente usa.
 
-type RemoteProd = { id: string; tiers?: [number, number, number]; fixed?: number };
-type RemotePricing = {
-  products: RemoteProd[];
-  overrides: Record<string, RemoteProd[]>;
-  // Bairros adicionados na aba "Preços do Site" do KegControl, além dos já
-  // embutidos aqui — fundidos em `zones` abaixo.
-  extraRegions: Record<string, string[]>;
-  // Bairros EMBUTIDOS excluídos na aba — tirados de `zones` abaixo.
-  removedRegions: Record<string, string[]>;
-};
+// Os tipos RemoteProd/RemotePricing e o cache vivem em @/lib/pricing-cache
+// (reaproveitados aqui e testáveis fora do React).
 
 // tiers remoto = [preço 1un, 2un, 3+]. Escolhe pela quantidade.
 function tierUnit(tiers: [number, number, number], qty: number): number {
@@ -122,25 +120,35 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     else localStorage.removeItem(PHONE_KEY);
   }
 
-  // Busca os preços + cobertura publicados uma vez ao carregar. Falha
-  // silenciosa => fallback local (preços fixos + zonas embutidas).
+  // Busca os preços + cobertura publicados uma vez ao carregar. Primeiro hidrata
+  // do CACHE (último preço real que o cliente já viu) pra não piscar a tabela
+  // fixa nem perder os overrides por zona se o banco estiver fora; o fetch ao
+  // vivo então sobrescreve. Falha do fetch sem cache => fallback fixo do código.
   useEffect(() => {
     let alive = true;
+    const cached = readPricingCache();
+    if (cached) {
+      setRemote(cached.data);
+      if (cached.whatsappNumber) setWhatsappNumber(cached.whatsappNumber);
+      setPricingRev((x) => x + 1);
+    }
     fetch(PRICING_URL)
       .then((r) => r.json())
       .then((j) => {
         if (!alive || !j?.ok || !j.data) return;
-        setRemote({
+        const data: RemotePricing = {
           products: j.data.products ?? [],
           overrides: j.data.overrides ?? {},
           extraRegions: j.data.extraRegions ?? {},
           removedRegions: j.data.removedRegions ?? {},
-        });
+        };
+        setRemote(data);
         // Número do WhatsApp configurado no painel (só dígitos). Sem ele, mantém
         // o fallback.
         const wa = String(j.data.whatsappNumber ?? "").replace(/\D/g, "");
         if (wa) setWhatsappNumber(wa);
         setPricingRev((x) => x + 1);
+        writePricingCache(data, wa);
       })
       .catch(() => {});
     return () => {
