@@ -38,6 +38,19 @@ describe("decideTrainerAction — ocioso", () => {
     expect(decideTrainerAction("oi, boa tarde", idle)).toEqual({ kind: "passthrough" });
   });
 
+  // "ajuste"/"ajustar" NO MEIO da frase também liga o modo (pedido do dono).
+  it("gatilho no meio da frase liga o modo", () => {
+    expect(decideTrainerAction("faça um ajuste", idle)).toEqual({ kind: "enter" });
+    expect(decideTrainerAction("pode ajustar aí", idle)).toEqual({ kind: "enter" });
+  });
+
+  it("frase com gatilho E pedido vira instrução (a frase inteira)", () => {
+    const frase = "Então, faça um ajuste. Porque você cumprimentou duas vezes, cumprimente só uma";
+    expect(decideTrainerAction(frase, idle)).toEqual({ kind: "enter", instruction: frase });
+    const f2 = "quero ajustar a saudação pra ficar bem mais curta";
+    expect(decideTrainerAction(f2, idle)).toEqual({ kind: "enter", instruction: f2 });
+  });
+
   it("texto vazio é ignorado", () => {
     expect(decideTrainerAction("   ", idle)).toEqual({ kind: "ignore" });
   });
