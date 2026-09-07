@@ -118,6 +118,29 @@ export function parseToSections(text: string): PersonalitySections | null {
   return out;
 }
 
+// Aplica mudanças de seção a UMA CÓPIA das seções atuais, tocando apenas as
+// chaves presentes em `changes` (as demais ficam idênticas). É o coração do
+// "ajuste sem contradição": o editor reescreve a seção-alvo inteira e nada
+// mais. Chaves inválidas são ignoradas; uma mudança que não altera nada (mesmo
+// texto) não conta como alterada. Devolve as seções resultantes e a lista do
+// que de fato mudou.
+export function applySectionChanges(
+  current: PersonalitySections,
+  changes: Partial<Record<string, unknown>>,
+): { sections: PersonalitySections; changedKeys: SectionKey[] } {
+  const sections = coerceSections(current);
+  const changedKeys: SectionKey[] = [];
+  for (const key of SECTION_KEYS) {
+    const next = changes[key];
+    if (typeof next !== "string") continue;
+    const trimmed = next.trim();
+    if (trimmed === sections[key]) continue; // sem mudança real
+    sections[key] = trimmed;
+    changedKeys.push(key);
+  }
+  return { sections, changedKeys };
+}
+
 export function emptySections(): PersonalitySections {
   return SECTION_KEYS.reduce((acc, k) => {
     acc[k] = "";

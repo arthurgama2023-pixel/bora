@@ -29,6 +29,8 @@ import {
 import { createAgentSiteOrder } from "./site-orders";
 import {
   CLEAN_SECTIONS,
+  SECTION_META,
+  applySectionChanges,
   coerceSections,
   parseToSections,
   renderPersonality,
@@ -243,6 +245,98 @@ export async function editPersonality(
   const blocked = blockedRaw && blockedRaw.toLowerCase() !== "null" ? blockedRaw : null;
 
   return { personality, summary, blocked };
+}
+
+// EDITOR POR SEÇÃO (v2). Em vez de reescrever o texto inteiro ("preserve todo o
+// resto", que deixava contradições), identifica quais SEÇÕES a instrução afeta
+// e reescreve CADA UMA por inteiro — as demais ficam intactas por construção.
+// É isto que acaba com o "ajuste parcial". Não salva: devolve a prévia (seções
+// resultantes + o que mudou) pra UI/WhatsApp confirmarem.
+const SECTIONS_EDITOR_RULES = `Você é um EDITOR da personalidade de um agente de atendimento de WhatsApp de uma distribuidora de chope (SS-Chopp). A personalidade é dividida em SEÇÕES fixas, cada uma com um papel. Você recebe o conteúdo ATUAL de cada seção e uma INSTRUÇÃO do operador (o dono).
+
+Sua tarefa: descobrir quais seções a instrução afeta e reescrever CADA UMA dessas seções POR INTEIRO, já coerente, aplicando o pedido em todos os pontos daquela seção. NÃO devolva as seções que não precisam mudar. Quem manda no comportamento é só o texto que você devolve para a seção — então não deixe, na seção reescrita, nenhuma frase que contradiga o que o operador pediu.
+
+SEÇÕES (chave — papel):
+- identidade — quem é o agente: nome, empresa, papel.
+- tom — como fala: formalidade, tamanho das frases, emojis, ritmo, uma pergunta por vez.
+- saudacao — como abre a conversa e cumprimenta.
+- catalogo — o que a empresa vende em linhas gerais (marcas, o que vem no kit). NUNCA fixe litragem nem preço aqui.
+- fluxo — os passos do atendimento até fechar o pedido.
+- regrasDono — regras e preferências livres que o dono acrescenta.
+
+REGRAS INVIOLÁVEIS — você NUNCA adiciona, enfraquece ou contradiz nada sobre: (1) PREÇO sempre pela ferramenta de preço por bairro, nunca de memória; (2) CADASTRO silencioso, nunca dizer que está cadastrando nem que o cliente "não tem cadastro"; (3) USO DE FERRAMENTAS para consultar dados. Isso já é garantido pelo sistema, fora destas seções. Se a instrução pedir para mexer nisso (ex.: "pode falar preço de cabeça"), NÃO faça — explique no campo "blocked".
+
+Escolha a MENOR quantidade de seções necessária. "fala mais curto" → só tom. "muda a saudação" → só saudacao. "sempre ofereça a chopeira" → regrasDono (ou catalogo, se for sobre o que vende). Preserve o português do Brasil.
+
+Responda SOMENTE com um JSON válido, sem markdown, exatamente neste formato:
+{"changes": {"<chave da seção>": "<novo conteúdo COMPLETO da seção>", ...}, "summary": "<1-2 frases, em pt-BR, do que mudou e em qual seção>", "blocked": "<null se nada foi bloqueado; senão, explique o que foi ignorado por ser regra crucial>"}`;
+
+export type SectionsEditResult = {
+  sections: PersonalitySections; // prévia já com as mudanças aplicadas (não salva)
+  changedKeys: string[]; // seções que mudaram
+  summary: string;
+  blocked: string | null;
+};
+
+export async function editPersonalitySections(
+  companyId: string,
+  instruction: string,
+): Promise<SectionsEditResult> {
+  const { sections: current } = await getPersonalitySections(companyId);
+
+  if (!process.env.GEMINI_API_KEY) {
+    throw new ApiError(
+      503,
+      "A edição por conversa precisa da GEMINI_API_KEY configurada. Sem ela, edite as seções manualmente.",
+    );
+  }
+
+  const secoesTxt = SECTION_META.map(
+    ({ key, titulo }) => `[${key}] ${titulo}:\n"""\n${current[key] || "(vazia)"}\n"""`,
+  ).join("\n\n");
+  const userMsg = `SEÇÕES ATUAIS:\n${secoesTxt}\n\nINSTRUÇÃO DO OPERADOR:\n"""\n${instruction}\n"""`;
+
+  const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const response = await client.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: [{ role: "user", parts: [{ text: userMsg }] }],
+    config: {
+      systemInstruction: SECTIONS_EDITOR_RULES,
+      responseMimeType: "application/json",
+      thinkingConfig: { thinkingBudget: 1024 },
+    },
+  });
+
+  const raw = (response.text ?? "").trim();
+  let parsed: { changes?: unknown; summary?: unknown; blocked?: unknown };
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new ApiError(502, "A IA devolveu um formato inesperado. Tente reformular a instrução.");
+  }
+
+  const changes =
+    parsed.changes && typeof parsed.changes === "object"
+      ? (parsed.changes as Record<string, unknown>)
+      : {};
+  const { sections, changedKeys } = applySectionChanges(current, changes);
+
+  const blockedRaw = typeof parsed.blocked === "string" ? parsed.blocked.trim() : "";
+  const blocked = blockedRaw && blockedRaw.toLowerCase() !== "null" ? blockedRaw : null;
+
+  if (changedKeys.length === 0 && !blocked) {
+    throw new ApiError(
+      422,
+      "Não entendi o que mudar. Tenta ser mais específico (ex.: “deixa a saudação mais curta”).",
+    );
+  }
+
+  const summary =
+    typeof parsed.summary === "string" && parsed.summary.trim()
+      ? parsed.summary.trim()
+      : "Alteração aplicada.";
+
+  return { sections, changedKeys, summary, blocked };
 }
 
 // ─── Treinador pelo WhatsApp ────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   CLEAN_SECTIONS,
   SECTION_META,
+  applySectionChanges,
   coerceSections,
   emptySections,
   parseToSections,
@@ -69,6 +70,53 @@ describe("coerceSections", () => {
     expect(coerceSections(null)).toEqual(emptySections());
     expect(coerceSections([1, 2, 3])).toEqual(emptySections());
     expect(coerceSections("string")).toEqual(emptySections());
+  });
+});
+
+describe("applySectionChanges", () => {
+  const base: PersonalitySections = {
+    ...emptySections(),
+    identidade: "Sou o Chopinho.",
+    tom: "Curto.",
+    fluxo: "1. bairro",
+  };
+
+  it("altera SÓ a seção-alvo e deixa as outras idênticas", () => {
+    const { sections, changedKeys } = applySectionChanges(base, {
+      tom: "Bem mais brincalhão e caloroso.",
+    });
+    expect(changedKeys).toEqual(["tom"]);
+    expect(sections.tom).toBe("Bem mais brincalhão e caloroso.");
+    expect(sections.identidade).toBe(base.identidade); // intacta
+    expect(sections.fluxo).toBe(base.fluxo); // intacta
+  });
+
+  it("pode alterar mais de uma seção de uma vez", () => {
+    const { changedKeys } = applySectionChanges(base, {
+      tom: "Novo tom.",
+      saudacao: "Nova saudação.",
+    });
+    expect(changedKeys.sort()).toEqual(["saudacao", "tom"]);
+  });
+
+  it("ignora chaves inválidas", () => {
+    const { sections, changedKeys } = applySectionChanges(base, {
+      lixo: "nada",
+      preco: "R$1",
+    });
+    expect(changedKeys).toEqual([]);
+    expect(sections).toEqual(coerceSections(base));
+  });
+
+  it("não conta como mudança quando o texto é igual (evita falso 'ajustei')", () => {
+    const { changedKeys } = applySectionChanges(base, { tom: "  Curto.  " });
+    expect(changedKeys).toEqual([]);
+  });
+
+  it("não muta o objeto original", () => {
+    const snapshot = JSON.stringify(base);
+    applySectionChanges(base, { tom: "outro" });
+    expect(JSON.stringify(base)).toBe(snapshot);
   });
 });
 
