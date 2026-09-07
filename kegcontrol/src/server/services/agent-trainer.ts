@@ -37,13 +37,25 @@ function normalize(text: string): string {
     .trim();
 }
 
-// Gatilho no INÍCIO da mensagem — o ":" é opcional e o que vem depois é tratado
-// como um primeiro ajuste (ex.: "ajuste: fala mais curto").
-const ENTER_RE = /^(ajustes?|ajustar|configurar|config|treino|treinar|modo\s+ajuste)\b\s*:?\s*([\s\S]*)$/i;
+// Raiz dos gatilhos: QUALQUER palavra derivada de "ajustar"/"configurar"/
+// "treinar" liga o modo — ajuste, ajusta, ajustar, ajustando, ajustei, ajusto,
+// reajuste, configuração, treino… Basta a palavra CONTER a raiz.
+const TRIGGER_ROOTS = /(ajust|configur|\bconfig\b|\btrein)/i;
 
-// Gatilho em QUALQUER posição: o dono quer que "ajuste"/"ajustar" ligue o modo
-// mesmo no meio da frase (ex.: "Então, faça um ajuste. Você cumprimentou 2x").
-const CONTAINS_TRIGGER = /\b(ajustes?|ajustar|ajusta|configurar|config|modo\s+ajuste|treino|treinar)\b/i;
+// Uma palavra (já normalizada) é gatilho? (usado pra separar gatilho de pedido)
+function isTriggerWord(w: string): boolean {
+  return (
+    w.includes("ajust") ||
+    w.startsWith("configur") ||
+    w === "config" ||
+    w.startsWith("trein") ||
+    w === "modo"
+  );
+}
+
+// "gatilho: instrução" no início — os dois-pontos separam explicitamente o
+// pedido (ex.: "ajuste: fala mais curto", "ajusta: seja mais rápido").
+const ENTER_COLON_RE = /^(?:ajust\w*|configur\w*|config|trein\w*|modo\s+ajuste)\s*:\s*(\S[\s\S]*)$/i;
 
 // Palavras de cortesia/comando que NÃO são instrução — usadas pra decidir se,
 // além do gatilho, a mensagem traz um pedido de verdade (então já viramos a
@@ -53,15 +65,17 @@ const COURTESY = new Set([
   "por", "favor", "pra", "para", "o", "a", "os", "as", "ai", "voce", "vc",
   "agente", "ia", "quero", "queria", "gostaria", "preciso", "pode", "poderia",
   "vamos", "bora", "manda", "la", "aqui", "no", "na", "e", "que", "de", "me",
-  "ajustes", "ajuste", "ajustar", "ajusta", "configurar", "config", "treino",
-  "treinar", "modo",
+  "mim", "isso", "ali",
 ]);
 
-// Se, tirando o gatilho e as palavras de cortesia, ainda sobra conteúdo (≥3
+// Se, tirando o gatilho e as palavras de cortesia, ainda sobra conteúdo (≥2
 // palavras), a mensagem inteira vira a instrução — o Gemini extrai a intenção.
+// Senão ("ajusta pra mim", "faça um ajuste"), só ligamos o modo e perguntamos.
 function enterInstruction(text: string, normalized: string): string {
-  const rest = normalized.split(" ").filter((w) => w && !COURTESY.has(w));
-  return rest.length >= 3 ? text.trim() : "";
+  const rest = normalized
+    .split(" ")
+    .filter((w) => w && !COURTESY.has(w) && !isTriggerWord(w));
+  return rest.length >= 2 ? text.trim() : "";
 }
 
 const EXIT_WORDS = ["sair", "pronto", "fechar", "terminar", "encerrar", "parar", "fim"];
@@ -95,24 +109,18 @@ export function decideTrainerAction(
     return { kind: "instruct", instruction: text.trim() };
   }
 
-  // Ocioso: liga o modo com um gatilho. O resto é conversa de cliente (o
+  // Ocioso: qualquer raiz de gatilho ("ajust"/"configur"/"trein") liga o modo,
+  // em qualquer posição da frase. Sem gatilho, é conversa de cliente (o
   // treinador também compra/testa pelo mesmo número).
   const trimmed = text.trim();
+  if (!TRIGGER_ROOTS.test(n)) return { kind: "passthrough" };
 
-  // 1) Gatilho no INÍCIO com instrução limpa após ":" — ex.: "ajuste: X".
-  const m = trimmed.match(ENTER_RE);
-  if (m) {
-    const instruction = (m[2] ?? "").trim();
-    return /[\p{L}\p{N}]/u.test(instruction)
-      ? { kind: "enter", instruction }
-      : { kind: "enter" };
-  }
+  // "gatilho: X" — instrução explícita após os dois-pontos.
+  const colon = trimmed.match(ENTER_COLON_RE);
+  if (colon) return { kind: "enter", instruction: colon[1].trim() };
 
-  // 2) Gatilho em qualquer posição — ex.: "faça um ajuste, cumprimente 1x só".
-  //    Se além do gatilho vier um pedido, a frase inteira é a instrução.
-  if (CONTAINS_TRIGGER.test(trimmed)) {
-    const instruction = enterInstruction(trimmed, n);
-    return instruction ? { kind: "enter", instruction } : { kind: "enter" };
-  }
-  return { kind: "passthrough" };
+  // Senão, a frase inteira vira instrução se trouxer um pedido de verdade;
+  // caso contrário só liga o modo e pergunta o quê.
+  const instruction = enterInstruction(trimmed, n);
+  return instruction ? { kind: "enter", instruction } : { kind: "enter" };
 }
