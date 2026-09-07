@@ -238,7 +238,7 @@ export async function getAutoDispatchEnabled(companyId: string): Promise<boolean
     where: { companyId_key: { companyId, key: AUTO_DISPATCH_KEY } },
     select: { value: true },
   });
-  return row?.value !== "false"; // ausente = ligado (preserva o comportamento atual)
+  return row?.value === "true"; // ausente = DESLIGADO (seguro — não dispara sem o dono ligar)
 }
 
 export async function setAutoDispatchEnabled(companyId: string, on: boolean): Promise<void> {

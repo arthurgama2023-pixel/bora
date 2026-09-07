@@ -1,4 +1,7 @@
-# Segredos — NUNCA commitar
+# Segredos — NUNCA commitar (qualquer .env real, em qualquer subpasta)
+.env
+**/.env
+!**/.env.example
 server/.env
 
 # Uploads e dados persistentes — ficam no servidor

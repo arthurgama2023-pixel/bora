@@ -27,6 +27,16 @@ import {
   resolveProductByText,
 } from "./site-pricing";
 import { createAgentSiteOrder } from "./site-orders";
+import {
+  CLEAN_SECTIONS,
+  SECTION_META,
+  applySectionChanges,
+  coerceSections,
+  parseToSections,
+  renderPersonality,
+  type PersonalitySections,
+} from "./agent-personality";
+import { decideTrainerAction, type TrainerMode } from "./agent-trainer";
 
 // Cliente reconhecido pelo número de WhatsApp (ou null se o número não bate
 // com nenhum cadastro). Passado ao agente para ele "conectar os pontos".
@@ -59,7 +69,7 @@ Regras:
 // Regras SEMPRE injetadas (independem da personalidade editável no banco).
 // Governam o cadastro espontâneo e natural do cliente.
 const NATURAL_CUSTOMER_RULES = `# REGRA MÁXIMA — nunca fale preço, produto ou marca de memória
-Existem só 5 marcas no catálogo: Belco, Brahma, Heineken, Amstel e Chopp de Vinho — nada além disso existe (não existe "Brahma Duplo Malte", "Belco Pilsen", "Black Princes", nem litragem 20L de nada). Se o assunto for preço, produto, marca ou tabela, e a ferramenta preco_por_bairro AINDA NÃO foi chamada NESTA resposta, chame-a AGORA antes de responder — nunca responda com números ou nomes que você "lembra" de mensagens anteriores ou do seu próprio conhecimento geral sobre chope/cerveja. Isso vale mesmo se o cliente pedir "a tabela toda" ou parecer uma pergunta simples: SEMPRE a ferramenta primeiro, texto depois. Informar um produto ou preço inventado é o pior erro possível neste atendimento — é dinheiro real do cliente.
+Existem só 5 marcas no catálogo: Belco, Brahma, Heineken, Amstel e Chopp de Vinho — nada além disso existe (não existe "Brahma Duplo Malte", "Belco Pilsen", "Black Princes", nem litragem 20L de nada). Se o assunto for preço, produto, marca ou tabela, e a ferramenta preco_por_bairro AINDA NÃO foi chamada NESTA resposta, chame-a AGORA antes de responder — nunca responda com números ou nomes que você "lembra" de mensagens anteriores ou do seu próprio conhecimento geral sobre chope/cerveja. Isso vale mesmo se o cliente pedir "a tabela toda" ou parecer uma pergunta simples: SEMPRE a ferramenta primeiro, texto depois. Informar um produto ou preço inventado é o pior erro possível neste atendimento — é dinheiro real do cliente. Isso vale TAMBÉM para dizer se um produto ou LITRAGEM existe: NUNCA afirme "só tem em 30L", "não temos 50L", "esse não existe" ou parecido sem chamar preco_por_bairro ANTES — a ferramenta lista TODOS os produtos e litragens disponíveis da região; se está na lista, existe (ex.: Chopp de Vinho tem 30L E 50L). Nunca negue uma litragem de memória.
 
 # Cadastro natural (regras invioláveis)
 - NUNCA diga que o cliente "não tem cadastro", "não está cadastrado", "não te encontrei aqui" ou algo do tipo. Trate TODO mundo como cliente conhecido, mesmo que seja o primeiro contato.
@@ -77,7 +87,11 @@ Existem só 5 marcas no catálogo: Belco, Brahma, Heineken, Amstel e Chopp de Vi
 # Como mostrar preços
 - SEMPRE consulte preco_por_bairro antes de falar qualquer preço (com o bairro do cliente). Nunca fale preço de memória.
 - Se o cliente pediu a TABELA/LISTA de preços (vários produtos: "me manda a tabela", "quais os preços", "preço de tudo", "quanto tá cada um"): chame preco_por_bairro com tabela_completa=true. A TABELA JÁ SERÁ COLADA AUTOMATICAMENTE embaixo da sua mensagem — você escreve APENAS uma saudação curta de 1 linha (nome do cliente + bairro + "seguem os preços 👇"). NÃO escreva preço, nome de produto nem tabela; NÃO faça pergunta. Só a saudação.
-- Se o cliente perguntou de UM produto específico ("quanto é a Brahma?"): chame preco_por_bairro com tabela_completa=false e responda em UMA frase natural só o preço daquele produto (ex.: "Belco 50L pra Xerém sai R$600 a unidade, R$550 levando 2, ou R$500 de 3+, com frete grátis") — sem listar os outros.`;
+- Se o cliente perguntou de UM produto específico ("quanto é a Brahma?"): chame preco_por_bairro com tabela_completa=false e responda em UMA frase natural só o preço daquele produto (ex.: "Belco 50L pra Xerém sai R$600 a unidade, R$550 levando 2, ou R$500 de 3+, com frete grátis") — sem listar os outros.
+- Se o cliente quer o TOTAL de N barris ("quanto fica 3 Belco 50?", "quero 3 belco 50 quanto no total"): chame preco_por_bairro com produto E quantidade — a ferramenta devolve o total EXATO no campo "cotacao". Informe esse total ao pé da letra. NUNCA multiplique de cabeça: você erra a faixa por quantidade.
+
+# Ordens de estilo do dono — cumpra AO PÉ DA LETRA
+As regras de "Jeito de falar"/estilo da sua personalidade são ORDENS diretas do dono. Cumpra-as EXATAMENTE como escritas, ao pé da letra, em TODA resposta. Se o dono mandou começar de um jeito, comece exatamente assim. Se mandou ser curto, ou responder "apenas"/"só" algo, faça só isso — NÃO adicione apresentação da empresa, história ("desde 2016"), frases de efeito, perguntas ou qualquer texto que não foi pedido. Menos é mais: entregue só o que foi pedido, do jeito que foi pedido.`;
 
 export async function getAgentConfig(companyId: string) {
   const existing = await prisma.agentConfig.findUnique({ where: { companyId } });
@@ -100,73 +114,161 @@ export async function updateAgentConfig(
   return prisma.agentConfig.update({ where: { companyId }, data });
 }
 
-// EDITOR CONVERSACIONAL da personalidade. Recebe uma instrução em linguagem
-// natural do operador ("deixa mais brincalhão", "adiciona que entregamos até
-// meia-noite") e devolve a personalidade COMPLETA já reescrita — SEM salvar (a
-// UI mostra a prévia e o operador confirma). As regras cruciais (preço sempre
-// pela ferramenta, cadastro silencioso, uso de ferramentas) NÃO fazem parte
-// deste texto — vivem em NATURAL_CUSTOMER_RULES, no código — então nunca são
-// alteradas aqui; se a instrução tentar mexer nelas, o modelo recusa e explica
-// em `blocked`.
-const PERSONALITY_EDITOR_RULES = `Você é um EDITOR do texto de PERSONALIDADE de um agente de atendimento de WhatsApp de uma distribuidora de chope (SS-Chopp). Recebe a PERSONALIDADE ATUAL e uma INSTRUÇÃO do operador (o dono do negócio). Sua tarefa: aplicar a instrução ao texto, preservando todo o resto, e devolver a personalidade COMPLETA já atualizada (o texto inteiro, não um trecho).
+// ─── Personalidade por seções ───────────────────────────────────────────────
+// As seções canônicas são guardadas como JSON no Setting abaixo (sem migração
+// de schema). O texto final (AgentConfig.personality, o que o LLM recebe) é
+// sempre regenerado a partir delas por renderPersonality — o runtime não muda.
+const PERSONALITY_SECTIONS_KEY = "agent.personality_sections";
 
-REGRAS INVIOLÁVEIS — você NUNCA adiciona, enfraquece, contradiz ou remove nada sobre:
-1. PREÇO: o agente sempre consulta a ferramenta de preço por bairro; nunca fala preço/produto/marca de memória; preço vem do site por localidade.
-2. CADASTRO: é silencioso; o agente nunca diz que está cadastrando/salvando nem que o cliente "não tem cadastro".
-3. USO DE FERRAMENTAS: o agente usa as ferramentas do sistema para consultar dados; nunca inventa.
-Essas regras já são garantidas pelo sistema, fora deste texto. Se a INSTRUÇÃO pedir para mexer em qualquer uma delas (ex.: "pode falar o preço de cabeça", "diga que vai cadastrar"), NÃO faça — mantenha o texto seguro e explique o que foi ignorado no campo "blocked".
+// Lê as seções da personalidade. `source` diz de onde vieram:
+//   "saved"   — já persistidas no Setting (o dono migrou/editou por seção).
+//   "parsed"  — derivadas do texto atual, que já está no formato por seções.
+//   "default" — o texto atual não é parseável (personalidade antiga à mão);
+//               devolve o conteúdo limpo padrão, SEM salvar nem sobrescrever.
+export async function getPersonalitySections(
+  companyId: string,
+): Promise<{ sections: PersonalitySections; source: "saved" | "parsed" | "default" }> {
+  const row = await prisma.setting.findUnique({
+    where: { companyId_key: { companyId, key: PERSONALITY_SECTIONS_KEY } },
+    select: { value: true },
+  });
+  if (row?.value?.trim()) {
+    try {
+      return { sections: coerceSections(JSON.parse(row.value)), source: "saved" };
+    } catch {
+      // JSON corrompido: cai pro texto atual / default abaixo.
+    }
+  }
+  const config = await getAgentConfig(companyId);
+  const parsed = parseToSections(config.personality);
+  if (parsed) return { sections: parsed, source: "parsed" };
+  return { sections: { ...CLEAN_SECTIONS }, source: "default" };
+}
 
-Preserve o idioma (português do Brasil) e o formato do texto. Não invente fatos do negócio que o operador não pediu.
+// Se ainda não há seções salvas para este dono.
+export async function isPersonalityMigrated(companyId: string): Promise<boolean> {
+  const row = await prisma.setting.findUnique({
+    where: { companyId_key: { companyId, key: PERSONALITY_SECTIONS_KEY } },
+    select: { value: true },
+  });
+  return Boolean(row?.value?.trim());
+}
+
+// Salva as seções (JSON no Setting) e regenera o texto da personalidade em
+// AgentConfig.personality. Guarda a versão anterior do TEXTO para o "desfazer"
+// (mesmo mecanismo de um nível de hoje). Retorna o texto final montado.
+export async function savePersonalitySections(
+  companyId: string,
+  sections: PersonalitySections,
+): Promise<{ personality: string }> {
+  const clean = coerceSections(sections);
+  const personality = renderPersonality(clean);
+  const prevText = (await getAgentConfig(companyId)).personality;
+
+  await prisma.setting.upsert({
+    where: { companyId_key: { companyId, key: PERSONALITY_PREV_KEY } },
+    update: { value: prevText },
+    create: { companyId, key: PERSONALITY_PREV_KEY, value: prevText },
+  });
+  await prisma.setting.upsert({
+    where: { companyId_key: { companyId, key: PERSONALITY_SECTIONS_KEY } },
+    update: { value: JSON.stringify(clean) },
+    create: { companyId, key: PERSONALITY_SECTIONS_KEY, value: JSON.stringify(clean) },
+  });
+  await updateAgentConfig(companyId, { personality });
+  return { personality };
+}
+
+// EDITOR POR SEÇÃO (v2). Em vez de reescrever o texto inteiro ("preserve todo o
+// resto", que deixava contradições), identifica quais SEÇÕES a instrução afeta
+// e reescreve CADA UMA por inteiro — as demais ficam intactas por construção.
+// É isto que acaba com o "ajuste parcial". Não salva: devolve a prévia (seções
+// resultantes + o que mudou) pra UI/WhatsApp confirmarem.
+const SECTIONS_EDITOR_RULES = `Você é um EDITOR da personalidade de um agente de atendimento de WhatsApp de uma distribuidora de chope (SS-Chopp). A personalidade é dividida em SEÇÕES fixas, cada uma com um papel. Você recebe o conteúdo ATUAL de cada seção e uma INSTRUÇÃO do operador (o dono).
+
+Sua tarefa: descobrir quais seções a instrução afeta e reescrever CADA UMA dessas seções POR INTEIRO, já coerente, aplicando o pedido em todos os pontos daquela seção. NÃO devolva as seções que não precisam mudar. Quem manda no comportamento é só o texto que você devolve para a seção — então não deixe, na seção reescrita, nenhuma frase que contradiga o que o operador pediu.
+
+SEÇÕES (chave — papel):
+- identidade — quem é o agente: nome, empresa, papel.
+- tom — como fala: formalidade, tamanho das frases, emojis, ritmo, uma pergunta por vez.
+- saudacao — como abre a conversa e cumprimenta.
+- catalogo — o que a empresa vende em linhas gerais (marcas, o que vem no kit). NUNCA fixe litragem nem preço aqui.
+- fluxo — os passos do atendimento até fechar o pedido.
+- regrasDono — regras e preferências livres que o dono acrescenta.
+
+REGRAS INVIOLÁVEIS — você NUNCA adiciona, enfraquece ou contradiz nada sobre: (1) PREÇO sempre pela ferramenta de preço por bairro, nunca de memória; (2) CADASTRO silencioso, nunca dizer que está cadastrando nem que o cliente "não tem cadastro"; (3) USO DE FERRAMENTAS para consultar dados. Isso já é garantido pelo sistema, fora destas seções. Se a instrução pedir para mexer nisso (ex.: "pode falar preço de cabeça"), NÃO faça — explique no campo "blocked".
+
+Escolha a MENOR quantidade de seções necessária. "fala mais curto" → só tom. "muda a saudação" → só saudacao. "sempre ofereça a chopeira" → regrasDono (ou catalogo, se for sobre o que vende). Preserve o português do Brasil.
 
 Responda SOMENTE com um JSON válido, sem markdown, exatamente neste formato:
-{"personality": "<a personalidade completa, já com a alteração>", "summary": "<1-2 frases, em pt-BR, do que você mudou>", "blocked": "<null se nada foi bloqueado; senão, explique o que foi ignorado por ser regra crucial>"}`;
+{"changes": {"<chave da seção>": "<novo conteúdo COMPLETO da seção>", ...}, "summary": "<1-2 frases, em pt-BR, do que mudou e em qual seção>", "blocked": "<null se nada foi bloqueado; senão, explique o que foi ignorado por ser regra crucial>"}`;
 
-export async function editPersonality(
+export type SectionsEditResult = {
+  sections: PersonalitySections; // prévia já com as mudanças aplicadas (não salva)
+  changedKeys: string[]; // seções que mudaram
+  summary: string;
+  blocked: string | null;
+};
+
+export async function editPersonalitySections(
   companyId: string,
   instruction: string,
-): Promise<{ personality: string; summary: string; blocked: string | null }> {
-  const config = await getAgentConfig(companyId);
+): Promise<SectionsEditResult> {
+  const { sections: current } = await getPersonalitySections(companyId);
 
   if (!process.env.GEMINI_API_KEY) {
     throw new ApiError(
       503,
-      "A edição por conversa precisa da GEMINI_API_KEY configurada. Sem ela, edite a personalidade manualmente.",
+      "A edição por conversa precisa da GEMINI_API_KEY configurada. Sem ela, edite as seções manualmente.",
     );
   }
 
-  const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  const userMsg = `PERSONALIDADE ATUAL:\n"""\n${config.personality}\n"""\n\nINSTRUÇÃO DO OPERADOR:\n"""\n${instruction}\n"""`;
+  const secoesTxt = SECTION_META.map(
+    ({ key, titulo }) => `[${key}] ${titulo}:\n"""\n${current[key] || "(vazia)"}\n"""`,
+  ).join("\n\n");
+  const userMsg = `SEÇÕES ATUAIS:\n${secoesTxt}\n\nINSTRUÇÃO DO OPERADOR:\n"""\n${instruction}\n"""`;
 
+  const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const response = await client.models.generateContent({
     model: "gemini-2.5-flash",
     contents: [{ role: "user", parts: [{ text: userMsg }] }],
     config: {
-      systemInstruction: PERSONALITY_EDITOR_RULES,
+      systemInstruction: SECTIONS_EDITOR_RULES,
       responseMimeType: "application/json",
       thinkingConfig: { thinkingBudget: 1024 },
     },
   });
 
   const raw = (response.text ?? "").trim();
-  let parsed: { personality?: unknown; summary?: unknown; blocked?: unknown };
+  let parsed: { changes?: unknown; summary?: unknown; blocked?: unknown };
   try {
     parsed = JSON.parse(raw);
   } catch {
     throw new ApiError(502, "A IA devolveu um formato inesperado. Tente reformular a instrução.");
   }
 
-  const personality = typeof parsed.personality === "string" ? parsed.personality.trim() : "";
-  if (personality.length < 10) {
-    throw new ApiError(502, "A IA não conseguiu gerar a personalidade. Reformule a instrução.");
+  const changes =
+    parsed.changes && typeof parsed.changes === "object"
+      ? (parsed.changes as Record<string, unknown>)
+      : {};
+  const { sections, changedKeys } = applySectionChanges(current, changes);
+
+  const blockedRaw = typeof parsed.blocked === "string" ? parsed.blocked.trim() : "";
+  const blocked = blockedRaw && blockedRaw.toLowerCase() !== "null" ? blockedRaw : null;
+
+  if (changedKeys.length === 0 && !blocked) {
+    throw new ApiError(
+      422,
+      "Não entendi o que mudar. Tenta ser mais específico (ex.: “deixa a saudação mais curta”).",
+    );
   }
+
   const summary =
     typeof parsed.summary === "string" && parsed.summary.trim()
       ? parsed.summary.trim()
       : "Alteração aplicada.";
-  const blockedRaw = typeof parsed.blocked === "string" ? parsed.blocked.trim() : "";
-  const blocked = blockedRaw && blockedRaw.toLowerCase() !== "null" ? blockedRaw : null;
 
-  return { personality, summary, blocked };
+  return { sections, changedKeys, summary, blocked };
 }
 
 // ─── Treinador pelo WhatsApp ────────────────────────────────────────────────
@@ -208,32 +310,6 @@ export async function isTrainerNumber(companyId: string, phone: string): Promise
   return nums.some((n) => phoneMatchKey(n) === key);
 }
 
-// "ajuste: seja mais brincalhão" → { isCommand:true, instruction:"seja mais brincalhão" }.
-// Palavras-chave (início da mensagem): ajuste(s), ajustar, treino, treinar. ":" opcional.
-export function parseTrainerCommand(text: string): { isCommand: boolean; instruction: string } {
-  const m = text.match(/^\s*(?:ajustes?|ajustar|treino|treinar)\s*:?\s*([\s\S]*)$/i);
-  if (!m) return { isCommand: false, instruction: "" };
-  return { isCommand: true, instruction: (m[1] ?? "").trim() };
-}
-
-// Aplica (e SALVA) uma instrução do treinador na personalidade, guardando a
-// versão anterior pra permitir "desfazer". Pode lançar ApiError (ex.: sem chave
-// de IA). Protege as regras cruciais via editPersonality.
-export async function applyPersonalityInstruction(
-  companyId: string,
-  instruction: string,
-): Promise<{ summary: string; blocked: string | null }> {
-  const config = await getAgentConfig(companyId);
-  const result = await editPersonality(companyId, instruction);
-  await prisma.setting.upsert({
-    where: { companyId_key: { companyId, key: PERSONALITY_PREV_KEY } },
-    update: { value: config.personality },
-    create: { companyId, key: PERSONALITY_PREV_KEY, value: config.personality },
-  });
-  await updateAgentConfig(companyId, { personality: result.personality });
-  return { summary: result.summary, blocked: result.blocked };
-}
-
 // Desfaz o último ajuste: troca a personalidade atual pela anterior (e vice-versa
 // — vira um liga/desliga de um nível). Retorna false se não há versão anterior.
 export async function undoLastPersonality(companyId: string): Promise<boolean> {
@@ -251,6 +327,182 @@ export async function undoLastPersonality(companyId: string): Promise<boolean> {
     create: { companyId, key: PERSONALITY_PREV_KEY, value: current },
   });
   return true;
+}
+
+// ─── Ajuste pelo WhatsApp: modo ajuste + confirmação (para leigo) ────────────
+// Estado por número treinador (modo ligado/desligado + a prévia aguardando
+// "sim"), guardado como JSON num Setting. A decisão do que fazer com cada
+// mensagem é pura (decideTrainerAction, em agent-trainer.ts); aqui a gente
+// executa: gera a prévia, aplica, desfaz, liga/desliga o modo.
+const TRAINER_SESSION_PREFIX = "agent.trainer_session.";
+
+type TrainerPending = {
+  sections: PersonalitySections;
+  changedKeys: string[];
+  summary: string;
+  blocked: string | null;
+};
+type TrainerSession = { mode: TrainerMode; pending: TrainerPending | null };
+
+function trainerSessionKey(phone: string): string {
+  return `${TRAINER_SESSION_PREFIX}${phoneMatchKey(phone) || phone}`;
+}
+
+async function getTrainerSession(companyId: string, phone: string): Promise<TrainerSession> {
+  const row = await prisma.setting.findUnique({
+    where: { companyId_key: { companyId, key: trainerSessionKey(phone) } },
+    select: { value: true },
+  });
+  if (row?.value?.trim()) {
+    try {
+      const j = JSON.parse(row.value) as Partial<TrainerSession>;
+      return {
+        mode: j.mode === "adjusting" ? "adjusting" : "idle",
+        pending: j.pending ?? null,
+      };
+    } catch {
+      // estado corrompido → começa limpo
+    }
+  }
+  return { mode: "idle", pending: null };
+}
+
+async function setTrainerSession(
+  companyId: string,
+  phone: string,
+  session: TrainerSession,
+): Promise<void> {
+  const key = trainerSessionKey(phone);
+  const value = JSON.stringify(session);
+  await prisma.setting.upsert({
+    where: { companyId_key: { companyId, key } },
+    update: { value },
+    create: { companyId, key, value },
+  });
+}
+
+// Monta a prévia em texto amigável pro WhatsApp (linguagem de leigo).
+function previewTextForWhatsApp(pending: TrainerPending): string {
+  const nomes = pending.changedKeys
+    .map((k) => SECTION_META.find((m) => m.key === k)?.titulo ?? k)
+    .join(", ");
+  let msg = `📝 ${pending.summary}`;
+  if (nomes) msg += `\n(muda: ${nomes})`;
+  if (pending.blocked) msg += `\n⚠️ Não mexi no que é regra travada: ${pending.blocked}`;
+  msg += `\n\nAplico? responde *sim* pra valer, *não* pra descartar.`;
+  return msg;
+}
+
+// Orquestra uma mensagem de um número TREINADOR. Devolve a resposta pro
+// WhatsApp e se a conversa de teste deve ser zerada; ou null quando a mensagem
+// não é ajuste (o webhook então trata como cliente normal).
+export async function handleTrainerMessage(
+  companyId: string,
+  phone: string,
+  text: string,
+): Promise<{ reply: string; resetConversa: boolean } | null> {
+  const session = await getTrainerSession(companyId, phone);
+  const action = decideTrainerAction(text, {
+    mode: session.mode,
+    hasPending: Boolean(session.pending),
+  });
+
+  const HELP =
+    "🛠️ Modo ajuste: me diz em português o que mudar no jeito do atendente (ex.: “seja mais rápido pra fechar”, “ofereça sempre a chopeira”). Eu mostro o que vai mudar e só aplico com o seu *sim*. “desfazer” volta o último, “sair” desliga.";
+
+  // Gera a prévia de uma instrução e guarda como pendente. Mensagens de erro
+  // amigáveis (a IA pode não entender, ou faltar chave).
+  const proposeEdit = async (instruction: string): Promise<string> => {
+    try {
+      const p = await editPersonalitySections(companyId, instruction);
+      await setTrainerSession(companyId, phone, {
+        mode: "adjusting",
+        pending: {
+          sections: p.sections,
+          changedKeys: p.changedKeys,
+          summary: p.summary,
+          blocked: p.blocked,
+        },
+      });
+      return previewTextForWhatsApp({
+        sections: p.sections,
+        changedKeys: p.changedKeys,
+        summary: p.summary,
+        blocked: p.blocked,
+      });
+    } catch (e) {
+      const status = e instanceof ApiError ? e.status : 0;
+      if (status === 422) {
+        return "Não entendi bem o que mudar 🤔 Me explica de outro jeito (ex.: “deixa a saudação mais curta”).";
+      }
+      Sentry.captureException(e, { tags: { companyId, whatsapp: "trainer-edit" } });
+      return "Não consegui ajustar agora 😕 Tenta de novo em instantes.";
+    }
+  };
+
+  switch (action.kind) {
+    case "ignore":
+    case "passthrough":
+      return null;
+
+    case "enter": {
+      if (action.instruction) {
+        const reply = await proposeEdit(action.instruction);
+        return { reply, resetConversa: false };
+      }
+      await setTrainerSession(companyId, phone, { mode: "adjusting", pending: null });
+      return {
+        reply:
+          "🛠️ Modo ajuste ligado! Me diz o que você quer mudar no jeito do atendente. " +
+          "Eu mostro o que vai mudar e peço um *sim* antes de aplicar. (manda “sair” quando terminar)",
+        resetConversa: false,
+      };
+    }
+
+    case "exit":
+      await setTrainerSession(companyId, phone, { mode: "idle", pending: null });
+      return {
+        reply: "👍 Modo ajuste desligado. Suas próximas mensagens voltam a ser atendidas normalmente.",
+        resetConversa: false,
+      };
+
+    case "help":
+      return { reply: HELP, resetConversa: false };
+
+    case "undo": {
+      const ok = await undoLastPersonality(companyId);
+      await setTrainerSession(companyId, phone, { mode: "adjusting", pending: null });
+      if (!ok) return { reply: "Não tenho um ajuste anterior pra desfazer.", resetConversa: false };
+      return {
+        reply: "↩️ Desfeito — voltei pro jeito anterior.\n🔄 Zerei a conversa de teste: manda um “oi” pra ver.",
+        resetConversa: true,
+      };
+    }
+
+    case "cancel":
+      await setTrainerSession(companyId, phone, { mode: "adjusting", pending: null });
+      return { reply: "Beleza, não mexi 👍 Manda outro ajuste ou “sair”.", resetConversa: false };
+
+    case "confirm": {
+      if (!session.pending) {
+        return { reply: "Não tenho nada pendente pra aplicar. Me diz o que mudar 🙂", resetConversa: false };
+      }
+      await savePersonalitySections(companyId, session.pending.sections);
+      const summary = session.pending.summary;
+      await setTrainerSession(companyId, phone, { mode: "adjusting", pending: null });
+      return {
+        reply:
+          `✅ Feito! ${summary}\n🔄 Zerei a conversa de teste: manda um “oi” pra ver como ficou.\n` +
+          "(pra reverter: “desfazer” · pra sair: “sair”)",
+        resetConversa: true,
+      };
+    }
+
+    case "instruct": {
+      const reply = await proposeEdit(action.instruction);
+      return { reply, resetConversa: false };
+    }
+  }
 }
 
 // ─── Foto do produto (a mesma do site, publicada no Netlify) ──────────────
@@ -334,7 +586,7 @@ const TOOLS: FunctionDeclaration[] = [
   {
     name: "preco_por_bairro",
     description:
-      "Consulta se um bairro está na área de preço fixo (Duque de Caxias, São João de Meriti e região) e retorna os preços de hoje por tipo de barril, com frete grátis. Use sempre que o cliente mencionar o bairro dele ou perguntar preço/entrega em uma região. Se o bairro não estiver coberto, a ferramenta avisa e você deve dizer que a equipe comercial confirma o valor — nunca invente preço para bairro fora da tabela.",
+      "Consulta se um bairro está na área de preço fixo (Duque de Caxias, São João de Meriti e região) e retorna os preços de hoje por tipo de barril, com frete grátis. Use sempre que o cliente mencionar o bairro dele ou perguntar preço/entrega em uma região. Para o TOTAL de N barris de um produto, passe também 'produto' e 'quantidade' — a ferramenta devolve o total EXATO (não calcule de cabeça). Se o bairro não estiver coberto, a ferramenta avisa e você deve dizer que a equipe comercial confirma o valor — nunca invente preço para bairro fora da tabela.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -343,6 +595,16 @@ const TOOLS: FunctionDeclaration[] = [
           type: Type.BOOLEAN,
           description:
             "true quando o cliente pediu a TABELA/LISTA de preços de vários produtos ('me manda a tabela', 'quais os preços', 'preço de tudo', 'quanto tá cada um'). false (ou omitido) quando ele perguntou o preço de UM produto específico.",
+        },
+        produto: {
+          type: Type.STRING,
+          description:
+            "Produto específico perguntado (ex.: 'Belco 50L', 'Brahma 50L', 'Chopp de Vinho 30L'), quando o cliente pergunta de UM item. Opcional.",
+        },
+        quantidade: {
+          type: Type.INTEGER,
+          description:
+            "Quantidade de barris, quando o cliente quer o TOTAL de N barris de um produto (ex.: 'quanto fica 3 Belco 50'). Informe junto com 'produto'. Opcional.",
         },
       },
       required: ["bairro"],
@@ -580,19 +842,15 @@ async function runTool(
       // com preço escalonado por quantidade (ex.: Brahma) vêm com as faixas.
       const products = effectiveProductsForCity(pricing, zona.city);
 
-      // Falou preço de bairro coberto → anexa a IMAGEM da tabela (mesma fonte
-      // dos valores cotados). O webhook manda como mídia no WhatsApp; o
-      // playground pré-visualiza. Vale nos dois modos (tabela e produto único).
-      if (ctx.priceImagesOut) {
-        const img = priceTableImageUrl(companyId, zona);
-        if (!ctx.priceImagesOut.some((p) => p.url === img.url)) ctx.priceImagesOut.push(img);
-      }
-
-      // MODO TABELA COMPLETA: o cliente pediu a lista de vários produtos. Os
-      // preços vão na IMAGEM (acima) — o LLM escreve SÓ a saudação. A tabela em
-      // texto fica guardada como fallback (ver chatWithAgent) para o caso de a
-      // imagem não poder ser enviada.
+      // MODO TABELA COMPLETA: o cliente pediu a lista de vários produtos. SÓ aqui
+      // a IMAGEM da tabela é anexada (webhook manda como mídia; playground
+      // pré-visualiza). No modo produto único NÃO manda imagem — evita repetir a
+      // tabela toda hora: o cliente recebe a tabela UMA vez e a conversa segue em texto.
       if (input.tabela_completa) {
+        if (ctx.priceImagesOut) {
+          const img = priceTableImageUrl(companyId, zona);
+          if (!ctx.priceImagesOut.some((p) => p.url === img.url)) ctx.priceImagesOut.push(img);
+        }
         if (ctx.priceTableOut !== undefined) {
           ctx.priceTableOut = fullPriceTableText(products);
         }
@@ -606,17 +864,26 @@ async function runTool(
         });
       }
 
-      // MODO PRODUTO ÚNICO: o cliente perguntou de um item específico. Responde
-      // natural, em uma frase, com a faixa daquele produto (o formato que o
-      // usuário gosta pra pergunta pontual). A imagem da tabela também vai junto.
+      // MODO PRODUTO ÚNICO: sem imagem. Se veio produto+quantidade, o TOTAL é
+      // calculado no SERVIDOR (o LLM erra a faixa se multiplicar de cabeça).
+      let cotacao: { produto: string; quantidade: number; precoUnit: number; total: number } | null = null;
+      if (input.produto) {
+        const item = resolveProductByText(products, String(input.produto));
+        if (item) {
+          const qtd = Math.max(1, Math.floor(Number(input.quantidade ?? 1)));
+          const precoUnit = unitPriceFor(item, qtd);
+          cotacao = { produto: item.name, quantidade: qtd, precoUnit, total: precoUnit * qtd };
+        }
+      }
       return JSON.stringify({
         coberto: true,
         bairro: zona.bairro,
         cidade: zona.city,
         freteGratis: true,
         blocosDePreco: products.map((p) => ({ id: p.id, nome: p.name, bloco: priceBlockFor(p) })),
+        cotacao,
         instrucao:
-          "PROIBIDO recalcular ou inventar preço — use os valores dos blocos. O cliente perguntou de UM produto: responda em UMA frase natural o preço dele (ex.: 'Belco 50L pra Xerém sai R$600 a unidade, R$550 levando 2, ou R$500 de 3+, com frete grátis') e siga pra próxima etapa. NÃO despeje a lista de todos os produtos. Segue também uma imagem da tabela completa logo abaixo — não precisa comentar sobre ela. Se ele não deixou claro qual produto, diga só as marcas (Belco, Brahma, Heineken, Amstel, Chopp de Vinho) e pergunte qual — sem preços.",
+          "PROIBIDO recalcular, multiplicar ou inventar preço/total — use EXATAMENTE os números. Se veio 'cotacao', informe o total dela AO PÉ DA LETRA (ex.: '3 Belco 50L pra Xerém = R$1380 no total, com frete grátis'). Se não veio, o cliente perguntou de UM produto: responda em UMA frase natural o preço dele (as faixas do bloco daquele produto) e siga. NÃO despeje a lista de todos os produtos e NÃO mande imagem. Se não ficou claro qual produto, diga só as marcas (Belco, Brahma, Heineken, Amstel, Chopp de Vinho) e pergunte qual — sem preços.",
       });
     }
     case "finalizar_pedido": {

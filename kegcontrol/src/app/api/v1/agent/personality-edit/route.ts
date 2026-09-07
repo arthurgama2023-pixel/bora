@@ -2,11 +2,12 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { handle } from "@/lib/api";
 import { assertRole, requireSession } from "@/lib/auth";
-import { editPersonality } from "@/server/services/agent";
+import { editPersonalitySections } from "@/server/services/agent";
 
-// Editor conversacional da personalidade: recebe uma instrução em linguagem
-// natural e devolve a personalidade reescrita (prévia) — NÃO salva. A UI mostra
-// a prévia e o operador confirma via PATCH /api/v1/agent/config.
+// Editor conversacional da personalidade POR SEÇÃO: recebe uma instrução em
+// linguagem natural, descobre quais seções ela afeta e reescreve cada uma por
+// inteiro — devolve a PRÉVIA (não salva). A UI mostra o que mudou e confirma via
+// PUT /api/v1/agent/sections. As demais seções ficam intactas por construção.
 const bodySchema = z.object({ instruction: z.string().trim().min(3).max(1000) });
 
 export async function POST(request: NextRequest) {
@@ -14,6 +15,6 @@ export async function POST(request: NextRequest) {
     const session = await requireSession();
     assertRole(session, ["ADMIN", "MANAGER"]);
     const { instruction } = bodySchema.parse(await request.json());
-    return editPersonality(session.companyId, instruction);
+    return editPersonalitySections(session.companyId, instruction);
   });
 }

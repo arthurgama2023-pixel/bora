@@ -521,6 +521,50 @@ export function PedidosSite() {
             ))}
           </div>
 
+          {/* Disparo automático — sempre visível; controla o disparo pra quem NÃO finalizou */}
+          <div className="mb-5 flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-sm font-semibold">
+                {autoDispatch === false ? (
+                  <PauseCircle className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <Send className="h-4 w-4 text-brand-strong" />
+                )}
+                Disparo automático
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {autoDispatch === false
+                  ? "Desligado — o agente NÃO dispara sozinho pra quem não finalizou."
+                  : "Ligado — o agente chama sozinho, no WhatsApp, quem preencheu e não finalizou."}
+              </p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={autoDispatch === true}
+              aria-label={
+                autoDispatch === false
+                  ? "Disparo automático desligado — clique para ligar"
+                  : "Disparo automático ligado — clique para desligar"
+              }
+              title={
+                autoDispatch === false
+                  ? "Disparo automático desligado (clique para ligar)"
+                  : "Disparo automático ligado (clique para desligar)"
+              }
+              onClick={toggleAutoDispatch}
+              disabled={savingAuto || autoDispatch === null}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                autoDispatch === false ? "bg-muted-foreground/30" : "bg-brand"
+              } ${savingAuto || autoDispatch === null ? "opacity-60" : ""}`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                  autoDispatch === false ? "" : "translate-x-5"
+                }`}
+              />
+            </button>
+          </div>
+
           {loading ? (
             <div className="flex items-center gap-2 p-8 text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
@@ -580,49 +624,6 @@ export function PedidosSite() {
             )
           ) : (
             <>
-              <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 text-sm font-semibold">
-                    {autoDispatch === false ? (
-                      <PauseCircle className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <Send className="h-4 w-4 text-brand-strong" />
-                    )}
-                    Disparo automático
-                  </div>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {autoDispatch === false
-                      ? "Pausado — nada sai sozinho. Dispare manualmente clicando em cada card abaixo."
-                      : "Ligado — o agente chama sozinho, no WhatsApp, quem preencheu e não finalizou."}
-                  </p>
-                </div>
-                <button
-                  role="switch"
-                  aria-checked={autoDispatch === true}
-                  aria-label={
-                    autoDispatch === false
-                      ? "Disparo automático pausado — clique para ligar"
-                      : "Disparo automático ligado — clique para pausar"
-                  }
-                  title={
-                    autoDispatch === false
-                      ? "Disparo automático pausado (clique para ligar)"
-                      : "Disparo automático ligado (clique para pausar)"
-                  }
-                  onClick={toggleAutoDispatch}
-                  disabled={savingAuto || autoDispatch === null}
-                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                    autoDispatch === false ? "bg-muted-foreground/30" : "bg-brand"
-                  } ${savingAuto || autoDispatch === null ? "opacity-60" : ""}`}
-                >
-                  <span
-                    className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                      autoDispatch === false ? "" : "translate-x-5"
-                    }`}
-                  />
-                </button>
-              </div>
-
               {/* Editor da mensagem do disparo */}
               <div className="mb-4 rounded-xl border border-border bg-muted/20 px-4 py-3">
                 <button
