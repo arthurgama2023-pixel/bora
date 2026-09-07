@@ -27,6 +27,13 @@ import {
   resolveProductByText,
 } from "./site-pricing";
 import { createAgentSiteOrder } from "./site-orders";
+import {
+  CLEAN_SECTIONS,
+  coerceSections,
+  parseToSections,
+  renderPersonality,
+  type PersonalitySections,
+} from "./agent-personality";
 
 // Cliente reconhecido pelo número de WhatsApp (ou null se o número não bate
 // com nenhum cadastro). Passado ao agente para ele "conectar os pontos".
@@ -102,6 +109,71 @@ export async function updateAgentConfig(
 ) {
   await getAgentConfig(companyId); // garante que existe
   return prisma.agentConfig.update({ where: { companyId }, data });
+}
+
+// ─── Personalidade por seções ───────────────────────────────────────────────
+// As seções canônicas são guardadas como JSON no Setting abaixo (sem migração
+// de schema). O texto final (AgentConfig.personality, o que o LLM recebe) é
+// sempre regenerado a partir delas por renderPersonality — o runtime não muda.
+const PERSONALITY_SECTIONS_KEY = "agent.personality_sections";
+
+// Lê as seções da personalidade. `source` diz de onde vieram:
+//   "saved"   — já persistidas no Setting (o dono migrou/editou por seção).
+//   "parsed"  — derivadas do texto atual, que já está no formato por seções.
+//   "default" — o texto atual não é parseável (personalidade antiga à mão);
+//               devolve o conteúdo limpo padrão, SEM salvar nem sobrescrever.
+export async function getPersonalitySections(
+  companyId: string,
+): Promise<{ sections: PersonalitySections; source: "saved" | "parsed" | "default" }> {
+  const row = await prisma.setting.findUnique({
+    where: { companyId_key: { companyId, key: PERSONALITY_SECTIONS_KEY } },
+    select: { value: true },
+  });
+  if (row?.value?.trim()) {
+    try {
+      return { sections: coerceSections(JSON.parse(row.value)), source: "saved" };
+    } catch {
+      // JSON corrompido: cai pro texto atual / default abaixo.
+    }
+  }
+  const config = await getAgentConfig(companyId);
+  const parsed = parseToSections(config.personality);
+  if (parsed) return { sections: parsed, source: "parsed" };
+  return { sections: { ...CLEAN_SECTIONS }, source: "default" };
+}
+
+// Se ainda não há seções salvas para este dono.
+export async function isPersonalityMigrated(companyId: string): Promise<boolean> {
+  const row = await prisma.setting.findUnique({
+    where: { companyId_key: { companyId, key: PERSONALITY_SECTIONS_KEY } },
+    select: { value: true },
+  });
+  return Boolean(row?.value?.trim());
+}
+
+// Salva as seções (JSON no Setting) e regenera o texto da personalidade em
+// AgentConfig.personality. Guarda a versão anterior do TEXTO para o "desfazer"
+// (mesmo mecanismo de um nível de hoje). Retorna o texto final montado.
+export async function savePersonalitySections(
+  companyId: string,
+  sections: PersonalitySections,
+): Promise<{ personality: string }> {
+  const clean = coerceSections(sections);
+  const personality = renderPersonality(clean);
+  const prevText = (await getAgentConfig(companyId)).personality;
+
+  await prisma.setting.upsert({
+    where: { companyId_key: { companyId, key: PERSONALITY_PREV_KEY } },
+    update: { value: prevText },
+    create: { companyId, key: PERSONALITY_PREV_KEY, value: prevText },
+  });
+  await prisma.setting.upsert({
+    where: { companyId_key: { companyId, key: PERSONALITY_SECTIONS_KEY } },
+    update: { value: JSON.stringify(clean) },
+    create: { companyId, key: PERSONALITY_SECTIONS_KEY, value: JSON.stringify(clean) },
+  });
+  await updateAgentConfig(companyId, { personality });
+  return { personality };
 }
 
 // EDITOR CONVERSACIONAL da personalidade. Recebe uma instrução em linguagem
