@@ -37,9 +37,32 @@ function normalize(text: string): string {
     .trim();
 }
 
-// Gatilhos que LIGAM o modo ajuste (quando o número está ocioso). O ":" é
-// opcional e o que vem depois é tratado como um primeiro ajuste.
+// Gatilho no INÍCIO da mensagem — o ":" é opcional e o que vem depois é tratado
+// como um primeiro ajuste (ex.: "ajuste: fala mais curto").
 const ENTER_RE = /^(ajustes?|ajustar|configurar|config|treino|treinar|modo\s+ajuste)\b\s*:?\s*([\s\S]*)$/i;
+
+// Gatilho em QUALQUER posição: o dono quer que "ajuste"/"ajustar" ligue o modo
+// mesmo no meio da frase (ex.: "Então, faça um ajuste. Você cumprimentou 2x").
+const CONTAINS_TRIGGER = /\b(ajustes?|ajustar|ajusta|configurar|config|modo\s+ajuste|treino|treinar)\b/i;
+
+// Palavras de cortesia/comando que NÃO são instrução — usadas pra decidir se,
+// além do gatilho, a mensagem traz um pedido de verdade (então já viramos a
+// prévia) ou é só "faça um ajuste" (aí só ligamos o modo e perguntamos o quê).
+const COURTESY = new Set([
+  "entao", "faca", "faz", "faco", "fazer", "faria", "um", "uma", "uns", "umas",
+  "por", "favor", "pra", "para", "o", "a", "os", "as", "ai", "voce", "vc",
+  "agente", "ia", "quero", "queria", "gostaria", "preciso", "pode", "poderia",
+  "vamos", "bora", "manda", "la", "aqui", "no", "na", "e", "que", "de", "me",
+  "ajustes", "ajuste", "ajustar", "ajusta", "configurar", "config", "treino",
+  "treinar", "modo",
+]);
+
+// Se, tirando o gatilho e as palavras de cortesia, ainda sobra conteúdo (≥3
+// palavras), a mensagem inteira vira a instrução — o Gemini extrai a intenção.
+function enterInstruction(text: string, normalized: string): string {
+  const rest = normalized.split(" ").filter((w) => w && !COURTESY.has(w));
+  return rest.length >= 3 ? text.trim() : "";
+}
 
 const EXIT_WORDS = ["sair", "pronto", "fechar", "terminar", "encerrar", "parar", "fim"];
 const UNDO_WORDS = ["desfazer", "desfaz", "desfaca", "voltar", "volta", "undo", "reverter"];
@@ -72,16 +95,24 @@ export function decideTrainerAction(
     return { kind: "instruct", instruction: text.trim() };
   }
 
-  // Ocioso: só liga o modo com um gatilho explícito. O resto é conversa de
-  // cliente (o treinador também compra/testa pelo mesmo número).
-  const m = text.trim().match(ENTER_RE);
+  // Ocioso: liga o modo com um gatilho. O resto é conversa de cliente (o
+  // treinador também compra/testa pelo mesmo número).
+  const trimmed = text.trim();
+
+  // 1) Gatilho no INÍCIO com instrução limpa após ":" — ex.: "ajuste: X".
+  const m = trimmed.match(ENTER_RE);
   if (m) {
     const instruction = (m[2] ?? "").trim();
-    // Só conta como "já veio um ajuste" se sobrar conteúdo de verdade (letra ou
-    // número). "ajuste", "ajuste!" ou "ajuste:" sozinhos só LIGAM o modo.
     return /[\p{L}\p{N}]/u.test(instruction)
       ? { kind: "enter", instruction }
       : { kind: "enter" };
+  }
+
+  // 2) Gatilho em qualquer posição — ex.: "faça um ajuste, cumprimente 1x só".
+  //    Se além do gatilho vier um pedido, a frase inteira é a instrução.
+  if (CONTAINS_TRIGGER.test(trimmed)) {
+    const instruction = enterInstruction(trimmed, n);
+    return instruction ? { kind: "enter", instruction } : { kind: "enter" };
   }
   return { kind: "passthrough" };
 }
