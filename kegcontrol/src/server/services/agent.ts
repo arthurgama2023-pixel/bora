@@ -59,7 +59,7 @@ Regras:
 // Regras SEMPRE injetadas (independem da personalidade editável no banco).
 // Governam o cadastro espontâneo e natural do cliente.
 const NATURAL_CUSTOMER_RULES = `# REGRA MÁXIMA — nunca fale preço, produto ou marca de memória
-Existem só 5 marcas no catálogo: Belco, Brahma, Heineken, Amstel e Chopp de Vinho — nada além disso existe (não existe "Brahma Duplo Malte", "Belco Pilsen", "Black Princes", nem litragem 20L de nada). Se o assunto for preço, produto, marca ou tabela, e a ferramenta preco_por_bairro AINDA NÃO foi chamada NESTA resposta, chame-a AGORA antes de responder — nunca responda com números ou nomes que você "lembra" de mensagens anteriores ou do seu próprio conhecimento geral sobre chope/cerveja. Isso vale mesmo se o cliente pedir "a tabela toda" ou parecer uma pergunta simples: SEMPRE a ferramenta primeiro, texto depois. Informar um produto ou preço inventado é o pior erro possível neste atendimento — é dinheiro real do cliente.
+Existem só 5 marcas no catálogo: Belco, Brahma, Heineken, Amstel e Chopp de Vinho — nada além disso existe (não existe "Brahma Duplo Malte", "Belco Pilsen", "Black Princes", nem litragem 20L de nada). Se o assunto for preço, produto, marca ou tabela, e a ferramenta preco_por_bairro AINDA NÃO foi chamada NESTA resposta, chame-a AGORA antes de responder — nunca responda com números ou nomes que você "lembra" de mensagens anteriores ou do seu próprio conhecimento geral sobre chope/cerveja. Isso vale mesmo se o cliente pedir "a tabela toda" ou parecer uma pergunta simples: SEMPRE a ferramenta primeiro, texto depois. Informar um produto ou preço inventado é o pior erro possível neste atendimento — é dinheiro real do cliente. Isso vale TAMBÉM para dizer se um produto ou LITRAGEM existe: NUNCA afirme "só tem em 30L", "não temos 50L", "esse não existe" ou parecido sem chamar preco_por_bairro ANTES — a ferramenta lista TODOS os produtos e litragens disponíveis da região; se está na lista, existe (ex.: Chopp de Vinho tem 30L E 50L). Nunca negue uma litragem de memória.
 
 # Cadastro natural (regras invioláveis)
 - NUNCA diga que o cliente "não tem cadastro", "não está cadastrado", "não te encontrei aqui" ou algo do tipo. Trate TODO mundo como cliente conhecido, mesmo que seja o primeiro contato.
@@ -77,7 +77,11 @@ Existem só 5 marcas no catálogo: Belco, Brahma, Heineken, Amstel e Chopp de Vi
 # Como mostrar preços
 - SEMPRE consulte preco_por_bairro antes de falar qualquer preço (com o bairro do cliente). Nunca fale preço de memória.
 - Se o cliente pediu a TABELA/LISTA de preços (vários produtos: "me manda a tabela", "quais os preços", "preço de tudo", "quanto tá cada um"): chame preco_por_bairro com tabela_completa=true. A TABELA JÁ SERÁ COLADA AUTOMATICAMENTE embaixo da sua mensagem — você escreve APENAS uma saudação curta de 1 linha (nome do cliente + bairro + "seguem os preços 👇"). NÃO escreva preço, nome de produto nem tabela; NÃO faça pergunta. Só a saudação.
-- Se o cliente perguntou de UM produto específico ("quanto é a Brahma?"): chame preco_por_bairro com tabela_completa=false e responda em UMA frase natural só o preço daquele produto (ex.: "Belco 50L pra Xerém sai R$600 a unidade, R$550 levando 2, ou R$500 de 3+, com frete grátis") — sem listar os outros.`;
+- Se o cliente perguntou de UM produto específico ("quanto é a Brahma?"): chame preco_por_bairro com tabela_completa=false e responda em UMA frase natural só o preço daquele produto (ex.: "Belco 50L pra Xerém sai R$600 a unidade, R$550 levando 2, ou R$500 de 3+, com frete grátis") — sem listar os outros.
+- Se o cliente quer o TOTAL de N barris ("quanto fica 3 Belco 50?", "quero 3 belco 50 quanto no total"): chame preco_por_bairro com produto E quantidade — a ferramenta devolve o total EXATO no campo "cotacao". Informe esse total ao pé da letra. NUNCA multiplique de cabeça: você erra a faixa por quantidade.
+
+# Ordens de estilo do dono — cumpra AO PÉ DA LETRA
+As regras de "Jeito de falar"/estilo da sua personalidade são ORDENS diretas do dono. Cumpra-as EXATAMENTE como escritas, ao pé da letra, em TODA resposta. Se o dono mandou começar de um jeito, comece exatamente assim. Se mandou ser curto, ou responder "apenas"/"só" algo, faça só isso — NÃO adicione apresentação da empresa, história ("desde 2016"), frases de efeito, perguntas ou qualquer texto que não foi pedido. Menos é mais: entregue só o que foi pedido, do jeito que foi pedido.`;
 
 export async function getAgentConfig(companyId: string) {
   const existing = await prisma.agentConfig.findUnique({ where: { companyId } });
@@ -334,7 +338,7 @@ const TOOLS: FunctionDeclaration[] = [
   {
     name: "preco_por_bairro",
     description:
-      "Consulta se um bairro está na área de preço fixo (Duque de Caxias, São João de Meriti e região) e retorna os preços de hoje por tipo de barril, com frete grátis. Use sempre que o cliente mencionar o bairro dele ou perguntar preço/entrega em uma região. Se o bairro não estiver coberto, a ferramenta avisa e você deve dizer que a equipe comercial confirma o valor — nunca invente preço para bairro fora da tabela.",
+      "Consulta se um bairro está na área de preço fixo (Duque de Caxias, São João de Meriti e região) e retorna os preços de hoje por tipo de barril, com frete grátis. Use sempre que o cliente mencionar o bairro dele ou perguntar preço/entrega em uma região. Para o TOTAL de N barris de um produto, passe também 'produto' e 'quantidade' — a ferramenta devolve o total EXATO (não calcule de cabeça). Se o bairro não estiver coberto, a ferramenta avisa e você deve dizer que a equipe comercial confirma o valor — nunca invente preço para bairro fora da tabela.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -343,6 +347,16 @@ const TOOLS: FunctionDeclaration[] = [
           type: Type.BOOLEAN,
           description:
             "true quando o cliente pediu a TABELA/LISTA de preços de vários produtos ('me manda a tabela', 'quais os preços', 'preço de tudo', 'quanto tá cada um'). false (ou omitido) quando ele perguntou o preço de UM produto específico.",
+        },
+        produto: {
+          type: Type.STRING,
+          description:
+            "Produto específico perguntado (ex.: 'Belco 50L', 'Brahma 50L', 'Chopp de Vinho 30L'), quando o cliente pergunta de UM item. Opcional.",
+        },
+        quantidade: {
+          type: Type.INTEGER,
+          description:
+            "Quantidade de barris, quando o cliente quer o TOTAL de N barris de um produto (ex.: 'quanto fica 3 Belco 50'). Informe junto com 'produto'. Opcional.",
         },
       },
       required: ["bairro"],
@@ -580,19 +594,15 @@ async function runTool(
       // com preço escalonado por quantidade (ex.: Brahma) vêm com as faixas.
       const products = effectiveProductsForCity(pricing, zona.city);
 
-      // Falou preço de bairro coberto → anexa a IMAGEM da tabela (mesma fonte
-      // dos valores cotados). O webhook manda como mídia no WhatsApp; o
-      // playground pré-visualiza. Vale nos dois modos (tabela e produto único).
-      if (ctx.priceImagesOut) {
-        const img = priceTableImageUrl(companyId, zona);
-        if (!ctx.priceImagesOut.some((p) => p.url === img.url)) ctx.priceImagesOut.push(img);
-      }
-
-      // MODO TABELA COMPLETA: o cliente pediu a lista de vários produtos. Os
-      // preços vão na IMAGEM (acima) — o LLM escreve SÓ a saudação. A tabela em
-      // texto fica guardada como fallback (ver chatWithAgent) para o caso de a
-      // imagem não poder ser enviada.
+      // MODO TABELA COMPLETA: o cliente pediu a lista de vários produtos. SÓ aqui
+      // a IMAGEM da tabela é anexada (webhook manda como mídia; playground
+      // pré-visualiza). No modo produto único NÃO manda imagem — evita repetir a
+      // tabela toda hora: o cliente recebe a tabela UMA vez e a conversa segue em texto.
       if (input.tabela_completa) {
+        if (ctx.priceImagesOut) {
+          const img = priceTableImageUrl(companyId, zona);
+          if (!ctx.priceImagesOut.some((p) => p.url === img.url)) ctx.priceImagesOut.push(img);
+        }
         if (ctx.priceTableOut !== undefined) {
           ctx.priceTableOut = fullPriceTableText(products);
         }
@@ -606,17 +616,26 @@ async function runTool(
         });
       }
 
-      // MODO PRODUTO ÚNICO: o cliente perguntou de um item específico. Responde
-      // natural, em uma frase, com a faixa daquele produto (o formato que o
-      // usuário gosta pra pergunta pontual). A imagem da tabela também vai junto.
+      // MODO PRODUTO ÚNICO: sem imagem. Se veio produto+quantidade, o TOTAL é
+      // calculado no SERVIDOR (o LLM erra a faixa se multiplicar de cabeça).
+      let cotacao: { produto: string; quantidade: number; precoUnit: number; total: number } | null = null;
+      if (input.produto) {
+        const item = resolveProductByText(products, String(input.produto));
+        if (item) {
+          const qtd = Math.max(1, Math.floor(Number(input.quantidade ?? 1)));
+          const precoUnit = unitPriceFor(item, qtd);
+          cotacao = { produto: item.name, quantidade: qtd, precoUnit, total: precoUnit * qtd };
+        }
+      }
       return JSON.stringify({
         coberto: true,
         bairro: zona.bairro,
         cidade: zona.city,
         freteGratis: true,
         blocosDePreco: products.map((p) => ({ id: p.id, nome: p.name, bloco: priceBlockFor(p) })),
+        cotacao,
         instrucao:
-          "PROIBIDO recalcular ou inventar preço — use os valores dos blocos. O cliente perguntou de UM produto: responda em UMA frase natural o preço dele (ex.: 'Belco 50L pra Xerém sai R$600 a unidade, R$550 levando 2, ou R$500 de 3+, com frete grátis') e siga pra próxima etapa. NÃO despeje a lista de todos os produtos. Segue também uma imagem da tabela completa logo abaixo — não precisa comentar sobre ela. Se ele não deixou claro qual produto, diga só as marcas (Belco, Brahma, Heineken, Amstel, Chopp de Vinho) e pergunte qual — sem preços.",
+          "PROIBIDO recalcular, multiplicar ou inventar preço/total — use EXATAMENTE os números. Se veio 'cotacao', informe o total dela AO PÉ DA LETRA (ex.: '3 Belco 50L pra Xerém = R$1380 no total, com frete grátis'). Se não veio, o cliente perguntou de UM produto: responda em UMA frase natural o preço dele (as faixas do bloco daquele produto) e siga. NÃO despeje a lista de todos os produtos e NÃO mande imagem. Se não ficou claro qual produto, diga só as marcas (Belco, Brahma, Heineken, Amstel, Chopp de Vinho) e pergunte qual — sem preços.",
       });
     }
     case "finalizar_pedido": {
