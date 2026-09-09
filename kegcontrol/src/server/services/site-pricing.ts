@@ -307,18 +307,30 @@ export function resolveProductByText(products: Prod[], input: string): Prod | nu
       : null;
   const get = (id: string) => products.find((p) => p.id === id) ?? null;
 
-  if (/heineken|heinek/.test(s)) return get("heineken-50l"); // só 50L
-  if (/brahma|bramma/.test(s)) return get("brahma-50l"); // só 50L
-  if (/amstel/.test(s)) return get("amstel-50l"); // só 50L
-  if (/vinho/.test(s)) {
-    if (liters === 30) return get("vinho-30l");
-    if (liters === 50) return get("vinho-50l");
-    return null; // vinho sem litragem clara
-  }
-  if (/belco/.test(s)) {
-    if (liters === 30) return get("belco-30l");
-    if (liters === 50) return get("belco-50l");
-    return null; // belco sem litragem clara
-  }
+  const brand = /heineken|heinek/.test(s)
+    ? "heineken"
+    : /brahma|bramma/.test(s)
+      ? "brahma"
+      : /amstel/.test(s)
+        ? "amstel"
+        : /vinho/.test(s)
+          ? "vinho"
+          : /belco/.test(s)
+            ? "belco"
+            : null;
+  if (!brand) return null;
+
+  // Respeita a litragem que o cliente falou e só resolve o que EXISTE na tabela.
+  // (Antes, Heineken/Amstel/Brahma caíam sempre no 50L, ignorando "30L" — o
+  // cliente pedia 30L e fechava 50L, com preço e foto errados.)
+  if (liters === 30) return get(`${brand}-30l`);
+  if (liters === 50) return get(`${brand}-50l`);
+
+  // Sem litragem clara: se a marca só existe numa litragem, resolve nela;
+  // se existe em 30L e 50L, devolve null pra o agente perguntar qual.
+  const trinta = get(`${brand}-30l`);
+  const cinquenta = get(`${brand}-50l`);
+  if (trinta && !cinquenta) return trinta;
+  if (cinquenta && !trinta) return cinquenta;
   return null;
 }
