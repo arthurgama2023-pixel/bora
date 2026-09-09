@@ -178,6 +178,7 @@ export async function upsertCustomerFromAgent(
     address?: string;
     neighborhood?: string;
     city?: string;
+    document?: string; // CPF/CNPJ (pra nota) — dado de identidade estável
     usualOrder?: string;
     pushName?: string; // nome de exibição do WhatsApp — fallback quando não há nome ainda
   },
@@ -194,7 +195,7 @@ export async function upsertCustomerFromAgent(
     const patch: Record<string, unknown> = {};
     // completa só campos VAZIOS (não pisa no que o admin já cadastrou). O
     // nome-placeholder conta como "vazio" — pode virar o nome real depois.
-    const fillIfEmpty = (key: "address" | "neighborhood" | "city", v?: string) => {
+    const fillIfEmpty = (key: "address" | "neighborhood" | "city" | "document", v?: string) => {
       const cur = (existing as Record<string, unknown>)[key];
       if (v && (!cur || !String(cur).trim())) patch[key] = v;
     };
@@ -204,6 +205,7 @@ export async function upsertCustomerFromAgent(
     fillIfEmpty("address", val(fields.address));
     fillIfEmpty("neighborhood", val(fields.neighborhood));
     fillIfEmpty("city", val(fields.city));
+    fillIfEmpty("document", val(fields.document));
     if (!existing.whatsapp || !existing.whatsapp.trim()) patch.whatsapp = phone;
     if (val(fields.usualOrder)) patch.notes = mergeUsualOrder(existing.notes, fields.usualOrder!);
     if (Object.keys(patch).length > 0) {
@@ -221,6 +223,7 @@ export async function upsertCustomerFromAgent(
       address: val(fields.address) ?? null,
       neighborhood: val(fields.neighborhood) ?? null,
       city: val(fields.city) ?? null,
+      document: val(fields.document) ?? null,
       notes: val(fields.usualOrder) ? mergeUsualOrder(null, fields.usualOrder!) : null,
       type: "COMERCIO",
       status: "ACTIVE",
@@ -229,6 +232,34 @@ export async function upsertCustomerFromAgent(
     },
   });
   return { id: customer.id, created: true, name };
+}
+
+// Limpeza PROFUNDA de teste (usada pelo "começe novamente" só de números
+// TREINADORES): esquece tudo que o agente aprendeu sobre este contato — nome
+// (volta a placeholder), endereço, bairro, cidade, CPF e as notas (pedido de
+// costume etc.) — pra que o agente volte a tratá-lo como PRIMEIRO CONTATO e faça
+// todas as perguntas do zero. PRESERVA de propósito: preços negociados, estoque,
+// status e a liberação do agente (agentEnabled) — não é pra perder dado
+// comercial nem destravar/travar o atendimento. Retorna false se não achar o
+// contato pelo telefone. Ver isResetSignal + chatWithAgent (agent.ts).
+export async function wipeAgentLearnedProfile(
+  companyId: string,
+  phone: string,
+): Promise<boolean> {
+  const existing = await findCustomerByPhone(companyId, phone);
+  if (!existing) return false;
+  await prisma.customer.update({
+    where: { id: existing.id },
+    data: {
+      name: `Cliente ${phone}`, // volta a ser placeholder → agente pergunta o nome
+      address: null,
+      neighborhood: null,
+      city: null,
+      document: null,
+      notes: null,
+    },
+  });
+  return true;
 }
 
 // Preços por tipo de barril: lista TODOS os tipos ativos da empresa, já com o

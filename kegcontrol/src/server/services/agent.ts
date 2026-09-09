@@ -5,7 +5,12 @@ import { ApiError } from "@/lib/errors";
 import { phoneMatchKey } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
-import { getCustomerBalance, getCustomerPrices, upsertCustomerFromAgent } from "./customers";
+import {
+  getCustomerBalance,
+  getCustomerPrices,
+  upsertCustomerFromAgent,
+  wipeAgentLearnedProfile,
+} from "./customers";
 import { getCustomerInsights, SEGMENT_LABELS } from "./crm";
 import { getCustomerStatement } from "./reports";
 import {
@@ -65,7 +70,7 @@ const NATURAL_CUSTOMER_RULES = `# REGRA MÁXIMA — nunca fale preço, produto o
 Existem só 5 marcas no catálogo: Belco, Brahma, Heineken, Amstel e Chopp de Vinho — nada além disso existe (não existe "Brahma Duplo Malte", "Belco Pilsen", "Black Princes", nem litragem 20L de nada). Se o assunto for preço, produto, marca ou tabela, e a ferramenta preco_por_bairro AINDA NÃO foi chamada NESTA resposta, chame-a AGORA antes de responder — nunca responda com números ou nomes que você "lembra" de mensagens anteriores ou do seu próprio conhecimento geral sobre chope/cerveja. Isso vale mesmo se o cliente pedir "a tabela toda" ou parecer uma pergunta simples: SEMPRE a ferramenta primeiro, texto depois. Informar um produto ou preço inventado é o pior erro possível neste atendimento — é dinheiro real do cliente. Isso vale TAMBÉM para dizer se um produto ou LITRAGEM existe: NUNCA afirme "só tem em 30L", "não temos 50L", "esse não existe" ou parecido sem chamar preco_por_bairro ANTES — a ferramenta lista TODOS os produtos e litragens disponíveis da região; se está na lista, existe (ex.: Chopp de Vinho tem 30L E 50L). Nunca negue uma litragem de memória.
 
 # Memória da conversa — NUNCA re-pergunte o que já sabe (regra crítica)
-Antes de CADA resposta, releia a conversa inteira e reconstrua o que o cliente JÁ informou: marca, litragem, quantidade, bairro e endereço. É PROIBIDO perguntar de novo qualquer coisa que ele já respondeu — nem com outras palavras, nem "só pra confirmar". Se você já tem a informação, USE e vá direto pra a PRÓXIMA que falta. Uma resposta curta se refere à ÚLTIMA pergunta que você fez (ele respondeu "50" depois de você perguntar a litragem? então litragem = 50L, preenchido). Se ele mandou vários dados de uma vez, aproveite todos e pule as perguntas correspondentes. Nunca volte a uma etapa anterior já resolvida.
+Antes de CADA resposta, releia a conversa inteira e reconstrua TUDO que o cliente JÁ informou: marca, litragem, quantidade, bairro, endereço, CPF, tipo de chopeira (elétrica ou de gelo), se o local tem escada e a forma de pagamento. É PROIBIDO perguntar de novo qualquer coisa que ele já respondeu — nem com outras palavras, nem "só pra confirmar". Isso vale também para o que já estiver na FICHA DO CLIENTE (cadastro): se o CPF, o endereço ou o bairro já vieram no cadastro, USE e não pergunte. Se você já tem a informação, vá direto pra a PRÓXIMA que falta. Uma resposta curta se refere à ÚLTIMA pergunta que você fez (ele respondeu "50" depois de você perguntar a litragem? então litragem = 50L, preenchido; respondeu "elétrica" depois de você perguntar o tipo de chopeira? então chopeira = elétrica). Se ele mandou vários dados de uma vez, aproveite todos e pule as perguntas correspondentes. Nunca volte a uma etapa anterior já resolvida.
 
 # Cadastro natural (regras invioláveis)
 - NUNCA diga que o cliente "não tem cadastro", "não está cadastrado", "não te encontrei aqui" ou algo do tipo. Trate TODO mundo como cliente conhecido, mesmo que seja o primeiro contato.
@@ -92,6 +97,39 @@ Antes de CADA resposta, releia a conversa inteira e reconstrua o que o cliente J
 
 # Ordens de estilo do dono — cumpra AO PÉ DA LETRA
 As regras de "Jeito de falar"/estilo da sua personalidade são ORDENS diretas do dono. Cumpra-as EXATAMENTE como escritas, ao pé da letra, em TODA resposta. Se o dono mandou começar de um jeito, comece exatamente assim. Se mandou ser curto, ou responder "apenas"/"só" algo, faça só isso — NÃO adicione apresentação da empresa, história ("desde 2016"), frases de efeito, perguntas ou qualquer texto que não foi pedido. Menos é mais: entregue só o que foi pedido, do jeito que foi pedido.`;
+
+// ─── Normalização dos dados de qualificação (mesmos campos do form do site) ──
+// O agente coleta em linguagem natural; aqui a gente padroniza pro formato que
+// o SiteOrder/Customer esperam. Entrada vazia/desconhecida → null (não grava).
+
+// CPF/CNPJ: guarda o documento como o cliente informou, só limpando espaços em
+// volta. Não valida (o cliente pode digitar com ou sem máscara).
+export function normalizeDocument(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t.length >= 5 ? t : null; // ignora "", "-", lixo curto
+}
+
+// Tipo de chopeira → 'eletrica' | 'gelo' | null.
+export function normalizeChopeira(v: unknown): "eletrica" | "gelo" | null {
+  if (typeof v !== "string") return null;
+  const t = v.toLowerCase();
+  if (/(el[ée]tr|tomada|energia|luz)/.test(t)) return "eletrica";
+  if (/gelo/.test(t)) return "gelo";
+  return null;
+}
+
+// Acesso do local → 'sim' (tem escada) | 'nao' (térreo) | null.
+export function normalizeEscada(v: unknown): "sim" | "nao" | null {
+  if (typeof v !== "string") return null;
+  const t = v.toLowerCase();
+  // "não tem escada" / "é térreo" / "sem escada" → nao
+  if (/(t[ée]rreo|sem escada|n[aã]o tem|nenhuma|ch[aã]o)/.test(t)) return "nao";
+  if (/^n[aã]o\b/.test(t)) return "nao";
+  // "tem escada", "sim", "com escada", "2 lances" → sim
+  if (/(escada|degrau|lance|andar|subir|sim|tem)/.test(t)) return "sim";
+  return null;
+}
 
 export async function getAgentConfig(companyId: string) {
   const existing = await prisma.agentConfig.findUnique({ where: { companyId } });
@@ -643,7 +681,7 @@ const TOOLS: FunctionDeclaration[] = [
   {
     name: "salvar_cliente",
     description:
-      "Guarda/atualiza SILENCIOSAMENTE o cadastro do cliente com o que você descobriu na conversa (nome, endereço, bairro, cidade e o que ele costuma pedir). Chame de forma NATURAL e INVISÍVEL sempre que o cliente informar uma dessas coisas — por exemplo, ao dizer o endereço, o nome, ou o que quer/costuma pedir. Funciona para número novo (cria o cadastro) e para cliente já existente (completa só o que falta). NUNCA avise o cliente que está cadastrando/salvando — apenas siga a conversa normalmente. Não é preciso ter tudo de uma vez; salve o que tiver.",
+      "Guarda/atualiza SILENCIOSAMENTE o cadastro do cliente com o que você descobriu na conversa (nome, endereço, bairro, cidade, CPF e o que ele costuma pedir). Chame de forma NATURAL e INVISÍVEL sempre que o cliente informar uma dessas coisas — por exemplo, ao dizer o endereço, o nome, o CPF, ou o que quer/costuma pedir. Funciona para número novo (cria o cadastro) e para cliente já existente (completa só o que falta). NUNCA avise o cliente que está cadastrando/salvando — apenas siga a conversa normalmente. Não é preciso ter tudo de uma vez; salve o que tiver.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -651,6 +689,7 @@ const TOOLS: FunctionDeclaration[] = [
         endereco: { type: Type.STRING, description: "Endereço (rua, número), se informado" },
         bairro: { type: Type.STRING, description: "Bairro, se informado" },
         cidade: { type: Type.STRING, description: "Cidade, se informada" },
+        cpf: { type: Type.STRING, description: "CPF/CNPJ do cliente (pra nota), se informado" },
         pedido_costume: {
           type: Type.STRING,
           description: "O que o cliente costuma pedir, ex.: 'Belco 50L, Heineken'",
@@ -661,7 +700,7 @@ const TOOLS: FunctionDeclaration[] = [
   {
     name: "finalizar_pedido",
     description:
-      "Fecha o pedido do cliente e retorna o resumo com total e a chave PIX para pagamento. Use SOMENTE quando o cliente já confirmou o que quer: o(s) produto(s), a quantidade, o bairro e se é entrega ou retirada (e o endereço, se for entrega). A ferramenta calcula o total pela tabela de preço fixo e devolve a chave PIX. Não use se ainda faltar alguma dessas informações.",
+      "Fecha o pedido do cliente e retorna o resumo com total e a chave PIX para pagamento. Use SOMENTE quando o cliente já confirmou o que quer: o(s) produto(s), a quantidade, o bairro e se é entrega ou retirada (e o endereço, se for entrega). Passe também, quando já souber, o CPF, o tipo de chopeira, se tem escada e a forma de pagamento — assim ficam registrados no pedido para a equipe. A ferramenta calcula o total pela tabela de preço fixo e devolve a chave PIX. Não use se ainda faltar alguma das informações obrigatórias (produto, quantidade, bairro, entrega/retirada).",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -672,6 +711,26 @@ const TOOLS: FunctionDeclaration[] = [
           type: Type.STRING,
           description:
             "Dia/data combinado para a entrega ou retirada, SE o cliente já definiu (ex.: '25/12', 'sábado', 'hoje à noite'). Opcional — deixe vazio se ainda não combinaram a data.",
+        },
+        cpf: {
+          type: Type.STRING,
+          description:
+            "CPF (ou CNPJ) do cliente para a nota, se ele informou. Só os números/documento — sem rótulo. Opcional.",
+        },
+        tipo_chopeira: {
+          type: Type.STRING,
+          description:
+            "Tipo de chopeira escolhido: 'eletrica' ou 'gelo', se o cliente já disse. Opcional.",
+        },
+        escada: {
+          type: Type.STRING,
+          description:
+            "Acesso no local da entrega: 'sim' se tem escada (não é térreo), 'nao' se é térreo/sem escada. Opcional.",
+        },
+        forma_pagamento: {
+          type: Type.STRING,
+          description:
+            "Como o cliente vai pagar o RESTANTE na entrega, se já disse (ex.: 'PIX', 'dinheiro', 'cartão'). O sinal de 50% é sempre por PIX. Opcional.",
         },
         itens: {
           type: Type.ARRAY,
@@ -970,6 +1029,18 @@ async function runTool(
       const total = itens.reduce((s, i) => s + i.subtotal, 0);
       const economiaTotal = itens.reduce((s, i) => s + i.economia, 0);
       const deliveryMethod = /retirada/i.test(String(input.entrega ?? "")) ? "retirada" : "entrega";
+      // Dados de qualificação (opcionais) que o cliente informou ao longo do
+      // papo — mesmos campos que o formulário do site já coleta. Normalizados
+      // aqui pra gravar certinho no pedido (equipe vê) e, no caso do CPF, no
+      // cadastro do cliente (não pergunta de novo no próximo pedido).
+      const cpf = normalizeDocument(input.cpf);
+      const chopeiraType = normalizeChopeira(input.tipo_chopeira);
+      const hasStairs = normalizeEscada(input.escada);
+      const formaPagamento =
+        typeof input.forma_pagamento === "string" ? input.forma_pagamento.trim() : "";
+      const orderNotes = formaPagamento
+        ? `Pagamento do restante (na entrega): ${formaPagamento}`
+        : null;
       // Grava o pedido como fonte de verdade (origin AGENTE) — é o que permite
       // ao comprovante de PIX (casado por telefone, ver payment-proofs.ts) achar
       // este pedido e aparecer pra revisão em Pedidos do Site/Verificação.
@@ -984,12 +1055,23 @@ async function runTool(
           city: zona.city,
           street: input.endereco ? String(input.endereco) : null,
           eventDate: input.data_entrega ? String(input.data_entrega) : null,
+          document: cpf,
+          chopeiraType,
+          hasStairs,
+          notes: orderNotes,
           items: itens.map((i) => ({ id: i.id, name: i.produto, quantity: i.quantidade, unitPrice: i.precoUnit })),
           total,
         }).catch((e) => {
           console.error("[agent] createAgentSiteOrder falhou:", e);
           Sentry.captureException(e, { tags: { companyId, tool: "finalizar_pedido" } });
         });
+        // CPF é dado de identidade estável: guarda no cadastro (só preenche se
+        // estiver vazio) pra não perguntar de novo em pedidos futuros.
+        if (cpf) {
+          await upsertCustomerFromAgent(companyId, ctx.phone, { document: cpf }).catch((e) => {
+            console.error("[agent] salvar CPF no cadastro falhou:", e);
+          });
+        }
       }
       // PIX real vem do Setting (pix_key/pix_nome). Enquanto não configurado,
       // usa um PIX de TESTE — seguro porque esta ferramenta só roda no
@@ -1036,6 +1118,7 @@ async function runTool(
         address: input.endereco ? String(input.endereco) : undefined,
         neighborhood: input.bairro ? String(input.bairro) : undefined,
         city: input.cidade ? String(input.cidade) : undefined,
+        document: normalizeDocument(input.cpf) ?? undefined,
         usualOrder: input.pedido_costume ? String(input.pedido_costume) : undefined,
         pushName: ctx.pushName,
       });
@@ -1071,12 +1154,13 @@ async function buildIdentityContext(
     getCustomerPrices(companyId, customer.id),
     prisma.customer.findUnique({
       where: { id: customer.id },
-      select: { contactName: true, neighborhood: true, city: true, address: true, notes: true },
+      select: { contactName: true, neighborhood: true, city: true, address: true, document: true, notes: true },
     }),
   ]);
 
   const contato = record?.contactName?.trim() || null;
   const enderecoCadastrado = record?.address?.trim() || null;
+  const cpfCadastrado = record?.document?.trim() || null;
   // "Pedido de costume" fica dentro de notes com o prefixo (ver customers.ts)
   const pedidoCostume =
     (record?.notes ?? "")
@@ -1123,6 +1207,9 @@ async function buildIdentityContext(
     enderecoCadastrado
       ? `- Endereço de entrega: ${enderecoCadastrado} (use no finalizar_pedido; não peça de novo, salvo se ele quiser outro)`
       : "- Endereço: não cadastrado (peça só quando for fechar entrega)",
+    cpfCadastrado
+      ? `- CPF/CNPJ: ${cpfCadastrado} (já cadastrado — NÃO peça de novo; use no finalizar_pedido)`
+      : "",
     pedidoCostume ? `- Costuma pedir: ${pedidoCostume}` : "",
     `- customerId: ${customer.id} (use em situacao_cliente/extrato_cliente; não chame buscar_cliente pra ele)`,
     `- Barris com ele agora: ${kegs}`,
@@ -1241,6 +1328,17 @@ export async function chatWithAgent(
   // agente lembrar das mensagens anteriores).
   if (userMessage && isResetSignal(userMessage.content)) {
     await prisma.agentMessage.deleteMany({ where: { companyId, sessionId } });
+    // Limpeza PROFUNDA só para números TREINADORES (teste): além do histórico,
+    // esquece o perfil aprendido do contato (nome, endereço, bairro, CPF, notas)
+    // pra o agente voltar a tratá-lo como estranho e fazer TODAS as perguntas do
+    // zero — inclusive CPF, escada, tipo de chopeira e forma de pagamento. Para
+    // cliente comum NÃO mexe no cadastro (só o histórico é zerado): "recomeçar"
+    // dele jamais apaga o cadastro real.
+    if (opts.phone && (await isTrainerNumber(companyId, opts.phone))) {
+      await wipeAgentLearnedProfile(companyId, opts.phone).catch((e) => {
+        console.error("[agent] wipeAgentLearnedProfile falhou:", e);
+      });
+    }
     const greeting =
       config.greeting?.trim() || "Oi! 🍺 Aqui é o atendimento da SS-Chopp. Como posso ajudar?";
     return { reply: greeting, toolsUsed: [], simulated: false, photos: [], priceImages: [], priceTableText: "" };

@@ -124,6 +124,10 @@ export async function createAgentSiteOrder(
     city?: string | null;
     street?: string | null;
     eventDate?: string | null; // dia combinado da entrega/retirada (se o cliente definiu)
+    document?: string | null; // CPF/CNPJ pra nota
+    chopeiraType?: "eletrica" | "gelo" | null; // chopeira escolhida
+    hasStairs?: "sim" | "nao" | null; // acesso: tem escada ou é térreo
+    notes?: string | null; // observações livres (ex.: forma de pagamento do restante)
     items: { id: string; name: string; quantity: number; unitPrice: number }[];
     total: number;
   },
@@ -150,6 +154,10 @@ export async function createAgentSiteOrder(
           city: data.city ?? match.city,
           street: data.street ?? match.street,
           eventDate: data.eventDate ?? match.eventDate,
+          document: data.document ?? match.document,
+          chopeiraType: data.chopeiraType ?? match.chopeiraType,
+          hasStairs: data.hasStairs ?? match.hasStairs,
+          notes: data.notes ?? match.notes,
           items: JSON.stringify(data.items),
           total: data.total,
         },
@@ -168,6 +176,10 @@ export async function createAgentSiteOrder(
       city: data.city ?? null,
       street: data.street ?? null,
       eventDate: data.eventDate ?? null,
+      document: data.document ?? null,
+      chopeiraType: data.chopeiraType ?? null,
+      hasStairs: data.hasStairs ?? null,
+      notes: data.notes ?? null,
       items: JSON.stringify(data.items),
       total: data.total,
       origin: "AGENTE",
