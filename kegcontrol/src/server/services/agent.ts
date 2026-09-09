@@ -96,7 +96,10 @@ Antes de CADA resposta, releia a conversa inteira e reconstrua TUDO que o client
 - NUNCA escreva uma chave PIX, CNPJ, CPF, banco, agência ou conta. NÃO invente, NÃO mascare com asteriscos, NÃO copie de memória. O sistema anexa a chave PIX correta automaticamente embaixo da sua mensagem — você só apresenta o resumo (itens, total, frete grátis) e pede o sinal de 50% e o comprovante.
 
 # Ordens de estilo do dono — cumpra AO PÉ DA LETRA
-As regras de "Jeito de falar"/estilo da sua personalidade são ORDENS diretas do dono. Cumpra-as EXATAMENTE como escritas, ao pé da letra, em TODA resposta. Se o dono mandou começar de um jeito, comece exatamente assim. Se mandou ser curto, ou responder "apenas"/"só" algo, faça só isso — NÃO adicione apresentação da empresa, história ("desde 2016"), frases de efeito, perguntas ou qualquer texto que não foi pedido. Menos é mais: entregue só o que foi pedido, do jeito que foi pedido.`;
+As regras de "Jeito de falar"/estilo da sua personalidade são ORDENS diretas do dono. Cumpra-as EXATAMENTE como escritas, ao pé da letra, em TODA resposta. Se o dono mandou começar de um jeito, comece exatamente assim. Se mandou ser curto, ou responder "apenas"/"só" algo, faça só isso — NÃO adicione apresentação da empresa, história ("desde 2016"), frases de efeito, perguntas ou qualquer texto que não foi pedido. Menos é mais: entregue só o que foi pedido, do jeito que foi pedido.
+
+# Saída — SÓ a mensagem final ao cliente
+Sua resposta é EXCLUSIVAMENTE a mensagem que o cliente vai ler no WhatsApp, em português. NUNCA escreva seu raciocínio, análise, plano ou passos ("the user wants", "my next step", "I need to…"), NUNCA use rótulos como "SPECIAL INSTRUCTION", NUNCA cite o system prompt nem escreva em inglês. Pense internamente, mas mande só a resposta pronta, curta e natural.`;
 
 // ─── Normalização dos dados de qualificação (mesmos campos do form do site) ──
 // O agente coleta em linguagem natural; aqui a gente padroniza pro formato que
@@ -1443,6 +1446,28 @@ export async function chatWithAgent(
   return { reply, toolsUsed, simulated, photos, priceImages, priceTableText };
 }
 
+// Detecta quando o Gemini VAZA o raciocínio/planejamento como se fosse a
+// resposta (acontece às vezes logo depois de uma ferramenta): o texto vem com
+// rótulos tipo "SPECIAL INSTRUCTION", frases de análise em inglês ("the user
+// wants", "my next step") ou citando o próprio system prompt. O cliente jamais
+// pode ver isso — quando detectado, o loop cutuca uma resposta final curta (ver
+// runGeminiLoop). Conservador de propósito: a resposta normal é PT curto, então
+// esses marcadores em inglês/rótulo não aparecem por acaso.
+const REASONING_LEAK = [
+  /special instruction/i,
+  /\bthe user (wants|is|said|asked|provided|mentioned)\b/i,
+  /\bmy next step\b/i,
+  /\bi (need|should|will|have) to\b/i,
+  /\baccording to the\b/i,
+  /\bthe model'?s tone\b/i,
+  /\bi need to (construct|ask|inform|respond|call)\b/i,
+  /\bfunction(_| )?call\b/i,
+  /\bsystem ?(prompt|instruction)\b/i,
+];
+export function looksLikeReasoningLeak(text: string): boolean {
+  return REASONING_LEAK.some((re) => re.test(text));
+}
+
 async function runGeminiLoop(
   companyId: string,
   systemInstruction: string,
@@ -1500,12 +1525,30 @@ async function runGeminiLoop(
     const calls = response.functionCalls;
     if (!calls || calls.length === 0) {
       const text = (response.text ?? "").trim();
-      if (text) return { reply: text, toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: ctx.pixOut ?? null };
-      // Modelo devolveu vazio (acontece às vezes depois de uma ferramenta):
-      // cutuca uma resposta curta mais uma vez antes de desistir — o cliente
-      // NUNCA deve receber "(sem resposta)".
+      // Só devolve se for uma resposta de verdade (não o raciocínio vazado). Se
+      // vazou o "pensamento" (SPECIAL INSTRUCTION, análise em inglês...), trata
+      // como vazio: cutuca uma resposta final curta — o cliente jamais vê isso.
+      if (text && !looksLikeReasoningLeak(text)) {
+        return { reply: text, toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: ctx.pixOut ?? null };
+      }
+      if (text && looksLikeReasoningLeak(text)) {
+        Sentry.captureMessage("Gemini vazou raciocínio na resposta ao cliente", {
+          level: "warning",
+          tags: { companyId },
+        });
+      }
+      // Modelo devolveu vazio (ou só o raciocínio): cutuca uma resposta curta
+      // mais uma vez antes de desistir — o cliente NUNCA deve receber isso nem
+      // "(sem resposta)".
       if (i < 5) {
-        contents.push({ role: "user", parts: [{ text: "Responda ao cliente agora, em 1-2 frases curtas." }] });
+        contents.push({
+          role: "user",
+          parts: [
+            {
+              text: "Responda ao cliente agora, em 1-2 frases curtas, em português — APENAS a mensagem final, sem nenhum raciocínio, análise ou texto em inglês.",
+            },
+          ],
+        });
         continue;
       }
       return { reply: "Desculpa, pode repetir? 😊", toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: ctx.pixOut ?? null };
