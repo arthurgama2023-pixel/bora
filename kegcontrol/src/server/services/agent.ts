@@ -156,6 +156,16 @@ export async function savePersonalitySections(
 ): Promise<{ personality: string }> {
   const clean = coerceSections(sections);
   const personality = renderPersonality(clean);
+  // Guarda: nunca salvar uma personalidade vazia (apagaria a identidade/tom do
+  // agente). Exige a IDENTIDADE preenchida e um mínimo de conteúdo real — evita
+  // zerar tudo se a tela mandar seções vazias (ex.: fetch não carregou, ou o
+  // dono apagou os campos sem querer).
+  if (!clean.identidade.trim() || personality.replace(/[#\s]/g, "").length < 30) {
+    throw new ApiError(
+      422,
+      "A personalidade não pode ficar vazia — preencha pelo menos a Identidade e o Tom antes de salvar.",
+    );
+  }
   const prevText = (await getAgentConfig(companyId)).personality;
 
   await prisma.setting.upsert({

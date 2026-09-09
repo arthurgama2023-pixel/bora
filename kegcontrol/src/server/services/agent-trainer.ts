@@ -37,10 +37,45 @@ function normalize(text: string): string {
     .trim();
 }
 
-// Raiz dos gatilhos: QUALQUER palavra derivada de "ajustar"/"configurar"/
-// "treinar" liga o modo — ajuste, ajusta, ajustar, ajustando, ajustei, ajusto,
-// reajuste, configuração, treino… Basta a palavra CONTER a raiz.
-const TRIGGER_ROOTS = /(ajust|configur|\bconfig\b|\btrein)/i;
+// Começar a mensagem com um gatilho (ajuste/ajusta/ajustar/configurar/treino…)
+// é comando de ajuste — um cliente raramente começa uma frase com "ajustar…".
+const TRIGGER_START_RE = /^(ajust\w*|configur\w*|config|trein\w*|modo\s+ajuste)\b/i;
+
+// "um/o/esse ajuste(s)" — o SUBSTANTIVO com artigo indica "fazer um ajuste NO
+// AGENTE" (ex.: "faça um ajuste"), diferente do VERBO "ajustar a entrega".
+const AJUSTE_NOUN_RE = /\b(um|uns|uma|umas|o|os|esse|este|esses|algum|outro)\s+ajustes?\b/;
+
+// Se "ajust…" vem perto de uma palavra do AGENTE, é ajuste do jeito de atender.
+const AGENT_WORDS = new Set([
+  "saudacao", "saudacoes", "tom", "resposta", "respostas", "atendimento", "jeito",
+  "personalidade", "agente", "atendente", "mensagem", "mensagens", "fala", "voce",
+  "vc", "cumprimento", "cumprimenta", "comportamento", "chopinho",
+]);
+
+// Se "ajust…" vem perto de uma destas, é o CLIENTE mexendo no pedido dele —
+// NÃO é ajuste do agente (ex.: "preciso ajustar minha entrega").
+const CLIENT_WORDS = new Set([
+  "entrega", "pedido", "pedidos", "endereco", "horario", "hora", "data", "dia",
+  "valor", "quantidade", "barril", "barris", "chopeira",
+]);
+
+// Decide se uma mensagem (de um número treinador, fora do modo) é um pedido de
+// AJUSTE DO AGENTE — sem confundir com o cliente querendo mexer no pedido dele.
+function looksLikeAdjustRequest(trimmed: string, normalized: string): boolean {
+  const words = normalized.split(" ");
+  const hasClient = words.some((w) => CLIENT_WORDS.has(w));
+  const hasAgent = words.some((w) => AGENT_WORDS.has(w));
+  // Começa com gatilho: é ajuste, a menos que seja claramente sobre o pedido
+  // (ex.: "ajustar minha entrega" → não; "ajusta a saudação" → sim).
+  if (TRIGGER_START_RE.test(trimmed)) return !(hasClient && !hasAgent);
+  // "faça um ajuste", "quero uns ajustes": substantivo com artigo.
+  if (AJUSTE_NOUN_RE.test(normalized)) return true;
+  // "ajust…" no meio: liga, a menos que a frase seja sobre o pedido/entrega do
+  // cliente. ("preciso ajustar minha entrega" → não; "quero que ajuste o tom"
+  // ou "quero que ajuste" → sim.)
+  if (/ajust/.test(normalized)) return !hasClient || hasAgent;
+  return false;
+}
 
 // Uma palavra (já normalizada) é gatilho? (usado pra separar gatilho de pedido)
 function isTriggerWord(w: string): boolean {
@@ -118,11 +153,12 @@ export function decideTrainerAction(
   // modo sai sozinho após aplicar, então isto permite reverter logo depois.
   if (isOneOf(n, UNDO_WORDS_STRICT)) return { kind: "undo" };
 
-  // qualquer raiz de gatilho ("ajust"/"configur"/"trein") liga o modo, em
-  // qualquer posição da frase. Sem gatilho, é conversa de cliente (o treinador
-  // também compra/testa pelo mesmo número).
+  // Liga o modo só quando a mensagem é claramente um pedido de ajuste DO AGENTE
+  // (começa com gatilho, ou "um ajuste", ou "ajust…" perto de palavra do jeito
+  // de atender). "preciso ajustar minha entrega" (cliente) NÃO liga o modo — o
+  // treinador também compra/testa pelo mesmo número.
   const trimmed = text.trim();
-  if (!TRIGGER_ROOTS.test(n)) return { kind: "passthrough" };
+  if (!looksLikeAdjustRequest(trimmed, n)) return { kind: "passthrough" };
 
   // "gatilho: X" — instrução explícita após os dois-pontos.
   const colon = trimmed.match(ENTER_COLON_RE);
