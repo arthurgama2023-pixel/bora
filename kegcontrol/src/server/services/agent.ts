@@ -72,6 +72,8 @@ Existem só 5 marcas no catálogo: Belco, Brahma, Heineken, Amstel e Chopp de Vi
 # Memória da conversa — NUNCA re-pergunte o que já sabe (regra crítica)
 Antes de CADA resposta, releia a conversa inteira e reconstrua TUDO que o cliente JÁ informou: marca, litragem, quantidade, bairro, endereço, CPF, tipo de chopeira (elétrica ou de gelo), se o local tem escada e a forma de pagamento. É PROIBIDO perguntar de novo qualquer coisa que ele já respondeu — nem com outras palavras, nem "só pra confirmar". Isso vale também para o que já estiver na FICHA DO CLIENTE (cadastro): se o CPF, o endereço ou o bairro já vieram no cadastro, USE e não pergunte. Se você já tem a informação, vá direto pra a PRÓXIMA que falta. Uma resposta curta se refere à ÚLTIMA pergunta que você fez (ele respondeu "50" depois de você perguntar a litragem? então litragem = 50L, preenchido; respondeu "elétrica" depois de você perguntar o tipo de chopeira? então chopeira = elétrica). Se ele mandou vários dados de uma vez, aproveite todos e pule as perguntas correspondentes. Nunca volte a uma etapa anterior já resolvida.
 
+Você tem uma AJUDA de memória travada em código: se aparecer um bloco "JÁ CONFIRMADO NESTE PEDIDO" nestas instruções, ele é a fonte de verdade absoluta — nunca pergunte de novo nada que está listado ali, mesmo que a conversa pareça sugerir o contrário. E toda vez que o cliente confirmar um dado do pedido (produto, quantidade, bairro, entrega/retirada, endereço, chopeira, escada, CPF/CNPJ ou forma de pagamento), chame a ferramenta atualizar_dados_pedido na mesma resposta, com o(s) campo(s) que acabou de confirmar — isso é o que alimenta esse bloco e evita que você repita a pergunta depois.
+
 # Cadastro natural (regras invioláveis)
 - NUNCA diga que o cliente "não tem cadastro", "não está cadastrado", "não te encontrei aqui" ou algo do tipo. Trate TODO mundo como cliente conhecido, mesmo que seja o primeiro contato.
 - NUNCA diga que está "cadastrando", "salvando", "atualizando o cadastro" ou "anotando seus dados". Isso é feito nos bastidores, de forma invisível — o cliente não vê.
@@ -132,6 +134,103 @@ export function normalizeEscada(v: unknown): "sim" | "nao" | null {
   // "tem escada", "sim", "com escada", "2 lances" → sim
   if (/(escada|degrau|lance|andar|subir|sim|tem)/.test(t)) return "sim";
   return null;
+}
+
+// ─── Memória de pedido em CÓDIGO (reforço contra o LLM "esquecer") ─────────
+// O prompt já manda não re-perguntar o que o cliente já respondeu, mas o
+// Gemini às vezes esquece um dado confirmado há 1-2 mensagens (ex.: pergunta a
+// quantidade de novo logo depois de perguntar a chopeira) — falha observada em
+// produção. Este rascunho guarda em código, por sessão, os campos do pedido
+// conforme vão sendo confirmados (via a ferramenta atualizar_dados_pedido, ou
+// de graça quando preco_por_bairro/finalizar_pedido já trazem o dado) e o
+// bloco derivado dele é injetado no prompt a CADA turno como fonte de
+// verdade — não depende do LLM reconstruir sozinho a partir do histórico.
+// Mesma filosofia do shieldPix: o que já foi confirmado não pode depender só
+// da memória do modelo.
+export type OrderDraft = {
+  produto?: string;
+  quantidade?: number;
+  bairro?: string;
+  entrega?: string;
+  endereco?: string;
+  chopeiraType?: "eletrica" | "gelo";
+  hasStairs?: "sim" | "nao";
+  document?: string;
+  formaPagamento?: string;
+};
+
+const ORDER_DRAFT_PREFIX = "agent.order_draft.";
+
+function orderDraftKey(sessionId: string): string {
+  return `${ORDER_DRAFT_PREFIX}${sessionId}`;
+}
+
+async function getOrderDraft(companyId: string, sessionId: string): Promise<OrderDraft> {
+  const row = await prisma.setting.findUnique({
+    where: { companyId_key: { companyId, key: orderDraftKey(sessionId) } },
+    select: { value: true },
+  });
+  if (!row?.value) return {};
+  try {
+    return JSON.parse(row.value) as OrderDraft;
+  } catch {
+    return {};
+  }
+}
+
+async function saveOrderDraft(companyId: string, sessionId: string, draft: OrderDraft): Promise<void> {
+  const key = orderDraftKey(sessionId);
+  if (Object.keys(draft).length === 0) {
+    await prisma.setting.deleteMany({ where: { companyId, key } });
+    return;
+  }
+  await prisma.setting.upsert({
+    where: { companyId_key: { companyId, key } },
+    update: { value: JSON.stringify(draft) },
+    create: { companyId, key, value: JSON.stringify(draft) },
+  });
+}
+
+const DRAFT_LABELS: Record<keyof OrderDraft, string> = {
+  produto: "Produto (marca+litragem)",
+  quantidade: "Quantidade de barris",
+  bairro: "Bairro",
+  entrega: "Entrega ou retirada",
+  endereco: "Endereço",
+  chopeiraType: "Tipo de chopeira",
+  hasStairs: "Tem escada",
+  document: "CPF/CNPJ",
+  formaPagamento: "Forma de pagamento do restante",
+};
+
+// Bloco injetado no prompt com o que JÁ foi confirmado nesta conversa, travado
+// em código — o LLM não pode "esquecer" o que está aqui porque não precisa
+// reconstruir da conversa: o código já entrega pronto. Pura e testável.
+export function renderOrderDraftBlock(draft: OrderDraft): string {
+  const entries = (Object.keys(DRAFT_LABELS) as (keyof OrderDraft)[])
+    .map((k) => [DRAFT_LABELS[k], draft[k]] as const)
+    .filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== "");
+  if (entries.length === 0) return "";
+  const lines = entries.map(([label, v]) => `- ${label}: ${v}`).join("\n");
+  return [
+    "JÁ CONFIRMADO NESTE PEDIDO (travado em código — é PROIBIDO perguntar de novo qualquer item desta lista, nem reformulado):",
+    lines,
+    "Peça só o que NÃO está nesta lista. Ao confirmar um novo dado do pedido (produto, quantidade, bairro, entrega/retirada, endereço, chopeira, escada, CPF/CNPJ ou forma de pagamento), chame atualizar_dados_pedido na mesma resposta.",
+  ].join("\n");
+}
+
+// Aplica um patch (de atualizar_dados_pedido, preco_por_bairro ou
+// finalizar_pedido) por cima do rascunho — só sobrescreve campos informados
+// e não-vazios; nunca apaga um campo já confirmado.
+export function mergeOrderDraft(draft: OrderDraft, patch: OrderDraft): OrderDraft {
+  const merged = { ...draft };
+  for (const k of Object.keys(patch) as (keyof OrderDraft)[]) {
+    const v = patch[k];
+    if (v !== undefined && v !== null && String(v).trim() !== "") {
+      (merged as Record<string, unknown>)[k] = v;
+    }
+  }
+  return merged;
 }
 
 export async function getAgentConfig(companyId: string) {
@@ -701,6 +800,25 @@ const TOOLS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "atualizar_dados_pedido",
+    description:
+      "Grave IMEDIATAMENTE, na mesma resposta em que o cliente confirmar, qualquer um destes dados do pedido em andamento: produto (marca+litragem), quantidade de barris, bairro, tipo de entrega (entrega/retirada), endereço, tipo de chopeira (elétrica/gelo), se tem escada, CPF/CNPJ ou forma de pagamento do restante. Chame só com os campos que acabaram de ser confirmados nesta mensagem — não precisa ter tudo de uma vez, nem repetir o que já foi salvo antes. Isso é o que garante que você NUNCA mais pergunte de novo algo que o cliente já respondeu — sem chamar esta ferramenta a cada confirmação, o dado se perde e a pergunta se repete por engano.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        produto: { type: Type.STRING, description: "Produto confirmado nesta mensagem, ex.: 'Belco 30L'" },
+        quantidade: { type: Type.INTEGER, description: "Quantidade de barris confirmada nesta mensagem" },
+        bairro: { type: Type.STRING, description: "Bairro confirmado nesta mensagem" },
+        entrega: { type: Type.STRING, description: "'entrega' ou 'retirada', se confirmado" },
+        endereco: { type: Type.STRING, description: "Endereço confirmado nesta mensagem" },
+        tipo_chopeira: { type: Type.STRING, description: "'eletrica' ou 'gelo', se confirmado" },
+        escada: { type: Type.STRING, description: "'sim' (tem escada) ou 'nao' (térreo), se confirmado" },
+        cpf: { type: Type.STRING, description: "CPF/CNPJ confirmado nesta mensagem" },
+        forma_pagamento: { type: Type.STRING, description: "Forma de pagamento do restante confirmada nesta mensagem" },
+      },
+    },
+  },
+  {
     name: "finalizar_pedido",
     description:
       "Fecha o pedido do cliente e retorna o resumo com total e a chave PIX para pagamento. Use SOMENTE quando o cliente já confirmou o que quer: o(s) produto(s), a quantidade, o bairro e se é entrega ou retirada (e o endereço, se for entrega). Passe também, quando já souber, o CPF, o tipo de chopeira, se tem escada e a forma de pagamento — assim ficam registrados no pedido para a equipe. A ferramenta calcula o total pela tabela de preço fixo e devolve a chave PIX. Não use se ainda faltar alguma das informações obrigatórias (produto, quantidade, bairro, entrega/retirada).",
@@ -787,6 +905,13 @@ type ToolCtx = {
   // código ANEXA isso ao fim da resposta (chatWithAgent) — a IA não escreve a
   // chave, pra nunca inventar/mascarar/errar a chave (dinheiro do cliente).
   pixOut?: { chave: string; nome: string } | null;
+  // Acumula os campos do pedido confirmados NESTE turno (via
+  // atualizar_dados_pedido, preco_por_bairro ou finalizar_pedido). chatWithAgent
+  // funde isso no rascunho persistido (ver OrderDraft) depois do loop.
+  draftPatch?: OrderDraft;
+  // Marcado pelo finalizar_pedido quando o pedido fecha com sucesso — sinaliza
+  // pra chatWithAgent limpar o rascunho desta sessão (pedido concluído).
+  orderClosed?: boolean;
 };
 
 // Base pública do próprio KegControl (onde a imagem da tabela é servida). Em
@@ -817,10 +942,27 @@ const PRICE_TABLE_CLOSING = "É só me falar qual chopp e a litragem que eu já 
 
 async function runTool(
   companyId: string,
-  name: string,
+  rawName: string,
   input: Record<string, unknown>,
   ctx: ToolCtx = {},
 ): Promise<string> {
+  // O Gemini às vezes devolve o nome da ferramenta ligeiramente diferente do
+  // declarado (ex.: "update_dados_pedido" em vez de "atualizar_dados_pedido").
+  // Como esta ferramenta é a rede de segurança contra o agente "esquecer" um
+  // dado do pedido, é tolerante ao nome: qualquer coisa que pareça essa
+  // ferramenta ainda grava no rascunho, em vez de cair silenciosamente em
+  // "ferramenta desconhecida" e perder o reforço.
+  const name =
+    rawName !== "atualizar_dados_pedido" && /dados.?do.?pedido|dados_pedido|pedido.?parcial/i.test(rawName)
+      ? "atualizar_dados_pedido"
+      : rawName;
+  if (name !== rawName) {
+    Sentry.captureMessage("Gemini chamou atualizar_dados_pedido com nome diferente do declarado", {
+      level: "info",
+      tags: { companyId },
+      extra: { rawName },
+    });
+  }
   switch (name) {
     case "buscar_cliente": {
       const termo = String(input.termo ?? "");
@@ -969,6 +1111,14 @@ async function runTool(
           const qtd = Math.max(1, Math.floor(Number(input.quantidade ?? 1)));
           const precoUnit = unitPriceFor(item, qtd);
           cotacao = { produto: item.name, quantidade: qtd, precoUnit, total: precoUnit * qtd };
+          // Reforço da memória de pedido: se o cliente já confirmou produto (e
+          // quantidade, quando veio), grava de graça — sem depender de o LLM
+          // lembrar de chamar atualizar_dados_pedido pra isto também.
+          if (ctx.draftPatch) {
+            ctx.draftPatch.produto = item.name;
+            ctx.draftPatch.bairro = zona.bairro;
+            if (input.quantidade !== undefined) ctx.draftPatch.quantidade = qtd;
+          }
         }
       }
       return JSON.stringify({
@@ -981,6 +1131,30 @@ async function runTool(
         instrucao:
           "PROIBIDO recalcular, multiplicar ou inventar preço/total — use EXATAMENTE os números. Se veio 'cotacao', informe o total dela AO PÉ DA LETRA (ex.: '3 Belco 50L pra Xerém = R$1380 no total, com frete grátis'). Se não veio, o cliente perguntou de UM produto: responda em UMA frase natural o preço dele (as faixas do bloco daquele produto) e siga. NÃO despeje a lista de todos os produtos e NÃO mande imagem. Se não ficou claro qual produto, diga só as marcas (Belco, Brahma, Heineken, Amstel, Chopp de Vinho) e pergunte qual — sem preços.",
       });
+    }
+    case "atualizar_dados_pedido": {
+      // Só acumula no patch do turno (ctx.draftPatch) — quem persiste é o
+      // chatWithAgent, depois do loop. Aceita qualquer subconjunto de campos.
+      if (ctx.draftPatch) {
+        if (typeof input.produto === "string" && input.produto.trim()) ctx.draftPatch.produto = input.produto.trim();
+        if (input.quantidade !== undefined) {
+          const qtd = Math.floor(Number(input.quantidade));
+          if (qtd > 0) ctx.draftPatch.quantidade = qtd;
+        }
+        if (typeof input.bairro === "string" && input.bairro.trim()) ctx.draftPatch.bairro = input.bairro.trim();
+        if (typeof input.entrega === "string" && input.entrega.trim()) ctx.draftPatch.entrega = input.entrega.trim();
+        if (typeof input.endereco === "string" && input.endereco.trim()) ctx.draftPatch.endereco = input.endereco.trim();
+        const chopeira = normalizeChopeira(input.tipo_chopeira);
+        if (chopeira) ctx.draftPatch.chopeiraType = chopeira;
+        const escada = normalizeEscada(input.escada);
+        if (escada) ctx.draftPatch.hasStairs = escada;
+        const doc = normalizeDocument(input.cpf);
+        if (doc) ctx.draftPatch.document = doc;
+        if (typeof input.forma_pagamento === "string" && input.forma_pagamento.trim()) {
+          ctx.draftPatch.formaPagamento = input.forma_pagamento.trim();
+        }
+      }
+      return JSON.stringify({ ok: true });
     }
     case "finalizar_pedido": {
       // Liberado em todos os canais (inclusive WhatsApp): fecha o pedido e envia
@@ -1076,6 +1250,24 @@ async function runTool(
           });
         }
       }
+      // Reforço da memória de pedido: fechar o pedido é o momento em que mais
+      // dados costumam estar confirmados — grava tudo no rascunho de graça
+      // (defesa extra, mesmo que o LLM tenha esquecido de chamar
+      // atualizar_dados_pedido ao longo da conversa).
+      if (ctx.draftPatch) {
+        ctx.draftPatch.bairro = zona.bairro;
+        ctx.draftPatch.entrega = deliveryMethod;
+        if (itens.length === 1) {
+          ctx.draftPatch.produto = itens[0].produto;
+          ctx.draftPatch.quantidade = itens[0].quantidade;
+        }
+        if (input.endereco) ctx.draftPatch.endereco = String(input.endereco);
+        if (cpf) ctx.draftPatch.document = cpf;
+        if (chopeiraType) ctx.draftPatch.chopeiraType = chopeiraType;
+        if (hasStairs) ctx.draftPatch.hasStairs = hasStairs;
+        if (formaPagamento) ctx.draftPatch.formaPagamento = formaPagamento;
+      }
+      ctx.orderClosed = true;
       // PIX real vem do Setting (pix_key/pix_nome). Enquanto não configurado,
       // usa um PIX de TESTE — seguro porque esta ferramenta só roda no
       // playground (channel === PLAYGROUND). Ao configurar o PIX real, ele assume.
@@ -1331,6 +1523,9 @@ export async function chatWithAgent(
   // agente lembrar das mensagens anteriores).
   if (userMessage && isResetSignal(userMessage.content)) {
     await prisma.agentMessage.deleteMany({ where: { companyId, sessionId } });
+    // Zera também o rascunho do pedido (memória em código) — recomeçar não
+    // pode deixar "produto: Belco 30L" grudado pro próximo teste.
+    await saveOrderDraft(companyId, sessionId, {});
     // Limpeza PROFUNDA só para números TREINADORES (teste): além do histórico,
     // esquece o perfil aprendido do contato (nome, endereço, bairro, CPF, notas)
     // pra o agente voltar a tratá-lo como estranho e fazer TODAS as perguntas do
@@ -1354,7 +1549,13 @@ export async function chatWithAgent(
       ? await buildIdentityContext(companyId, opts.identifiedCustomer, opts.phone, opts.pushName)
       : buildUnknownContext(opts.phone, opts.pushName);
   }
-  const systemInstruction = [config.personality, NATURAL_CUSTOMER_RULES, contextBlock]
+  // Rascunho do pedido em código (ver OrderDraft): carregado ANTES de chamar o
+  // Gemini, então reflete só o que foi confirmado em turnos ANTERIORES — o
+  // bloco derivado dele reforça, em código, o que o prompt já pede em texto
+  // ("não pergunte de novo"), sem depender do LLM reconstruir da conversa.
+  const orderDraftBefore = await getOrderDraft(companyId, sessionId);
+  const orderDraftBlock = renderOrderDraftBlock(orderDraftBefore);
+  const systemInstruction = [config.personality, NATURAL_CUSTOMER_RULES, orderDraftBlock, contextBlock]
     .filter(Boolean)
     .join("\n\n---\n");
 
@@ -1397,6 +1598,15 @@ export async function chatWithAgent(
     photos = result.photos;
     priceImages = result.priceImages;
     priceTableText = result.priceTable;
+    // Persiste o rascunho do pedido: pedido fechado (finalizar_pedido) limpa
+    // (evita vazar produto/quantidade do pedido concluído pro próximo, na
+    // mesma sessão); senão, funde o que foi confirmado neste turno por cima
+    // do que já tinha.
+    await saveOrderDraft(
+      companyId,
+      sessionId,
+      result.orderClosed ? {} : mergeOrderDraft(orderDraftBefore, result.draftPatch),
+    );
     // Tabela de preços pedida: em qualquer caso, corto a resposta do LLM para a
     // PRIMEIRA linha não-vazia (a saudação) e descarto o resto — se ele inventar
     // preços por conta própria, isso é jogado fora. Os preços "de verdade" vêm
@@ -1480,6 +1690,8 @@ async function runGeminiLoop(
   priceTable: string;
   priceImages: { url: string; label: string }[];
   pix: { chave: string; nome: string } | null;
+  draftPatch: OrderDraft;
+  orderClosed: boolean;
 }> {
   const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const toolsUsed: string[] = [];
@@ -1497,6 +1709,12 @@ async function runGeminiLoop(
   ctx.priceTableOut = "";
   // finalizar_pedido grava aqui a chave PIX correta; o código a anexa à resposta.
   ctx.pixOut = null;
+  // Rascunho do pedido (memória em código): atualizar_dados_pedido,
+  // preco_por_bairro e finalizar_pedido acumulam aqui os campos confirmados
+  // NESTE turno; chatWithAgent funde no rascunho persistido depois do loop.
+  const draftPatch: OrderDraft = {};
+  ctx.draftPatch = draftPatch;
+  ctx.orderClosed = false;
   const contents: Content[] = history.map((t) => ({
     role: t.role === "assistant" ? "model" : "user",
     parts: [{ text: t.content }],
@@ -1529,7 +1747,7 @@ async function runGeminiLoop(
       // vazou o "pensamento" (SPECIAL INSTRUCTION, análise em inglês...), trata
       // como vazio: cutuca uma resposta final curta — o cliente jamais vê isso.
       if (text && !looksLikeReasoningLeak(text)) {
-        return { reply: text, toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: ctx.pixOut ?? null };
+        return { reply: text, toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: ctx.pixOut ?? null, draftPatch, orderClosed: ctx.orderClosed ?? false };
       }
       if (text && looksLikeReasoningLeak(text)) {
         Sentry.captureMessage("Gemini vazou raciocínio na resposta ao cliente", {
@@ -1551,7 +1769,7 @@ async function runGeminiLoop(
         });
         continue;
       }
-      return { reply: "Desculpa, pode repetir? 😊", toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: ctx.pixOut ?? null };
+      return { reply: "Desculpa, pode repetir? 😊", toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: ctx.pixOut ?? null, draftPatch, orderClosed: ctx.orderClosed ?? false };
     }
 
     // Ecoa a resposta do modelo (com as chamadas de função) antes dos resultados.
@@ -1579,7 +1797,7 @@ async function runGeminiLoop(
     }
     contents.push({ role: "user", parts: resultParts });
   }
-  return { reply: "Não consegui concluir a consulta agora. Pode repetir?", toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: ctx.pixOut ?? null };
+  return { reply: "Não consegui concluir a consulta agora. Pode repetir?", toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: ctx.pixOut ?? null, draftPatch, orderClosed: ctx.orderClosed ?? false };
 }
 
 // Modo simulado: sem LLM, mas com os dados reais — suficiente para treinar
