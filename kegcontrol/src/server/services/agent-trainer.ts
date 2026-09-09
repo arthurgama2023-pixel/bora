@@ -80,6 +80,11 @@ function enterInstruction(text: string, normalized: string): string {
 
 const EXIT_WORDS = ["sair", "pronto", "fechar", "terminar", "encerrar", "parar", "fim"];
 const UNDO_WORDS = ["desfazer", "desfaz", "desfaca", "voltar", "volta", "undo", "reverter"];
+// Palavras de "desfazer" claras o bastante pra valerem MESMO fora do modo (um
+// cliente não manda "desfazer" no meio de um pedido; "voltar"/"volta" ficam de
+// fora por serem ambíguas). Permite reverter o último ajuste logo depois de
+// aplicá-lo, já que o modo sai sozinho após aplicar.
+const UNDO_WORDS_STRICT = ["desfazer", "desfaz", "desfaca", "undo", "reverter"];
 const YES_WORDS = ["sim", "pode", "pode aplicar", "aplica", "aplicar", "confirmar", "confirma", "isso", "ok", "beleza", "manda", "vai", "aplique", "s"];
 const NO_WORDS = ["nao", "cancela", "cancelar", "deixa", "para", "negativo", "melhor nao", "espera", "n"];
 const HELP_WORDS = ["ajuda", "como funciona", "como usar", "help", "socorro"];
@@ -109,9 +114,13 @@ export function decideTrainerAction(
     return { kind: "instruct", instruction: text.trim() };
   }
 
-  // Ocioso: qualquer raiz de gatilho ("ajust"/"configur"/"trein") liga o modo,
-  // em qualquer posição da frase. Sem gatilho, é conversa de cliente (o
-  // treinador também compra/testa pelo mesmo número).
+  // Ocioso: "desfazer" (claro) reverte o último ajuste mesmo fora do modo — o
+  // modo sai sozinho após aplicar, então isto permite reverter logo depois.
+  if (isOneOf(n, UNDO_WORDS_STRICT)) return { kind: "undo" };
+
+  // qualquer raiz de gatilho ("ajust"/"configur"/"trein") liga o modo, em
+  // qualquer posição da frase. Sem gatilho, é conversa de cliente (o treinador
+  // também compra/testa pelo mesmo número).
   const trimmed = text.trim();
   if (!TRIGGER_ROOTS.test(n)) return { kind: "passthrough" };
 

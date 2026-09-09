@@ -335,7 +335,11 @@ type TrainerPending = {
   summary: string;
   blocked: string | null;
 };
-type TrainerSession = { mode: TrainerMode; pending: TrainerPending | null };
+type TrainerSession = { mode: TrainerMode; pending: TrainerPending | null; at?: number };
+
+// O modo ajuste EXPIRA sozinho depois disso parado — assim ninguém fica preso
+// no modo (capturando toda mensagem como "ajuste") por ter esquecido de "sair".
+const TRAINER_MODE_TTL_MS = 12 * 60 * 1000; // 12 min
 
 function trainerSessionKey(phone: string): string {
   return `${TRAINER_SESSION_PREFIX}${phoneMatchKey(phone) || phone}`;
@@ -349,10 +353,12 @@ async function getTrainerSession(companyId: string, phone: string): Promise<Trai
   if (row?.value?.trim()) {
     try {
       const j = JSON.parse(row.value) as Partial<TrainerSession>;
-      return {
-        mode: j.mode === "adjusting" ? "adjusting" : "idle",
-        pending: j.pending ?? null,
-      };
+      const mode = j.mode === "adjusting" ? "adjusting" : "idle";
+      // Timeout: modo ajuste parado há muito tempo volta a atender normalmente.
+      if (mode === "adjusting" && (!j.at || Date.now() - j.at > TRAINER_MODE_TTL_MS)) {
+        return { mode: "idle", pending: null };
+      }
+      return { mode, pending: j.pending ?? null, at: j.at };
     } catch {
       // estado corrompido → começa limpo
     }
@@ -366,7 +372,13 @@ async function setTrainerSession(
   session: TrainerSession,
 ): Promise<void> {
   const key = trainerSessionKey(phone);
-  const value = JSON.stringify(session);
+  // idle sem prévia pendente = estado "limpo": apaga o registro (não deixa lixo
+  // nem risco de reabrir por engano).
+  if (session.mode === "idle" && !session.pending) {
+    await prisma.setting.deleteMany({ where: { companyId, key } }).catch(() => {});
+    return;
+  }
+  const value = JSON.stringify({ ...session, at: Date.now() });
   await prisma.setting.upsert({
     where: { companyId_key: { companyId, key } },
     update: { value },
@@ -464,7 +476,8 @@ export async function handleTrainerMessage(
 
     case "undo": {
       const ok = await undoLastPersonality(companyId);
-      await setTrainerSession(companyId, phone, { mode: "adjusting", pending: null });
+      // Sai do modo: volta ao atendimento normal (não fica preso).
+      await setTrainerSession(companyId, phone, { mode: "idle", pending: null });
       if (!ok) return { reply: "Não tenho um ajuste anterior pra desfazer.", resetConversa: false };
       return {
         reply: "↩️ Desfeito — voltei pro jeito anterior.\n🔄 Zerei a conversa de teste: manda um “oi” pra ver.",
@@ -473,8 +486,12 @@ export async function handleTrainerMessage(
     }
 
     case "cancel":
-      await setTrainerSession(companyId, phone, { mode: "adjusting", pending: null });
-      return { reply: "Beleza, não mexi 👍 Manda outro ajuste ou “sair”.", resetConversa: false };
+      // Descartou a prévia → volta ao atendimento normal.
+      await setTrainerSession(companyId, phone, { mode: "idle", pending: null });
+      return {
+        reply: "Beleza, não mexi 👍 Voltei ao atendimento normal. Pra tentar de novo, é só mandar “ajuste …”.",
+        resetConversa: false,
+      };
 
     case "confirm": {
       if (!session.pending) {
@@ -482,11 +499,12 @@ export async function handleTrainerMessage(
       }
       await savePersonalitySections(companyId, session.pending.sections);
       const summary = session.pending.summary;
-      await setTrainerSession(companyId, phone, { mode: "adjusting", pending: null });
+      // Aplicou → SAI do modo (volta ao normal). Pra outro ajuste, manda "ajuste …".
+      await setTrainerSession(companyId, phone, { mode: "idle", pending: null });
       return {
         reply:
           `✅ Feito! ${summary}\n🔄 Zerei a conversa de teste: manda um “oi” pra ver como ficou.\n` +
-          "(pra reverter: “desfazer” · pra sair: “sair”)",
+          "Voltei ao atendimento normal — pra outro ajuste é só mandar “ajuste …”; pra reverter este, “desfazer”.",
         resetConversa: true,
       };
     }
