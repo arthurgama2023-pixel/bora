@@ -39,6 +39,16 @@ describe("decideTrainerAction — ocioso", () => {
     expect(decideTrainerAction("oi, boa tarde", idle)).toEqual({ kind: "passthrough" });
   });
 
+  it("'desfazer' reverte o último ajuste mesmo fora do modo", () => {
+    expect(decideTrainerAction("desfazer", idle)).toEqual({ kind: "undo" });
+    expect(decideTrainerAction("reverter", idle)).toEqual({ kind: "undo" });
+  });
+
+  it("'voltar'/'volta' NÃO disparam undo fora do modo (ambíguo → cliente)", () => {
+    expect(decideTrainerAction("voltar", idle)).toEqual({ kind: "passthrough" });
+    expect(decideTrainerAction("quero voltar a comprar", idle)).toEqual({ kind: "passthrough" });
+  });
+
   // "ajuste"/"ajustar" NO MEIO da frase também liga o modo (pedido do dono).
   it("gatilho no meio da frase liga o modo", () => {
     expect(decideTrainerAction("faça um ajuste", idle)).toEqual({ kind: "enter" });
