@@ -1,17 +1,10 @@
 import * as Sentry from "@sentry/nextjs";
 import { FunctionCallingConfigMode, GoogleGenAI, Type, type Content, type FunctionDeclaration, type Part } from "@google/genai";
-import {
-  CUSTOMER_STATUS_LABELS,
-  CUSTOMER_TYPE_LABELS,
-  MOVEMENT_TYPE_LABELS,
-  type CustomerStatus,
-  type CustomerType,
-  type MovementType,
-} from "@/lib/enums";
+import { CUSTOMER_STATUS_LABELS, type CustomerStatus } from "@/lib/enums";
 import { ApiError } from "@/lib/errors";
 import { phoneMatchKey } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 import { getCustomerBalance, getCustomerPrices, upsertCustomerFromAgent } from "./customers";
 import { getCustomerInsights, SEGMENT_LABELS } from "./crm";
 import { getCustomerStatement } from "./reports";
@@ -1029,14 +1022,9 @@ async function buildIdentityContext(
   phone: string,
   pushName?: string,
 ): Promise<string> {
-  const [balance, prices, lastMov, record] = await Promise.all([
+  const [balance, prices, record] = await Promise.all([
     getCustomerBalance(companyId, customer.id),
     getCustomerPrices(companyId, customer.id),
-    prisma.movement.findFirst({
-      where: { companyId, customerId: customer.id },
-      orderBy: { occurredAt: "desc" },
-      select: { occurredAt: true, type: true },
-    }),
     prisma.customer.findUnique({
       where: { id: customer.id },
       select: { contactName: true, neighborhood: true, city: true, address: true, notes: true },
@@ -1060,12 +1048,8 @@ async function buildIdentityContext(
   const priced = prices.filter((p) => p.price > 0);
   const priceLines = priced.length
     ? priced.map((p) => `${p.name} (${p.code}) = ${formatCurrency(p.price)}`).join("; ")
-    : "sem preço negociado próprio — use os PREÇOS DO SITE por localidade (preco_por_bairro com o bairro dele)";
-  const lastMovTxt = lastMov
-    ? `${MOVEMENT_TYPE_LABELS[lastMov.type as MovementType] ?? lastMov.type} em ${formatDate(lastMov.occurredAt)}`
-    : "nenhuma movimentação registrada ainda";
+    : "";
   const statusLabel = CUSTOMER_STATUS_LABELS[customer.status as CustomerStatus] ?? customer.status;
-  const typeLabel = CUSTOMER_TYPE_LABELS[customer.type as CustomerType] ?? customer.type;
 
   // O nome cadastrado pode ser um placeholder (ex.: "Cliente 5521999999999",
   // criado quando o agente ainda não sabia o nome de verdade). Nesse caso,
@@ -1074,52 +1058,49 @@ async function buildIdentityContext(
   const isPlaceholder = PLACEHOLDER_NAME.test(customer.name.trim());
   const displayName = isPlaceholder && pushName ? pushName : customer.name;
 
+  // FICHA DE DADOS (não são ordens): o ESTILO e o FLUXO seguem a personalidade —
+  // exatamente como no chat de treino. Aqui vão só os fatos que o agente pode
+  // usar pra não re-perguntar o que já sabe. Curto de propósito: um bloco grande
+  // de instruções competia com a "memória do pedido" e fazia o agente repetir
+  // perguntas no WhatsApp (ao contrário do chat, que não tem este bloco).
+  const nomeLinha = isPlaceholder
+    ? pushName
+      ? `- Nome: "${pushName}" (do WhatsApp; se ele disser o nome real, guarde). Nunca o chame pelo número.`
+      : `- Nome: ainda desconhecido — pergunte com naturalidade quando fizer sentido. Nunca o chame pelo número.`
+    : `- Nome: ${displayName}`;
+
   return [
-    "CONTEXTO — CLIENTE IDENTIFICADO PELO NÚMERO DE WHATSAPP:",
-    `Você está conversando com um cliente JÁ CADASTRADO. Cumprimente-o pelo nome logo na primeira resposta (siga a regra "# Cumprimento pelo nome") e não peça para ele se identificar de novo.`,
-    isPlaceholder
-      ? pushName
-        ? `- Ainda não sabemos o nome real dele no cadastro. O WhatsApp mostra o nome "${pushName}" — chame-o por esse nome (ex.: "Oi, ${pushName}!"). NUNCA o chame pelo número de telefone. Quando ele confirmar/disser o nome numa mensagem, guarde com salvar_cliente.`
-        : `- Ainda não sabemos o nome dele (nem pelo WhatsApp). NÃO o chame pelo número de telefone — cumprimente de forma neutra (ex.: "Oi! Tudo bem?") e pergunte o nome com naturalidade assim que fizer sentido. Ao saber, guarde com salvar_cliente.`
-      : `- Estabelecimento: ${displayName}`,
-    contato ? `- Responsável (contato): ${contato}` : "",
-    record?.neighborhood ? `- Bairro do cliente: ${record.neighborhood}${record.city ? ` · ${record.city}` : ""} (se ele perguntar preço/entrega, já use preco_por_bairro com este bairro sem precisar perguntar de novo)` : "",
-    enderecoCadastrado
-      ? `- Endereço de entrega JÁ CADASTRADO: ${enderecoCadastrado}. Ele já é cliente e esse é o endereço dele — ao fechar o pedido (finalizar_pedido), use este endereço automaticamente e NÃO peça o endereço de novo. Só pergunte se ele mencionar que quer entregar em outro lugar.`
-      : `- SEM endereço no cadastro ainda. Se ele pedir entrega, pergunte o endereço de forma natural ("Me passa o endereço pra entrega?") — NÃO fique procurando/travado, e NÃO diga que não achou o cadastro. Quando ele responder, guarde com salvar_cliente (silenciosamente) e siga.`,
-    pedidoCostume
-      ? `- Pedido de costume dele: ${pedidoCostume} (pode sugerir "o de sempre?" quando fizer sentido).`
-      : `- Ainda não sabemos o que ele costuma pedir. Quando ele disser o que quer, guarde com salvar_cliente (pedido_costume).`,
-    `- customerId: ${customer.id} (USE este id nas ferramentas situacao_cliente, extrato_cliente — não chame buscar_cliente para ele)`,
-    `- WhatsApp: ${phone}`,
-    `- Status: ${statusLabel} · Tipo: ${typeLabel}`,
-    `- Itens em poder dele agora: ${kegs}`,
-    `- Total de barris com ele: ${balance.barrilTotals.total} (${balance.barrilTotals.full} cheios, ${balance.barrilTotals.empty} vazios)`,
-    `- Total de chopeiras com ele: ${balance.chopeiraTotals.total} (${balance.chopeiraTotals.full} cheia(s), ${balance.chopeiraTotals.empty} vazia(s))`,
-    `- Última movimentação: ${lastMovTxt}`,
-    `- Preços que ESTE cliente paga: ${priceLines}`,
-    priced.length
-      ? `Você PODE informar a este cliente os preços NEGOCIADOS listados acima (têm prioridade). Para os itens que ele NÃO tem preço negociado, use os PREÇOS DO SITE por localidade (preco_por_bairro com o bairro dele) — NÃO diga que o comercial confirma. Nunca invente valores.`
-      : `Este cliente não tem preço negociado próprio. SEMPRE use os PREÇOS DO SITE por localidade (preco_por_bairro com o bairro dele) para responder preço. NUNCA diga que "a equipe comercial confirma o preço" quando o bairro está coberto — só defira ao comercial se o bairro estiver realmente FORA da área de entrega.`,
-    customer.status === "BLOCKED"
-      ? `- ATENÇÃO: cliente BLOQUEADO — não prometa entrega; oriente a procurar o financeiro.`
+    "DADOS DO CLIENTE (já cadastrado — use estes fatos; o estilo e o fluxo seguem sua personalidade normal, igual ao treino):",
+    nomeLinha,
+    contato ? `- Responsável: ${contato}` : "",
+    record?.neighborhood
+      ? `- Bairro: ${record.neighborhood}${record.city ? ` · ${record.city}` : ""} (use direto no preco_por_bairro)`
       : "",
-    `Trate a conversa como continuação com ESTE cliente e conecte o histórico dele ao que ele pedir.`,
+    enderecoCadastrado
+      ? `- Endereço de entrega: ${enderecoCadastrado} (use no finalizar_pedido; não peça de novo, salvo se ele quiser outro)`
+      : "- Endereço: não cadastrado (peça só quando for fechar entrega)",
+    pedidoCostume ? `- Costuma pedir: ${pedidoCostume}` : "",
+    `- customerId: ${customer.id} (use em situacao_cliente/extrato_cliente; não chame buscar_cliente pra ele)`,
+    `- Barris com ele agora: ${kegs}`,
+    priced.length ? `- Preços NEGOCIADOS dele (prioridade sobre a tabela): ${priceLines}` : "",
+    `- Status: ${statusLabel}`,
+    customer.status === "BLOCKED"
+      ? "- ATENÇÃO: cliente BLOQUEADO — não prometa entrega; oriente o financeiro."
+      : "",
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-function buildUnknownContext(phone: string, pushName?: string): string {
+function buildUnknownContext(_phone: string, pushName?: string): string {
+  // Ficha enxuta (o cadastro silencioso e o "trate como cliente normal" já
+  // vivem nas regras cruciais; o estilo/fluxo seguem a personalidade, igual ao
+  // chat de treino). Aqui só o dado do nome, quando houver.
   return [
-    "CONTEXTO — PRIMEIRO CONTATO DESTE NÚMERO:",
-    `WhatsApp: ${phone}. É provavelmente um contato novo — mas trate-o como cliente normal desde já. NUNCA diga que ele "não tem cadastro" e NUNCA o chame pelo número de telefone.`,
+    "DADOS DO CLIENTE (primeiro contato — o estilo e o fluxo seguem sua personalidade normal, igual ao treino):",
     pushName
-      ? `- O WhatsApp mostra o nome "${pushName}" pra esse número — pode chamá-lo por esse nome desde a primeira resposta (ex.: "Oi, ${pushName}! Tudo bem?"), sem precisar perguntar o nome dele.`
-      : `- Não temos nome nenhum ainda (nem pelo WhatsApp). Cumprimente de forma neutra (ex.: "Oi! Tudo bem?") e pergunte o nome com naturalidade quando fizer sentido na conversa.`,
-    "Se ele mencionar um nome ou empresa, você pode usar buscar_cliente para ver se já existe. Se não existir, tudo bem — apenas siga a conversa.",
-    "Vá coletando os pilares de forma natural, uma coisa por vez, no ritmo da conversa: o NOME dele (confirme/registre o nome certo, mesmo que já esteja chamando pelo pushName), o ENDEREÇO (quando for falar de entrega) e o que ele QUER/COSTUMA pedir (ex.: 'Belco 50L, Heineken').",
-    "Assim que souber cada informação, guarde SILENCIOSAMENTE com salvar_cliente (o número já entra automático). NÃO anuncie que está cadastrando — aja como se já conhecesse a pessoa.",
+      ? `- Nome: "${pushName}" (do WhatsApp; pode chamá-lo assim). Nunca o chame pelo número.`
+      : `- Nome: ainda desconhecido — pergunte com naturalidade quando fizer sentido. Nunca o chame pelo número.`,
   ].join("\n");
 }
 
