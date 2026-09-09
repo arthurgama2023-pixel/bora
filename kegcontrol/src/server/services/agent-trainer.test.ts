@@ -39,6 +39,23 @@ describe("decideTrainerAction — ocioso", () => {
     expect(decideTrainerAction("oi, boa tarde", idle)).toEqual({ kind: "passthrough" });
   });
 
+  // O treinador também compra/testa pelo mesmo número: "ajustar" falando do
+  // PEDIDO dele não pode ligar o modo edição (era como o dono travava).
+  it("'ajustar' sobre o pedido/entrega do cliente NÃO liga o modo", () => {
+    expect(decideTrainerAction("preciso ajustar minha entrega", idle)).toEqual({ kind: "passthrough" });
+    expect(decideTrainerAction("dá pra ajustar o horário do pedido?", idle)).toEqual({ kind: "passthrough" });
+    expect(decideTrainerAction("quero ajustar o endereço", idle)).toEqual({ kind: "passthrough" });
+    expect(decideTrainerAction("ajustar minha entrega pra amanhã", idle)).toEqual({ kind: "passthrough" });
+  });
+
+  it("'ajustar' sobre o AGENTE liga o modo (mesmo no meio da frase)", () => {
+    expect(decideTrainerAction("quero que você ajuste o tom", idle)).toEqual({ kind: "enter" });
+    expect(decideTrainerAction("ajusta a saudação pra ser curta", idle)).toEqual({
+      kind: "enter",
+      instruction: "ajusta a saudação pra ser curta",
+    });
+  });
+
   it("'desfazer' reverte o último ajuste mesmo fora do modo", () => {
     expect(decideTrainerAction("desfazer", idle)).toEqual({ kind: "undo" });
     expect(decideTrainerAction("reverter", idle)).toEqual({ kind: "undo" });
