@@ -86,6 +86,10 @@ Antes de CADA resposta, releia a conversa inteira e reconstrua o que o cliente J
 - Se o cliente perguntou de UM produto específico ("quanto é a Brahma?"): chame preco_por_bairro com tabela_completa=false e responda em UMA frase natural só o preço daquele produto (ex.: "Belco 50L pra Xerém sai R$600 a unidade, R$550 levando 2, ou R$500 de 3+, com frete grátis") — sem listar os outros.
 - Se o cliente quer o TOTAL de N barris ("quanto fica 3 Belco 50?", "quero 3 belco 50 quanto no total"): chame preco_por_bairro com produto E quantidade — a ferramenta devolve o total EXATO no campo "cotacao". Informe esse total ao pé da letra. NUNCA multiplique de cabeça: você erra a faixa por quantidade.
 
+# Fechamento e PIX (regra inviolável — é dinheiro do cliente)
+- Pra fechar o pedido, SEMPRE chame finalizar_pedido. Nunca feche "de cabeça".
+- NUNCA escreva uma chave PIX, CNPJ, CPF, banco, agência ou conta. NÃO invente, NÃO mascare com asteriscos, NÃO copie de memória. O sistema anexa a chave PIX correta automaticamente embaixo da sua mensagem — você só apresenta o resumo (itens, total, frete grátis) e pede o sinal de 50% e o comprovante.
+
 # Ordens de estilo do dono — cumpra AO PÉ DA LETRA
 As regras de "Jeito de falar"/estilo da sua personalidade são ORDENS diretas do dono. Cumpra-as EXATAMENTE como escritas, ao pé da letra, em TODA resposta. Se o dono mandou começar de um jeito, comece exatamente assim. Se mandou ser curto, ou responder "apenas"/"só" algo, faça só isso — NÃO adicione apresentação da empresa, história ("desde 2016"), frases de efeito, perguntas ou qualquer texto que não foi pedido. Menos é mais: entregue só o que foi pedido, do jeito que foi pedido.`;
 
@@ -717,6 +721,10 @@ type ToolCtx = {
   // a imagem da tabela (mesma fonte que o agente cota) pra mandar como mídia no
   // WhatsApp e pré-visualizar no playground. Ver webhook do WhatsApp.
   priceImagesOut?: { url: string; label: string }[];
+  // Preenchido pelo finalizar_pedido: a chave PIX e o favorecido corretos. O
+  // código ANEXA isso ao fim da resposta (chatWithAgent) — a IA não escreve a
+  // chave, pra nunca inventar/mascarar/errar a chave (dinheiro do cliente).
+  pixOut?: { chave: string; nome: string } | null;
 };
 
 // Base pública do próprio KegControl (onde a imagem da tabela é servida). Em
@@ -988,6 +996,10 @@ async function runTool(
       // playground (channel === PLAYGROUND). Ao configurar o PIX real, ele assume.
       const pixKey = (await getSetting(companyId, "pix_key")) ?? "12.345.678/0001-95";
       const pixNome = (await getSetting(companyId, "pix_nome")) ?? "SS-CHOPP DISTRIBUIDORA (PIX DE TESTE)";
+      // Blindagem do PIX: o CÓDIGO anexa a chave/favorecido corretos no fim da
+      // resposta (ver chatWithAgent). A IA NÃO escreve a chave — assim é
+      // impossível ela inventar/mascarar/errar (é dinheiro do cliente).
+      if (ctx.pixOut !== undefined) ctx.pixOut = { chave: pixKey, nome: pixNome };
       return JSON.stringify({
         ok: true,
         bairro: zona.bairro,
@@ -1001,11 +1013,10 @@ async function runTool(
         naoReconhecidos: naoReconhecidos.length ? naoReconhecidos : undefined,
         pagamento: {
           forma: "PIX",
-          chave: pixKey,
-          favorecido: pixNome ?? undefined,
+          sinal: "50% agora, resto na entrega",
         },
         instrucao:
-          "Apresente o resumo (itens, total, frete grátis, forma de entrega), envie a chave PIX e o favorecido, e peça para o cliente mandar o comprovante. Avise que a equipe confirma o pedido assim que o pagamento cair. Você NÃO dá baixa no estoque — isso é a equipe que faz." +
+          "Apresente o resumo (itens, total, frete grátis, forma de entrega) e peça o sinal de 50% via PIX (o resto na entrega) e o comprovante. IMPORTANTE: NÃO escreva a chave PIX nem o favorecido — o sistema anexa a chave correta automaticamente logo abaixo da sua mensagem. NUNCA invente, mascare ou digite uma chave/banco. Avise que a equipe confirma o pedido assim que o pagamento cair. Você NÃO dá baixa no estoque — isso é a equipe que faz." +
           (economiaTotal > 0
             ? ` Diga também que ele ECONOMIZOU ${formatCurrency(economiaTotal)} comprando essa quantidade (comparado ao preço de 1 unidade) — celebre isso, é uma boa notícia pro cliente.`
             : ""),
@@ -1176,6 +1187,30 @@ export function isResetSignal(text: string): boolean {
   return RESET_PHRASES.has(n);
 }
 
+// Linha que parece uma chave/dado de pagamento escrito pela IA (CNPJ, CPF,
+// mascaramento com ***, ou rótulos "Banco:/Chave:/Favorecido:" etc.).
+const PIX_KEY_LINE =
+  /\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}|\*{3,}|^\s*(banco|ag[êe]ncia|conta|chave( pix)?|favorecido|cnpj|cpf|nome do? favorecido)\s*:/i;
+
+// Blindagem do PIX (dinheiro do cliente): remove qualquer chave/dado de
+// pagamento que a IA tenha escrito (às vezes inventa/mascara/erra) e, quando há
+// pixInfo, anexa a chave CORRETA do sistema. Idempotente e testável.
+export function shieldPix(
+  reply: string,
+  pixInfo: { chave: string; nome: string } | null,
+): string {
+  if (!pixInfo && !PIX_KEY_LINE.test(reply)) return reply;
+  const limpo = reply
+    .split("\n")
+    .filter((l) => !PIX_KEY_LINE.test(l))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return pixInfo
+    ? `${limpo}\n\n💳 Chave PIX (sinal de 50%): ${pixInfo.chave}\nFavorecido: ${pixInfo.nome}`
+    : limpo;
+}
+
 export async function chatWithAgent(
   companyId: string,
   sessionId: string,
@@ -1275,6 +1310,20 @@ export async function chatWithAgent(
           ? intro
           : `${intro}\n\n${result.priceTable}\n\n${PRICE_TABLE_CLOSING}`;
     }
+    // Blindagem do PIX (é dinheiro do cliente): a IA às vezes inventa, mascara ou
+    // erra a chave/banco mesmo instruída a não escrever. O código REMOVE qualquer
+    // linha que pareça chave/dado de pagamento escrito pela IA e anexa a chave
+    // CORRETA do sistema. A chave vem do finalizar_pedido (result.pix); se a IA
+    // "fechou de cabeça" (falou de sinal/comprovante sem chamar a ferramenta),
+    // busca do Setting. Assim nunca sai chave errada, ausente nem duplicada.
+    let pixInfo = result.pix;
+    if (!pixInfo && /comprovante|sinal de 50|\b50\s*%/i.test(reply)) {
+      pixInfo = {
+        chave: (await getSetting(companyId, "pix_key")) ?? "12.345.678/0001-95",
+        nome: (await getSetting(companyId, "pix_nome")) ?? "SS-CHOPP DISTRIBUIDORA (PIX DE TESTE)",
+      };
+    }
+    reply = shieldPix(reply, pixInfo);
   } else {
     // Sem chave da API: modo simulado — usa as MESMAS ferramentas com um
     // roteador simples, para treinar fluxos e validar dados sem custo.
@@ -1307,6 +1356,7 @@ async function runGeminiLoop(
   photos: { url: string; label: string }[];
   priceTable: string;
   priceImages: { url: string; label: string }[];
+  pix: { chave: string; nome: string } | null;
 }> {
   const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const toolsUsed: string[] = [];
@@ -1322,6 +1372,8 @@ async function runGeminiLoop(
   // Idem para a tabela de preços: preco_por_bairro (modo tabela_completa)
   // grava aqui a tabela pronta. "" = nenhuma tabela pra colar nesta resposta.
   ctx.priceTableOut = "";
+  // finalizar_pedido grava aqui a chave PIX correta; o código a anexa à resposta.
+  ctx.pixOut = null;
   const contents: Content[] = history.map((t) => ({
     role: t.role === "assistant" ? "model" : "user",
     parts: [{ text: t.content }],
@@ -1350,7 +1402,7 @@ async function runGeminiLoop(
     const calls = response.functionCalls;
     if (!calls || calls.length === 0) {
       const text = (response.text ?? "").trim();
-      if (text) return { reply: text, toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut };
+      if (text) return { reply: text, toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: ctx.pixOut ?? null };
       // Modelo devolveu vazio (acontece às vezes depois de uma ferramenta):
       // cutuca uma resposta curta mais uma vez antes de desistir — o cliente
       // NUNCA deve receber "(sem resposta)".
@@ -1358,7 +1410,7 @@ async function runGeminiLoop(
         contents.push({ role: "user", parts: [{ text: "Responda ao cliente agora, em 1-2 frases curtas." }] });
         continue;
       }
-      return { reply: "Desculpa, pode repetir? 😊", toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut };
+      return { reply: "Desculpa, pode repetir? 😊", toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: ctx.pixOut ?? null };
     }
 
     // Ecoa a resposta do modelo (com as chamadas de função) antes dos resultados.
@@ -1386,7 +1438,7 @@ async function runGeminiLoop(
     }
     contents.push({ role: "user", parts: resultParts });
   }
-  return { reply: "Não consegui concluir a consulta agora. Pode repetir?", toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut };
+  return { reply: "Não consegui concluir a consulta agora. Pode repetir?", toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: ctx.pixOut ?? null };
 }
 
 // Modo simulado: sem LLM, mas com os dados reais — suficiente para treinar
