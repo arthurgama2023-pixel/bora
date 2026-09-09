@@ -1145,9 +1145,23 @@ export type ChatOptions = {
   pushName?: string; // nome de exibição do perfil do WhatsApp (Evolution: data.pushName)
 };
 
-// Sinal de reset: o cliente manda "comece de novo" e o agente zera o histórico
-// da conversa, voltando a atender como se fosse a primeira mensagem. Tolera
-// acento, caixa e pontuação ("Comece de novo!", "COMECE DE NOVO", etc.).
+// Sinal de reset: uma destas frases zera o histórico da conversa e o agente
+// volta a atender como se fosse a primeira mensagem. Tolera acento, caixa e
+// pontuação ("Começe novamente!", "COMECE DE NOVO", etc.).
+const RESET_PHRASES = new Set([
+  "comece de novo",
+  "comece novamente",
+  "comecar de novo",
+  "comecar novamente",
+  "comecemos de novo",
+  "recomecar",
+  "recomece",
+  "recomeca",
+  "zerar conversa",
+  "limpar conversa",
+  "limpar historico",
+  "zerar historico",
+]);
 export function isResetSignal(text: string): boolean {
   const n = text
     .normalize("NFD")
@@ -1156,7 +1170,7 @@ export function isResetSignal(text: string): boolean {
     .replace(/[^a-z\s]/g, "")
     .replace(/\s+/g, " ")
     .trim();
-  return n === "comece de novo";
+  return RESET_PHRASES.has(n);
 }
 
 export async function chatWithAgent(

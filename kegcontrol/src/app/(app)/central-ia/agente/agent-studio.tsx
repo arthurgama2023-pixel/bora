@@ -59,8 +59,13 @@ type Proposal = {
   blocked: string | null;
 };
 
-// "comece de novo" → recomeça a conversa (tolera acento/caixa/pontuação).
-// Mesma regra do backend (agent.ts) para o comportamento bater nos dois lados.
+// "começe novamente"/"comece de novo"/… → recomeça a conversa. Mesma lista do
+// backend (agent.ts RESET_PHRASES) para o comportamento bater nos dois lados.
+const RESET_PHRASES = new Set([
+  "comece de novo", "comece novamente", "comecar de novo", "comecar novamente",
+  "comecemos de novo", "recomecar", "recomece", "recomeca", "zerar conversa",
+  "limpar conversa", "limpar historico", "zerar historico",
+]);
 function isResetSignal(text: string): boolean {
   const n = text
     .normalize("NFD")
@@ -69,7 +74,7 @@ function isResetSignal(text: string): boolean {
     .replace(/[^a-z\s]/g, "")
     .replace(/\s+/g, " ")
     .trim();
-  return n === "comece de novo";
+  return RESET_PHRASES.has(n);
 }
 
 export function AgentStudio({
