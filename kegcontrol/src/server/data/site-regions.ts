@@ -41,9 +41,12 @@ export const REGIONS_BY_CITY: Record<string, string[]> = {
     "Brás de Pina", "Cordovil", "Parada de Lucas", "Penha", "Vista Alegre",
     "Olaria", "Ramos", "Vila da Penha", "Vicente de Carvalho", "Vigário Geral",
   ],
-  // Zona Sul, Centro e Zona Oeste começam SEM bairro cadastrado — o usuário
-  // decide quais adicionar (botão "Adicionar região" / campo de bairro).
+  // Zona Sul, Centro, Zona Oeste e Região Metropolitana começam SEM bairro
+  // cadastrado — o usuário decide quais adicionar (botão "Adicionar região" /
+  // campo de bairro). "Região Metropolitana" é um agrupamento livre do dono
+  // (ex.: municípios/áreas fora das zonas acima) — nasce vazio.
   "Zona Sul": [],
   "Centro": [],
   "Zona Oeste": [],
+  "Região Metropolitana": [],
 };

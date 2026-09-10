@@ -75,6 +75,15 @@ const SUGGESTIONS_BY_ZONE: Record<string, string[]> = {
     "Santíssimo", "Senador Camará", "Senador Vasconcelos", "Sepetiba",
     "Vila Kennedy", "Vila Militar",
   ],
+  // Municípios da Região Metropolitana do RJ que NÃO estão nas zonas acima
+  // (a Baixada já cobre Caxias/Meriti/Belford Roxo/Mesquita/Nilópolis, e o
+  // Rio já é Zona Norte/Sul/Centro/Oeste). São só SUGESTÕES — o dono aprova
+  // um a um (ou "Aprovar todos") os que quiser atender.
+  "Região Metropolitana": [
+    "Cachoeiras de Macacu", "Guapimirim", "Itaboraí", "Itaguaí", "Japeri",
+    "Magé", "Maricá", "Niterói", "Nova Iguaçu", "Paracambi", "Petrópolis",
+    "Queimados", "Rio Bonito", "São Gonçalo", "Seropédica", "Tanguá",
+  ],
   // Os outros 79 bairros oficiais da Zona Norte (10 já cadastrados: Brás de
   // Pina, Cordovil, Parada de Lucas, Penha, Vista Alegre, Olaria, Ramos,
   // Vila da Penha, Vicente de Carvalho, Vigário Geral).
@@ -106,6 +115,7 @@ const CITY_META: { city: string; eta: string }[] = [
   { city: "Zona Sul", eta: "1 a 2 dias" },
   { city: "Centro", eta: "1 a 2 dias" },
   { city: "Zona Oeste", eta: "1 a 2 dias" },
+  { city: "Região Metropolitana", eta: "1 a 2 dias" },
 ];
 
 const CITIES: City[] = CITY_META.map((m) => ({
