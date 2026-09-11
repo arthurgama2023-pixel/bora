@@ -12,6 +12,7 @@ import { getAutoEnableNew } from "@/server/services/agent-access";
 import { findCustomerByPhone, upsertCustomerFromAgent } from "@/server/services/customers";
 import { savePaymentProof } from "@/server/services/payment-proofs";
 import { getWhatsAppChannel, isWhatsAppNumberAllowed } from "@/server/services/whatsapp/channel";
+import { enqueueBurst } from "@/server/services/whatsapp/burst-buffer";
 import { findCompanyByWebhookToken } from "@/server/services/whatsapp/config";
 
 // Resposta fixa (não passa pelo Gemini — mais barato e previsível) quando
@@ -146,85 +147,82 @@ export async function POST(req: NextRequest) {
   if (!text) return NextResponse.json({ ok: true });
 
   const sessionId = `wa-${incoming.externalId}`;
+  const phone = incoming.externalId;
+  const pushName = incoming.pushName;
+  const identifiedCustomer = customer
+    ? { id: customer.id, name: customer.name, status: customer.status, type: customer.type }
+    : null;
 
-  // Contato já registrado e cliente já resolvido acima (na trava por cliente):
-  // aqui o `customer` é sempre um cliente existente e LIBERADO (agentEnabled).
-
-  // Reconstrói o histórico recente da conversa desse número para dar contexto ao agente.
-  const previous = await prisma.agentMessage.findMany({
-    where: { companyId, sessionId },
-    orderBy: { createdAt: "asc" },
-    take: 20,
-    select: { role: true, content: true },
+  // RAJADA: o cliente costuma mandar em pedaços ("quero chopp" / "belco 50" /
+  // "2 barris"). Sem juntar, cada pedaço vira uma chamada separada ao agente e
+  // ele REPETE pergunta / responde duas vezes (no chat do painel isso não
+  // acontece porque vem um turno completo por vez). Agrupamos as mensagens que
+  // chegam em até ~2,5s e processamos UMA vez, com tudo junto — deixando o
+  // WhatsApp igual ao chat. O processamento roda depois do 200 (o Evolution
+  // não espera a resposta na resposta HTTP; o agente envia pela API do Evolution).
+  enqueueBurst(`${companyId}:${sessionId}`, text, async (combined) => {
+    try {
+      // Histórico recente (últimas 40 mensagens) pra dar contexto ao agente.
+      const previous = await prisma.agentMessage.findMany({
+        where: { companyId, sessionId },
+        orderBy: { createdAt: "asc" },
+        take: 40,
+        select: { role: true, content: true },
+      });
+      const history: ChatTurn[] = [
+        ...previous.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+        { role: "user", content: combined },
+      ];
+      const { reply, photos, priceImages, priceTableText, pix } = await chatWithAgent(
+        companyId,
+        sessionId,
+        history,
+        { channel: "WHATSAPP", phone, pushName, identifiedCustomer },
+      );
+      await channel.sendMessage(companyId, phone, reply);
+      // Chave PIX numa mensagem SÓ com o número (logo após o resumo, seguindo o
+      // ponteiro "a chave vem na próxima mensagem 👇"): o cliente copia e cola
+      // limpo no banco, sem pegar texto junto.
+      if (pix) {
+        await channel.sendMessage(companyId, phone, pix.chave);
+      }
+      // Perguntou preço de um bairro coberto: manda a IMAGEM da tabela logo
+      // depois do texto (mesma fonte que o agente cotou). PNG explícito porque a
+      // URL tem query-string e o palpite por extensão cairia no webp.
+      let priceImageFailed = false;
+      for (const img of priceImages) {
+        const ok = await channel.sendMedia(companyId, phone, img.url, img.label, {
+          mimetype: "image/png",
+          fileName: "tabela-precos.png",
+        });
+        if (!ok) priceImageFailed = true;
+      }
+      // Rede de segurança: se a imagem não foi entregue, manda os preços em TEXTO.
+      if (priceImageFailed && priceTableText) {
+        await channel.sendMessage(companyId, phone, priceTableText);
+        Sentry.captureMessage("Falha ao enviar a imagem da tabela — usei o fallback em texto", {
+          level: "warning",
+          tags: { companyId, whatsapp: "price-image" },
+        });
+      }
+      // Pedido fechado (finalizar_pedido): manda a foto do(s) barril(is) e, na
+      // sequência, um empurrãozinho pra confirmar o PIX.
+      for (const photo of photos) {
+        await channel.sendMedia(companyId, phone, photo.url, photo.label);
+      }
+      if (photos.length > 0) {
+        await channel.sendMessage(companyId, phone, ORDER_PHOTO_FOLLOWUP);
+      }
+    } catch (err) {
+      // Envolve a conversa INTEIRA (Gemini + ferramentas + resposta). Sem
+      // reportar, uma falha aqui ficaria invisível (o 200 já voltou pro Evolution).
+      console.error("[whatsapp]", err);
+      Sentry.captureException(err, { tags: { companyId, whatsapp: "chat" } });
+      await channel
+        .sendMessage(companyId, phone, "Tive um problema ao processar sua mensagem. Pode tentar de novo?")
+        .catch(() => {});
+    }
   });
-  const history: ChatTurn[] = [
-    ...previous.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
-    { role: "user", content: text },
-  ];
-
-  try {
-    const { reply, photos, priceImages, priceTableText, pix } = await chatWithAgent(
-      companyId,
-      sessionId,
-      history,
-      {
-        channel: "WHATSAPP",
-        phone: incoming.externalId,
-        pushName: incoming.pushName,
-        identifiedCustomer: customer
-          ? { id: customer.id, name: customer.name, status: customer.status, type: customer.type }
-          : null,
-      },
-    );
-    await channel.sendMessage(companyId, incoming.externalId, reply);
-    // Chave PIX numa mensagem SÓ com o número (logo após o resumo, seguindo o
-    // ponteiro "a chave vem na próxima mensagem 👇"): assim o cliente copia e
-    // cola limpo no banco, sem pegar texto junto.
-    if (pix) {
-      await channel.sendMessage(companyId, incoming.externalId, pix.chave);
-    }
-    // Perguntou preço de um bairro coberto: manda a IMAGEM da tabela logo depois
-    // do texto (mesma fonte que o agente cotou). PNG explícito porque a URL tem
-    // query-string e o palpite por extensão cairia no webp.
-    let priceImageFailed = false;
-    for (const img of priceImages) {
-      const ok = await channel.sendMedia(companyId, incoming.externalId, img.url, img.label, {
-        mimetype: "image/png",
-        fileName: "tabela-precos.png",
-      });
-      if (!ok) priceImageFailed = true;
-    }
-    // Rede de segurança: se a imagem não foi entregue, manda os preços em TEXTO —
-    // a saudação "segue a tabela 👇" não pode ficar apontando para nada.
-    if (priceImageFailed && priceTableText) {
-      await channel.sendMessage(companyId, incoming.externalId, priceTableText);
-      // O cliente ficou com os preços em texto (não perdeu nada), mas registra:
-      // se a imagem falha com frequência, é sinal de problema (URL/Evolution).
-      Sentry.captureMessage("Falha ao enviar a imagem da tabela — usei o fallback em texto", {
-        level: "warning",
-        tags: { companyId, whatsapp: "price-image" },
-      });
-    }
-    // Pedido fechado (finalizar_pedido): manda a foto do(s) barril(is) pedido(s)
-    // e, na sequência, um empurrãozinho pra confirmar o PIX.
-    for (const photo of photos) {
-      await channel.sendMedia(companyId, incoming.externalId, photo.url, photo.label);
-    }
-    if (photos.length > 0) {
-      await channel.sendMessage(companyId, incoming.externalId, ORDER_PHOTO_FOLLOWUP);
-    }
-  } catch (err) {
-    // Este catch envolve a conversa INTEIRA (Gemini + ferramentas + resposta).
-    // Sem reportar, uma falha aqui ficaria invisível — a resposta HTTP volta 200
-    // mesmo assim (ok pro Evolution), então o erro nunca chegaria ao painel.
-    console.error("[whatsapp]", err);
-    Sentry.captureException(err, { tags: { companyId, whatsapp: "chat" } });
-    await channel.sendMessage(
-      companyId,
-      incoming.externalId,
-      "Tive um problema ao processar sua mensagem. Pode tentar de novo?",
-    );
-  }
 
   return NextResponse.json({ ok: true });
 }

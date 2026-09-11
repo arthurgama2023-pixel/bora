@@ -8,6 +8,7 @@ import {
   Beer,
   Bot,
   LayoutDashboard,
+  MessagesSquare,
   ReceiptText,
   ShoppingBag,
   Tags,
@@ -97,6 +98,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "Verificação de Comprovantes",
     description: "Comprovantes de PIX recebidos no WhatsApp, aguardando conferência",
     icon: ReceiptText,
+    roles: ["ADMIN", "MANAGER"],
+  },
+  {
+    href: "/conversas",
+    label: "Conversas do Agente",
+    description: "As conversas reais do agente no WhatsApp, para observar o atendimento",
+    icon: MessagesSquare,
     roles: ["ADMIN", "MANAGER"],
   },
 ] as const;
