@@ -35,6 +35,12 @@ import {
   type PersonalitySections,
 } from "./agent-personality";
 import { decideTrainerAction, type TrainerMode } from "./agent-trainer";
+import {
+  DEFAULT_FLOW_QUESTIONS,
+  coerceFlowQuestions,
+  renderFlowQuestions,
+  type FlowQuestion,
+} from "./agent-flow";
 
 // Cliente reconhecido pelo número de WhatsApp (ou null se o número não bate
 // com nenhum cadastro). Passado ao agente para ele "conectar os pontos".
@@ -336,6 +342,54 @@ export async function savePersonalitySections(
   });
   await updateAgentConfig(companyId, { personality });
   return { personality };
+}
+
+// ─── Roteiro de perguntas do fluxo de venda ──────────────────────────────────
+// As perguntas que o agente faz para fechar o pedido, estruturadas e editáveis
+// pelo dono. Guardadas como JSON num Setting (sem migração). Se ainda não houver
+// nada salvo, devolve o esqueleto padrão (fluxo real da SS-Chopp) SEM persistir.
+const FLOW_QUESTIONS_KEY = "agent.flow_questions";
+
+// Roteiro SALVO pelo dono (ou null se ele nunca editou). É isto que pilota o
+// agente: enquanto não houver roteiro salvo, o `fluxo` real da personalidade
+// segue sendo a única base — não injetamos um segundo fluxo por cima.
+async function getSavedFlowQuestions(companyId: string): Promise<FlowQuestion[] | null> {
+  const row = await prisma.setting.findUnique({
+    where: { companyId_key: { companyId, key: FLOW_QUESTIONS_KEY } },
+    select: { value: true },
+  });
+  if (!row?.value?.trim()) return null;
+  try {
+    const parsed = coerceFlowQuestions(JSON.parse(row.value));
+    return parsed.length ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+// Para a UI: o roteiro salvo, ou o esqueleto padrão (fiel ao fluxo real) quando
+// ainda não há nada salvo — assim o dono sempre vê e edita a partir do fluxo.
+export async function getFlowQuestions(companyId: string): Promise<FlowQuestion[]> {
+  const saved = await getSavedFlowQuestions(companyId);
+  if (saved) return saved;
+  return DEFAULT_FLOW_QUESTIONS.map((q) => ({ ...q, pontos: [...q.pontos] }));
+}
+
+export async function saveFlowQuestions(
+  companyId: string,
+  questions: FlowQuestion[],
+): Promise<{ questions: FlowQuestion[] }> {
+  const clean = coerceFlowQuestions(questions);
+  if (!clean.length) {
+    throw new ApiError(422, "O roteiro precisa de pelo menos uma pergunta.");
+  }
+  const value = JSON.stringify(clean);
+  await prisma.setting.upsert({
+    where: { companyId_key: { companyId, key: FLOW_QUESTIONS_KEY } },
+    update: { value },
+    create: { companyId, key: FLOW_QUESTIONS_KEY, value },
+  });
+  return { questions: clean };
 }
 
 // EDITOR POR SEÇÃO (v2). Em vez de reescrever o texto inteiro ("preserve todo o
@@ -1562,7 +1616,12 @@ export async function chatWithAgent(
   // ("não pergunte de novo"), sem depender do LLM reconstruir da conversa.
   const orderDraftBefore = await getOrderDraft(companyId, sessionId);
   const orderDraftBlock = renderOrderDraftBlock(orderDraftBefore);
-  const systemInstruction = [config.personality, NATURAL_CUSTOMER_RULES, orderDraftBlock, contextBlock]
+  // Roteiro de perguntas editável pelo dono (aba Agente). Só entra no prompt se
+  // ele TIVER SALVO um roteiro — aí vira a fonte das perguntas. Sem roteiro
+  // salvo, o `fluxo` da personalidade (já em config.personality) é a única base.
+  const savedFlow = await getSavedFlowQuestions(companyId);
+  const flowBlock = savedFlow ? renderFlowQuestions(savedFlow) : "";
+  const systemInstruction = [config.personality, flowBlock, NATURAL_CUSTOMER_RULES, orderDraftBlock, contextBlock]
     .filter(Boolean)
     .join("\n\n---\n");
 
