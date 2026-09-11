@@ -2,13 +2,18 @@
 
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   Bot,
   Check,
   ChevronDown,
+  ListChecks,
   Lock,
+  Plus,
   RotateCcw,
   Send,
   Sparkles,
+  Trash2,
   Wand2,
   Wrench,
   X,
@@ -27,6 +32,16 @@ type Config = {
 // Seções canônicas da personalidade (chaves espelham o backend).
 type Sections = Record<string, string>;
 type SectionMeta = { key: string; titulo: string; descricao: string };
+
+// Uma etapa do roteiro de perguntas: a pergunta que o agente faz + os pontos
+// que não podem faltar (os dados que ele precisa captar antes de avançar).
+type FlowQuestion = {
+  id: string;
+  titulo: string;
+  pergunta: string;
+  pontos: string[];
+  obrigatoria: boolean;
+};
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -104,6 +119,13 @@ export function AgentStudio({
   const [savingSections, setSavingSections] = useState(false);
   const [savedSections, setSavedSections] = useState(false);
 
+  // ── Roteiro de perguntas do fluxo de venda (o que o agente pergunta pra
+  //    fechar o pedido — visível e editável, pergunta por pergunta) ─────────
+  const [flow, setFlow] = useState<FlowQuestion[]>([]);
+  const [savingFlow, setSavingFlow] = useState(false);
+  const [savedFlow, setSavedFlow] = useState(false);
+  const [flowError, setFlowError] = useState("");
+
   useEffect(() => {
     let alive = true;
     fetch("/api/v1/agent/trainers", { cache: "no-store" })
@@ -119,6 +141,12 @@ export function AgentStudio({
         setSections(j.data?.sections ?? {});
         setDrafts(j.data?.sections ?? {});
         setSectionMeta(j.data?.meta ?? []);
+      })
+      .catch(() => {});
+    fetch("/api/v1/agent/flow-questions", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (alive && j?.ok) setFlow(j.data?.questions ?? []);
       })
       .catch(() => {});
     return () => {
@@ -159,7 +187,11 @@ export function AgentStudio({
   const editEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    editEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Rola só DENTRO da caixa do editor (não a página) e só quando já há
+    // conteúdo — evita a página "abaixar" ao abrir/conversar.
+    if (editMsgs.length === 0 && !proposal) return;
+    const c = editEndRef.current?.parentElement;
+    if (c) c.scrollTop = c.scrollHeight;
   }, [editMsgs, editSending, proposal]);
 
   // ── Chat de treino (simular cliente) ────────────────────────────────────
@@ -170,7 +202,11 @@ export function AgentStudio({
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Rola só DENTRO da caixa do chat (não a página), e nunca no mount vazio —
+    // assim a tela fica parada enquanto você conversa.
+    if (messages.length === 0) return;
+    const c = chatEndRef.current?.parentElement;
+    if (c) c.scrollTop = c.scrollHeight;
   }, [messages, sending]);
 
   const titleOf = (key: string) => sectionMeta.find((m) => m.key === key)?.titulo ?? key;
@@ -228,6 +264,80 @@ export function AgentStudio({
       setEditError(e instanceof Error ? e.message : "Erro ao salvar as seções");
     } finally {
       setSavingSections(false);
+    }
+  }
+
+  // ── Roteiro de perguntas: edição estruturada ────────────────────────────
+  const newFlowId = () => `q${Math.random().toString(36).slice(2, 8)}`;
+
+  function updateFlow(id: string, field: "titulo" | "pergunta", value: string) {
+    setFlow((f) => f.map((q) => (q.id === id ? { ...q, [field]: value } : q)));
+  }
+  function toggleFlowRequired(id: string, value: boolean) {
+    setFlow((f) => f.map((q) => (q.id === id ? { ...q, obrigatoria: value } : q)));
+  }
+  function addFlowQuestion() {
+    setFlow((f) => [
+      ...f,
+      { id: newFlowId(), titulo: "Nova pergunta", pergunta: "", pontos: [""], obrigatoria: true },
+    ]);
+  }
+  function removeFlowQuestion(id: string) {
+    setFlow((f) => f.filter((q) => q.id !== id));
+  }
+  function moveFlow(id: string, dir: -1 | 1) {
+    setFlow((f) => {
+      const i = f.findIndex((q) => q.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= f.length) return f;
+      const next = [...f];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }
+  function addPoint(id: string) {
+    setFlow((f) => f.map((q) => (q.id === id ? { ...q, pontos: [...q.pontos, ""] } : q)));
+  }
+  function updatePoint(id: string, idx: number, value: string) {
+    setFlow((f) =>
+      f.map((q) =>
+        q.id === id ? { ...q, pontos: q.pontos.map((p, i) => (i === idx ? value : p)) } : q,
+      ),
+    );
+  }
+  function removePoint(id: string, idx: number) {
+    setFlow((f) =>
+      f.map((q) => (q.id === id ? { ...q, pontos: q.pontos.filter((_, i) => i !== idx) } : q)),
+    );
+  }
+
+  async function saveFlow() {
+    setSavingFlow(true);
+    setSavedFlow(false);
+    setFlowError("");
+    const cleaned = flow.map((q) => ({
+      ...q,
+      titulo: q.titulo.trim() || "Pergunta",
+      pontos: q.pontos.map((p) => p.trim()).filter(Boolean),
+    }));
+    try {
+      const res = await fetch("/api/v1/agent/flow-questions", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questions: cleaned }),
+      });
+      const j = await res.json();
+      if (!j?.ok) {
+        setFlowError(j?.error ?? "Erro ao salvar o roteiro");
+        return;
+      }
+      setFlow(j.data?.questions ?? cleaned);
+      setSavedFlow(true);
+      setTimeout(() => setSavedFlow(false), 2500);
+    } catch {
+      setFlowError("Erro de conexão com o servidor");
+    } finally {
+      setSavingFlow(false);
     }
   }
 
@@ -364,9 +474,9 @@ export function AgentStudio({
   ];
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
+    <div className="grid items-start gap-6 lg:grid-cols-2">
       {/* ── Editor da personalidade (por conversa) ────────────────────────── */}
-      <Card className="flex h-[36rem] flex-col p-0">
+      <Card className="flex flex-col p-0">
         <div className="border-b border-border px-4 py-3">
           <h2 className="flex items-center gap-2 font-semibold">
             <Wand2 className="h-4 w-4 text-brand-strong" /> Editar personalidade por conversa
@@ -374,6 +484,133 @@ export function AgentStudio({
           <p className="mt-0.5 text-xs text-muted-foreground">
             Peça a alteração em linguagem natural. A IA muda só a seção afetada, você revê e salva.
           </p>
+        </div>
+
+        {/* ── Roteiro de perguntas do fluxo de venda ────────────────────────
+            As perguntas que o agente é programado a fazer pra fechar o pedido,
+            visíveis e editáveis pergunta por pergunta, com os pontos que não
+            podem faltar. É isto que pilota a coleta do agente. */}
+        <div className="border-b border-border px-4 py-3">
+          <div className="mb-1 flex items-center gap-2">
+            <ListChecks className="h-4 w-4 text-brand-strong" />
+            <h3 className="text-sm font-semibold">Roteiro de perguntas (fluxo de venda)</h3>
+          </div>
+          <p className="mb-3 text-[11px] leading-relaxed text-muted-foreground">
+            As perguntas que o agente faz, na ordem, até fechar o pedido — espelhadas do
+            fluxo real. Em cada etapa, os <strong>pontos que não podem faltar</strong> (o agente
+            só avança depois de captá-los). Edite, reordene e <strong>salve</strong> — a partir
+            daí o agente passa a seguir o seu roteiro.
+          </p>
+
+          <div className="space-y-2.5">
+            {flow.map((q, qi) => (
+              <div key={q.id} className="rounded-lg border border-border bg-background p-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand text-[11px] font-bold text-brand-foreground">
+                    {qi + 1}
+                  </span>
+                  <Input
+                    value={q.titulo}
+                    onChange={(e) => updateFlow(q.id, "titulo", e.target.value)}
+                    placeholder="Título da etapa"
+                    className="h-7 flex-1 text-xs font-semibold"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => moveFlow(q.id, -1)}
+                    disabled={qi === 0}
+                    title="Subir"
+                    className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                  >
+                    <ArrowUp className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveFlow(q.id, 1)}
+                    disabled={qi === flow.length - 1}
+                    title="Descer"
+                    className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                  >
+                    <ArrowDown className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeFlowQuestion(q.id)}
+                    title="Remover pergunta"
+                    className="rounded p-1 text-muted-foreground hover:text-danger"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                <Textarea
+                  rows={2}
+                  value={q.pergunta}
+                  onChange={(e) => updateFlow(q.id, "pergunta", e.target.value)}
+                  placeholder="Escreva a pergunta como o agente deve fazer…"
+                  className="mt-2 text-xs"
+                />
+
+                <div className="mt-2 space-y-1.5">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Pontos que não podem faltar
+                  </div>
+                  {q.pontos.map((p, pi) => (
+                    <div key={pi} className="flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-strong" />
+                      <Input
+                        value={p}
+                        onChange={(e) => updatePoint(q.id, pi, e.target.value)}
+                        placeholder="Ex.: Quantidade de barris"
+                        className="h-7 flex-1 text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removePoint(q.id, pi)}
+                        title="Remover ponto"
+                        className="rounded p-1 text-muted-foreground hover:text-danger"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => addPoint(q.id)}
+                    className="flex items-center gap-1 text-[11px] font-medium text-brand-strong hover:underline"
+                  >
+                    <Plus className="h-3 w-3" /> ponto
+                  </button>
+                </div>
+
+                <label className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={q.obrigatoria}
+                    onChange={(e) => toggleFlowRequired(q.id, e.target.checked)}
+                    className="h-3.5 w-3.5 accent-brand"
+                  />
+                  Obrigatória para fechar o pedido
+                </label>
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={addFlowQuestion}
+            className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground transition hover:border-brand-strong hover:text-foreground"
+          >
+            <Plus className="h-3.5 w-3.5" /> Adicionar pergunta
+          </button>
+
+          <div className="mt-3 flex items-center gap-3">
+            <Button size="sm" onClick={saveFlow} disabled={savingFlow || flow.length === 0}>
+              {savingFlow ? "Salvando…" : "Salvar roteiro"}
+            </Button>
+            {savedFlow && <span className="text-xs text-success">Salvo ✓</span>}
+            {flowError && <span className="text-xs text-danger">{flowError}</span>}
+          </div>
         </div>
 
         {/* Dados básicos — nome, status, saudação */}
@@ -443,7 +680,7 @@ export function AgentStudio({
         </div>
 
         {/* Histórico do editor */}
-        <div className="flex-1 space-y-3 overflow-y-auto p-4">
+        <div className="max-h-[16rem] flex-1 space-y-3 overflow-y-auto p-4">
           {editMsgs.length === 0 && (
             <div className="space-y-2">
               <div className="rounded-xl rounded-tl-sm bg-muted px-4 py-2.5 text-sm">

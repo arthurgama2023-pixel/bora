@@ -1,8 +1,17 @@
 import { PrismaClient } from "@/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
+// O pooler do Supabase em modo session (porta 5432) limita o total de clientes a
+// pool_size (15). Como dev + produção compartilham esse limite, cada instância
+// precisa segurar poucas conexões e devolver as ociosas rápido — senão estoura
+// com "max clients reached in session mode".
 const adapter = new PrismaPg(
-  { connectionString: process.env.DATABASE_URL },
+  {
+    connectionString: process.env.DATABASE_URL,
+    max: 5,                        // teto de conexões do pg (padrão é 10)
+    idleTimeoutMillis: 10_000,     // devolve conexão ociosa ao pooler em 10s
+    connectionTimeoutMillis: 10_000,
+  },
   { schema: "kegcontrol" }
 );
 
