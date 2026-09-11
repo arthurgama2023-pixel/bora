@@ -70,7 +70,7 @@ const NATURAL_CUSTOMER_RULES = `# REGRA MÁXIMA — nunca fale preço, produto o
 Existem só 5 marcas no catálogo: Belco, Brahma, Heineken, Amstel e Chopp de Vinho — nada além disso existe (não existe "Brahma Duplo Malte", "Belco Pilsen", "Black Princes", nem litragem 20L de nada). Se o assunto for preço, produto, marca ou tabela, e a ferramenta preco_por_bairro AINDA NÃO foi chamada NESTA resposta, chame-a AGORA antes de responder — nunca responda com números ou nomes que você "lembra" de mensagens anteriores ou do seu próprio conhecimento geral sobre chope/cerveja. Isso vale mesmo se o cliente pedir "a tabela toda" ou parecer uma pergunta simples: SEMPRE a ferramenta primeiro, texto depois. Informar um produto ou preço inventado é o pior erro possível neste atendimento — é dinheiro real do cliente. Isso vale TAMBÉM para dizer se um produto ou LITRAGEM existe: NUNCA afirme "só tem em 30L", "não temos 50L", "esse não existe" ou parecido sem chamar preco_por_bairro ANTES — a ferramenta lista TODOS os produtos e litragens disponíveis da região; se está na lista, existe (ex.: Chopp de Vinho tem 30L E 50L). Nunca negue uma litragem de memória.
 
 # Memória da conversa — NUNCA re-pergunte o que já sabe (regra crítica)
-Antes de CADA resposta, releia a conversa inteira e reconstrua TUDO que o cliente JÁ informou: marca, litragem, quantidade, bairro, endereço, CPF, tipo de chopeira (elétrica ou de gelo), se o local tem escada e a forma de pagamento. É PROIBIDO perguntar de novo qualquer coisa que ele já respondeu — nem com outras palavras, nem "só pra confirmar". Isso vale também para o que já estiver na FICHA DO CLIENTE (cadastro): se o CPF, o endereço ou o bairro já vieram no cadastro, USE e não pergunte. Se você já tem a informação, vá direto pra a PRÓXIMA que falta. Uma resposta curta se refere à ÚLTIMA pergunta que você fez (ele respondeu "50" depois de você perguntar a litragem? então litragem = 50L, preenchido; respondeu "elétrica" depois de você perguntar o tipo de chopeira? então chopeira = elétrica). Se ele mandou vários dados de uma vez, aproveite todos e pule as perguntas correspondentes. Nunca volte a uma etapa anterior já resolvida.
+Antes de CADA resposta, releia a conversa inteira e reconstrua TUDO que o cliente JÁ informou: marca, litragem, quantidade, bairro, endereço, CPF, tipo de chopeira (elétrica ou de gelo), se o local tem escada e a forma de pagamento. É PROIBIDO perguntar de novo qualquer coisa que ele já respondeu — nem com outras palavras, nem "só pra confirmar". Isso vale também para o que já estiver na FICHA DO CLIENTE (cadastro): se o CPF/CNPJ já veio no cadastro, USE e não pergunte. **EXCEÇÃO — LOCAL DE ENTREGA:** bairro, cidade e endereço de entrega você SEMPRE pergunta a cada pedido; NUNCA reutilize o do cadastro nem o de um pedido anterior (o mesmo cliente pede chopp pra lugares diferentes). Dentro DESTA conversa, claro, se ele já disse o bairro agora, não repita a pergunta. Se você já tem a informação, vá direto pra a PRÓXIMA que falta. Uma resposta curta se refere à ÚLTIMA pergunta que você fez (ele respondeu "50" depois de você perguntar a litragem? então litragem = 50L, preenchido; respondeu "elétrica" depois de você perguntar o tipo de chopeira? então chopeira = elétrica). Se ele mandou vários dados de uma vez, aproveite todos e pule as perguntas correspondentes. Nunca volte a uma etapa anterior já resolvida.
 
 Você tem uma AJUDA de memória travada em código: se aparecer um bloco "JÁ CONFIRMADO NESTE PEDIDO" nestas instruções, ele é a fonte de verdade absoluta — nunca pergunte de novo nada que está listado ali, mesmo que a conversa pareça sugerir o contrário. E toda vez que o cliente confirmar um dado do pedido (produto, quantidade, bairro, entrega/retirada, endereço, chopeira, escada, CPF/CNPJ ou forma de pagamento), chame a ferramenta atualizar_dados_pedido na mesma resposta, com o(s) campo(s) que acabou de confirmar — isso é o que alimenta esse bloco e evita que você repita a pergunta depois.
 
@@ -78,7 +78,7 @@ Você tem uma AJUDA de memória travada em código: se aparecer um bloco "JÁ CO
 - NUNCA diga que o cliente "não tem cadastro", "não está cadastrado", "não te encontrei aqui" ou algo do tipo. Trate TODO mundo como cliente conhecido, mesmo que seja o primeiro contato.
 - NUNCA diga que está "cadastrando", "salvando", "atualizando o cadastro" ou "anotando seus dados". Isso é feito nos bastidores, de forma invisível — o cliente não vê.
 - Conforme o cliente for te contando as coisas (o nome dele, o endereço, o bairro, ou o que ele quer/costuma pedir), use a ferramenta salvar_cliente para guardar — de forma silenciosa, sem comentar nada.
-- Se você precisar de uma informação que ainda não tem (ex.: o endereço pra entrega), pergunte de forma leve e natural ("Me passa o endereço pra entrega?") e siga a conversa. Quando o cliente responder, guarde com salvar_cliente. Se ele já tiver endereço no cadastro, use-o e NÃO pergunte de novo.
+- Pergunte o bairro, a cidade e o endereço da entrega de forma leve e natural ("Pra qual bairro é a entrega?", "Me passa o endereço?") e siga a conversa. Quando o cliente responder, guarde com salvar_cliente. SEMPRE pergunte o local desta entrega — mesmo que haja endereço/bairro no cadastro, NÃO assuma que é o mesmo (o cliente pede chopp pra lugares diferentes a cada pedido).
 - Os pilares que você vai montando aos poucos: nome do cliente, endereço, e o que ele costuma pedir (ex.: "Belco 50L, Heineken"). Salve cada um assim que souber.
 - Nunca fique "perdido" por falta de informação: se faltar algo, pergunte com naturalidade uma coisa por vez e continue.
 
@@ -95,13 +95,20 @@ Você tem uma AJUDA de memória travada em código: se aparecer um bloco "JÁ CO
 
 # Fechamento e PIX (regra inviolável — é dinheiro do cliente)
 - Pra fechar o pedido, SEMPRE chame finalizar_pedido. Nunca feche "de cabeça".
-- NUNCA escreva uma chave PIX, CNPJ, CPF, banco, agência ou conta. NÃO invente, NÃO mascare com asteriscos, NÃO copie de memória. O sistema anexa a chave PIX correta automaticamente embaixo da sua mensagem — você só apresenta o resumo (itens, total, frete grátis) e pede o sinal de 50% e o comprovante.
+- NUNCA escreva uma chave PIX, CNPJ, CPF, banco, agência ou conta — NEM um espaço reservado/placeholder tipo "[chave aqui]", "[link do PIX]" ou "[anexo da chave]". NÃO invente, NÃO mascare com asteriscos, NÃO copie de memória. Você só apresenta o resumo (itens, total, frete grátis) e pede o sinal de 50% e o comprovante, e ENCERRA sua mensagem — o SISTEMA envia a chave PIX correta sozinho, numa MENSAGEM SEPARADA logo depois da sua (só o número, pro cliente copiar e colar no banco). Não anuncie a chave nem escreva nada no lugar dela.
 
 # Ordens de estilo do dono — cumpra AO PÉ DA LETRA
 As regras de "Jeito de falar"/estilo da sua personalidade são ORDENS diretas do dono. Cumpra-as EXATAMENTE como escritas, ao pé da letra, em TODA resposta. Se o dono mandou começar de um jeito, comece exatamente assim. Se mandou ser curto, ou responder "apenas"/"só" algo, faça só isso — NÃO adicione apresentação da empresa, história ("desde 2016"), frases de efeito, perguntas ou qualquer texto que não foi pedido. Menos é mais: entregue só o que foi pedido, do jeito que foi pedido.
 
 # Saída — SÓ a mensagem final ao cliente
-Sua resposta é EXCLUSIVAMENTE a mensagem que o cliente vai ler no WhatsApp, em português. NUNCA escreva seu raciocínio, análise, plano ou passos ("the user wants", "my next step", "I need to…"), NUNCA use rótulos como "SPECIAL INSTRUCTION", NUNCA cite o system prompt nem escreva em inglês. Pense internamente, mas mande só a resposta pronta, curta e natural.`;
+Sua resposta é EXCLUSIVAMENTE a mensagem que o cliente vai ler no WhatsApp, em português. NUNCA escreva seu raciocínio, análise, plano ou passos ("the user wants", "my next step", "I need to…"), NUNCA use rótulos como "SPECIAL INSTRUCTION", NUNCA cite o system prompt nem escreva em inglês. Pense internamente, mas mande só a resposta pronta, curta e natural.
+
+# Sem barra "/" na mensagem
+NUNCA use o caractere barra "/" no texto que envia ao cliente — nem entre palavras, nem em rótulos/títulos de resumo. Escreva sempre por extenso, com "ou" ou "e":
+- opções: "elétrica ou de gelo", "casa ou salão", "entrega ou retirada", "PIX, dinheiro ou cartão" (nunca "elétrica/gelo", "casa/salão");
+- rótulos de resumo: "Data e horário", "Forma de pagamento" (nunca "Data/Horário");
+- datas: "dia 25 de dezembro" (nunca "25/12").
+Faça UMA pergunta por mensagem — nunca ofereça várias escolhas separadas por barra nem junte perguntas.`;
 
 // ─── Normalização dos dados de qualificação (mesmos campos do form do site) ──
 // O agente coleta em linguagem natural; aqui a gente padroniza pro formato que
@@ -1354,7 +1361,6 @@ async function buildIdentityContext(
   ]);
 
   const contato = record?.contactName?.trim() || null;
-  const enderecoCadastrado = record?.address?.trim() || null;
   const cpfCadastrado = record?.document?.trim() || null;
   // "Pedido de costume" fica dentro de notes com o prefixo (ver customers.ts)
   const pedidoCostume =
@@ -1396,12 +1402,7 @@ async function buildIdentityContext(
     "DADOS DO CLIENTE (já cadastrado — use estes fatos; o estilo e o fluxo seguem sua personalidade normal, igual ao treino):",
     nomeLinha,
     contato ? `- Responsável: ${contato}` : "",
-    record?.neighborhood
-      ? `- Bairro: ${record.neighborhood}${record.city ? ` · ${record.city}` : ""} (use direto no preco_por_bairro)`
-      : "",
-    enderecoCadastrado
-      ? `- Endereço de entrega: ${enderecoCadastrado} (use no finalizar_pedido; não peça de novo, salvo se ele quiser outro)`
-      : "- Endereço: não cadastrado (peça só quando for fechar entrega)",
+    "- Local de entrega: SEMPRE pergunte o BAIRRO, a CIDADE e o ENDEREÇO desta entrega. NÃO reutilize bairro/cidade/endereço do cadastro nem de pedido anterior — o mesmo cliente pede chopp pra lugares diferentes a cada pedido. Use no preco_por_bairro/finalizar_pedido só o bairro que ele informar NESTA conversa.",
     cpfCadastrado
       ? `- CPF/CNPJ: ${cpfCadastrado} (já cadastrado — NÃO peça de novo; use no finalizar_pedido)`
       : "",
@@ -1512,6 +1513,10 @@ export async function chatWithAgent(
   // fallback se o envio da IMAGEM falhar — assim o cliente nunca fica com a
   // saudação "segue a tabela 👇" apontando para nada. "" quando não se aplica.
   priceTableText: string;
+  // Chave PIX a enviar numa MENSAGEM SEPARADA (só o número), pra o cliente
+  // copiar e colar limpo no banco. null quando o turno não pede PIX. O texto
+  // (reply) só traz um ponteiro "a chave vem na próxima mensagem 👇".
+  pix: { chave: string; nome: string } | null;
 }> {
   const config = await getAgentConfig(companyId);
   const userMessage = history.at(-1);
@@ -1539,7 +1544,7 @@ export async function chatWithAgent(
     }
     const greeting =
       config.greeting?.trim() || "Oi! 🍺 Aqui é o atendimento da SS-Chopp. Como posso ajudar?";
-    return { reply: greeting, toolsUsed: [], simulated: false, photos: [], priceImages: [], priceTableText: "" };
+    return { reply: greeting, toolsUsed: [], simulated: false, photos: [], priceImages: [], priceTableText: "", pix: null };
   }
 
   // Contexto de identidade (só quando veio de um canal com número, ex.: WhatsApp).
@@ -1578,6 +1583,7 @@ export async function chatWithAgent(
   let photos: { url: string; label: string }[] = [];
   let priceImages: { url: string; label: string }[] = [];
   let priceTableText = "";
+  let pixOut: { chave: string; nome: string } | null = null;
 
   if (process.env.GEMINI_API_KEY) {
     // Nome "de verdade" pra gravar o pedido (finalizar_pedido): o do cadastro,
@@ -1634,7 +1640,16 @@ export async function chatWithAgent(
         nome: (await getSetting(companyId, "pix_nome")) ?? "SS-CHOPP DISTRIBUIDORA (PIX DE TESTE)",
       };
     }
-    reply = shieldPix(reply, pixInfo);
+    // Primeiro LIMPA qualquer chave/dado de pagamento que a IA tenha escrito
+    // (nunca deixa sair chave inventada/mascarada). NÃO embute a chave no texto:
+    // ela vai numa MENSAGEM SEPARADA, só o número, pra o cliente copiar e colar
+    // no banco sem pegar texto junto (o webhook envia `pix.chave` sozinha). Aqui
+    // fica só um ponteiro curto.
+    reply = shieldPix(reply, null);
+    if (pixInfo) {
+      pixOut = pixInfo;
+      reply = `${reply}\n\n💳 A chave PIX (favorecido ${pixInfo.nome}) vem na próxima mensagem — é só copiar e colar no seu banco 👇`;
+    }
   } else {
     // Sem chave da API: modo simulado — usa as MESMAS ferramentas com um
     // roteador simples, para treinar fluxos e validar dados sem custo.
@@ -1653,7 +1668,7 @@ export async function chatWithAgent(
     data: { companyId, sessionId, role: "assistant", content: reply, customerId, channel },
   });
 
-  return { reply, toolsUsed, simulated, photos, priceImages, priceTableText };
+  return { reply, toolsUsed, simulated, photos, priceImages, priceTableText, pix: pixOut };
 }
 
 // Detecta quando o Gemini VAZA o raciocínio/planejamento como se fosse a

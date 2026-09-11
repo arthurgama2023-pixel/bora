@@ -81,15 +81,35 @@ export async function listSiteOrdersByPhone(companyId: string, rawPhone: string)
   return rows.filter((o) => phoneMatchKey(o.phone) === key);
 }
 
-// Lista pro painel (SS-Chopp). Por padrao só os pendentes.
+// Lista pro painel (SS-Chopp). Por padrao só os pendentes. Anexa `proofAt`: a
+// data do comprovante de pagamento mais recente do MESMO telefone, se houver —
+// é o selo "comprovante recebido" (quem realmente fechou), só informativo, não
+// muda o status do pedido. Casa por chave canônica de telefone (tolera formato).
 export async function listSiteOrders(
   companyId: string,
   opts: { status?: SiteOrderStatus } = {},
 ) {
-  return prisma.siteOrder.findMany({
+  const orders = await prisma.siteOrder.findMany({
     where: { companyId, ...(opts.status ? { status: opts.status } : {}) },
     orderBy: { createdAt: "desc" },
     take: 200,
+  });
+  if (orders.length === 0) return [];
+  const proofs = await prisma.paymentProof.findMany({
+    where: { companyId },
+    orderBy: { createdAt: "desc" },
+    select: { phone: true, createdAt: true },
+  });
+  // chave do telefone -> comprovante mais recente (proofs vem em ordem desc, então
+  // o PRIMEIRO de cada chave já é o mais recente).
+  const proofByKey = new Map<string, Date>();
+  for (const p of proofs) {
+    const key = phoneMatchKey(p.phone);
+    if (key && !proofByKey.has(key)) proofByKey.set(key, p.createdAt);
+  }
+  return orders.map((o) => {
+    const key = phoneMatchKey(o.phone);
+    return { ...o, proofAt: key ? proofByKey.get(key) ?? null : null };
   });
 }
 

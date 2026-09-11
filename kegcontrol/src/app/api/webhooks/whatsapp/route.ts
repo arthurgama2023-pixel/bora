@@ -163,7 +163,7 @@ export async function POST(req: NextRequest) {
   ];
 
   try {
-    const { reply, photos, priceImages, priceTableText } = await chatWithAgent(
+    const { reply, photos, priceImages, priceTableText, pix } = await chatWithAgent(
       companyId,
       sessionId,
       history,
@@ -177,6 +177,12 @@ export async function POST(req: NextRequest) {
       },
     );
     await channel.sendMessage(companyId, incoming.externalId, reply);
+    // Chave PIX numa mensagem SÓ com o número (logo após o resumo, seguindo o
+    // ponteiro "a chave vem na próxima mensagem 👇"): assim o cliente copia e
+    // cola limpo no banco, sem pegar texto junto.
+    if (pix) {
+      await channel.sendMessage(companyId, incoming.externalId, pix.chave);
+    }
     // Perguntou preço de um bairro coberto: manda a IMAGEM da tabela logo depois
     // do texto (mesma fonte que o agente cotou). PNG explícito porque a URL tem
     // query-string e o palpite por extensão cairia no webp.
