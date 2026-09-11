@@ -121,11 +121,17 @@ export async function updateSiteOrderStatus(
   const found = await prisma.siteOrder.findFirst({ where: { id, companyId } });
   if (!found) return null;
   // Ao virar "entrega agendada" (SCHEDULED/CONFIRMED), carimba a data uma vez —
-  // é o "agendado em Y" da linha do tempo do pedido.
+  // é o "agendado em Y" da linha do tempo do pedido. Ao VOLTAR para "encaminhado"
+  // (PENDING), limpa o carimbo — o pedido volta a "agendada pendente" de verdade.
   const becameScheduled = (status === "SCHEDULED" || status === "CONFIRMED") && !found.scheduledAt;
+  const backToPending = status === "PENDING";
   return prisma.siteOrder.update({
     where: { id },
-    data: { status, ...(becameScheduled ? { scheduledAt: new Date() } : {}) },
+    data: {
+      status,
+      ...(becameScheduled ? { scheduledAt: new Date() } : {}),
+      ...(backToPending ? { scheduledAt: null } : {}),
+    },
   });
 }
 

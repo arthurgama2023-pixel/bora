@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CalendarCheck, ChevronDown, Clock, Loader2, MapPin, MessageSquare, PauseCircle, Phone, Send, ShoppingBag, Trash2 } from "lucide-react";
+import { CalendarCheck, Check, ChevronDown, Clock, Loader2, MapPin, MessageSquare, PauseCircle, Phone, Send, ShoppingBag, Trash2 } from "lucide-react";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
 import { Visitas } from "./visitas";
 
@@ -32,6 +32,7 @@ type Pedido = {
 type Visit = {
   id: string;
   stage: string;
+  status: string; // OPEN | DISPATCHED | DISCARDED
   customerName: string | null;
   phone: string | null;
   neighborhood: string | null;
@@ -327,6 +328,103 @@ function DeleteControl({ onDelete }: { onDelete: () => Promise<void> | void }) {
   );
 }
 
+type StatusMeta = { label: string; dot: string; text: string; bg: string };
+
+// Status de PEDIDO, com rótulo/cor. CONFIRMED é legado = agendada.
+type StatusValue = "PENDING" | "SCHEDULED" | "CANCELLED";
+const STATUS_META: Record<string, StatusMeta> = {
+  PENDING: { label: "Encaminhado ao WhatsApp", dot: "bg-warning", text: "text-warning", bg: "bg-warning/10" },
+  SCHEDULED: { label: "Entrega agendada", dot: "bg-success", text: "text-success", bg: "bg-success/10" },
+  CONFIRMED: { label: "Entrega agendada", dot: "bg-success", text: "text-success", bg: "bg-success/10" },
+  CANCELLED: { label: "Cancelado", dot: "bg-danger", text: "text-danger", bg: "bg-danger/10" },
+};
+const STATUS_CHOICES: StatusValue[] = ["PENDING", "SCHEDULED", "CANCELLED"];
+
+// Status de VISITA (aba "Não finalizou"). OPEN/DISPATCHED/DISCARDED só
+// reclassificam; PENDING/SCHEDULED PROMOVEM a visita a PEDIDO (vai pro funil).
+const VISIT_STATUS_META: Record<string, StatusMeta> = {
+  OPEN: { label: "Não finalizou", dot: "bg-warning", text: "text-warning", bg: "bg-warning/10" },
+  DISPATCHED: { label: "Disparado", dot: "bg-brand", text: "text-brand-strong", bg: "bg-brand/10" },
+  PENDING: { label: "Encaminhado ao WhatsApp", dot: "bg-warning", text: "text-warning", bg: "bg-warning/10" },
+  SCHEDULED: { label: "Entrega agendada", dot: "bg-success", text: "text-success", bg: "bg-success/10" },
+  DISCARDED: { label: "Descartado", dot: "bg-danger", text: "text-danger", bg: "bg-danger/10" },
+};
+const VISIT_STATUS_CHOICES: string[] = ["OPEN", "DISPATCHED", "PENDING", "SCHEDULED", "DISCARDED"];
+
+// Seletor de status genérico: clica no status atual → abre o menu com as
+// opções (meta/choices) → escolhe. Serve pra pedido e pra visita.
+function StatusPicker({
+  status,
+  meta: metaMap,
+  choices,
+  busy,
+  open,
+  onToggle,
+  onPick,
+}: {
+  status: string;
+  meta: Record<string, StatusMeta>;
+  choices: readonly string[];
+  busy: boolean;
+  open: boolean;
+  onToggle: () => void;
+  onPick: (s: string) => void;
+}) {
+  const meta = metaMap[status] ?? Object.values(metaMap)[0];
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={busy}
+        title="Clique para mudar o status"
+        className={`flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${meta.bg} ${meta.text} hover:brightness-95 disabled:opacity-60`}
+      >
+        {busy ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" /> Salvando…
+          </>
+        ) : (
+          <>
+            <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
+            {meta.label}
+            <ChevronDown className={`h-4 w-4 transition ${open ? "rotate-180" : ""}`} />
+          </>
+        )}
+      </button>
+      {open && (
+        <>
+          {/* camada pra fechar ao clicar fora */}
+          <div className="fixed inset-0 z-10" onClick={onToggle} />
+          <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-border bg-card shadow-lg">
+            <div className="border-b border-border px-3 py-1.5 text-[11px] font-medium text-muted-foreground">
+              Mudar status para:
+            </div>
+            {choices.map((s) => {
+              const m = metaMap[s];
+              const atual = s === status || (s === "SCHEDULED" && status === "CONFIRMED");
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => onPick(s)}
+                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted ${
+                    atual ? "font-semibold" : ""
+                  }`}
+                >
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${m.dot}`} />
+                  {m.label}
+                  {atual && <Check className="ml-auto h-3.5 w-3.5 text-brand-strong" />}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function PedidosSite() {
   const [view, setView] = useState<"pedidos" | "visitas">("pedidos");
   const [aba, setAba] = useState<"encaminhado" | "agendada" | "naofinalizou">("encaminhado");
@@ -338,6 +436,8 @@ export function PedidosSite() {
   const [savingAuto, setSavingAuto] = useState(false);
   // Qual visita está sendo disparada manualmente (com o automático pausado).
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
+  const [statusChangingId, setStatusChangingId] = useState<string | null>(null);
+  const [statusMenuId, setStatusMenuId] = useState<string | null>(null);
   // Template da mensagem do disparo (editável).
   const [dispatchMsg, setDispatchMsg] = useState<string | null>(null);
   const [dispatchMsgDefault, setDispatchMsgDefault] = useState("");
@@ -448,6 +548,91 @@ export function PedidosSite() {
     const res = await fetch(`/api/v1/pedidos-site/${id}`, { method: "DELETE" });
     const j = await res.json();
     if (j?.ok) setPedidos((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  // Muda o status do pedido pela opção escolhida no menu: Encaminhado (PENDING),
+  // Entrega agendada (SCHEDULED) ou Cancelado (CANCELLED). O agente também marca
+  // "agendada" sozinho quando fecha a entrega; isto é o controle MANUAL do dono.
+  // Atualiza a lista na hora (o card troca de aba, ou some se cancelar).
+  async function mudarStatus(id: string, status: "PENDING" | "SCHEDULED" | "CANCELLED") {
+    if (statusChangingId) return;
+    setStatusChangingId(id);
+    try {
+      const res = await fetch(`/api/v1/pedidos-site/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const j = await res.json();
+      if (j?.ok) {
+        setPedidos((prev) =>
+          prev.map((p) =>
+            p.id === id
+              ? {
+                  ...p,
+                  status,
+                  // PENDING volta a "sem agendamento"; SCHEDULED usa a data que o
+                  // servidor carimbou (ou a que já tinha).
+                  scheduledAt:
+                    status === "PENDING"
+                      ? null
+                      : j.data?.scheduledAt ?? p.scheduledAt ?? new Date().toISOString(),
+                }
+              : p,
+          ),
+        );
+      }
+    } finally {
+      setStatusChangingId(null);
+    }
+  }
+
+  // Muda a classificação da visita pela opção do menu: Não finalizou (OPEN),
+  // Disparado (DISPATCHED) ou Descartado (DISCARDED). Descartada some da aba.
+  async function mudarStatusVisita(id: string, status: "OPEN" | "DISPATCHED" | "DISCARDED") {
+    if (statusChangingId) return;
+    setStatusChangingId(id);
+    try {
+      const res = await fetch(`/api/v1/site-visits/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const j = await res.json();
+      if (j?.ok) {
+        if (status === "DISCARDED") {
+          setVisits((prev) => prev.filter((v) => v.id !== id));
+        } else {
+          setVisits((prev) => prev.map((v) => (v.id === id ? { ...v, status } : v)));
+        }
+      }
+    } finally {
+      setStatusChangingId(null);
+    }
+  }
+
+  // Promove a visita a PEDIDO (Encaminhado ou Entrega agendada): cria o pedido
+  // a partir do que o cliente preencheu, tira a visita da aba e recarrega os
+  // pedidos pra o card novo aparecer no funil.
+  async function promoteVisita(id: string, status: "PENDING" | "SCHEDULED") {
+    if (statusChangingId) return;
+    setStatusChangingId(id);
+    try {
+      const res = await fetch(`/api/v1/site-visits/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const j = await res.json();
+      if (j?.ok) {
+        setVisits((prev) => prev.filter((v) => v.id !== id));
+        const r = await fetch("/api/v1/pedidos-site?status=ALL", { cache: "no-store" });
+        const pj = await r.json();
+        if (pj?.ok) setPedidos(pj.data);
+      }
+    } finally {
+      setStatusChangingId(null);
+    }
   }
 
   // Exclui uma visita DE VEZ (com confirmação no card).
@@ -606,15 +791,20 @@ export function PedidosSite() {
                     badge={
                       <div className="flex flex-col gap-2">
                         <PedidoTimeline createdAt={p.createdAt} scheduledAt={p.scheduledAt} proofAt={p.proofAt} />
-                        <div
-                          aria-disabled="true"
-                          title="Vira 'entrega agendada' sozinho quando o agente fecha a entrega no WhatsApp"
-                          className="flex cursor-default select-none items-center justify-center gap-1.5 rounded-lg border border-dashed border-muted-foreground/40 bg-muted px-3 py-2 text-sm font-semibold text-muted-foreground"
-                        >
-                          <Clock className="h-4 w-4" /> Entrega agendada — pendente
-                        </div>
+                        <StatusPicker
+                          status={p.status}
+                          meta={STATUS_META}
+                          choices={STATUS_CHOICES}
+                          busy={statusChangingId === p.id}
+                          open={statusMenuId === p.id}
+                          onToggle={() => setStatusMenuId((cur) => (cur === p.id ? null : p.id))}
+                          onPick={(s) => {
+                            setStatusMenuId(null);
+                            mudarStatus(p.id, s as "PENDING" | "SCHEDULED" | "CANCELLED");
+                          }}
+                        />
                         <p className="text-[11px] text-muted-foreground">
-                          Muda sozinho quando o agente fecha a entrega no WhatsApp.
+                          O agente marca "entrega agendada" sozinho quando fecha no WhatsApp — ou clique acima para escolher o status na mão.
                         </p>
                         <DeleteControl onDelete={() => excluirPedido(p.id)} />
                       </div>
@@ -635,9 +825,18 @@ export function PedidosSite() {
                     accent="border-l-success"
                     badge={
                       <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-1.5 rounded-lg bg-success/10 px-3 py-2 text-sm font-semibold text-success">
-                          <CalendarCheck className="h-4 w-4" /> Entrega agendada
-                        </div>
+                        <StatusPicker
+                          status={p.status}
+                          meta={STATUS_META}
+                          choices={STATUS_CHOICES}
+                          busy={statusChangingId === p.id}
+                          open={statusMenuId === p.id}
+                          onToggle={() => setStatusMenuId((cur) => (cur === p.id ? null : p.id))}
+                          onPick={(s) => {
+                            setStatusMenuId(null);
+                            mudarStatus(p.id, s as "PENDING" | "SCHEDULED" | "CANCELLED");
+                          }}
+                        />
                         <PedidoTimeline createdAt={p.createdAt} scheduledAt={p.scheduledAt} proofAt={p.proofAt} />
                         <DeleteControl onDelete={() => excluirPedido(p.id)} />
                       </div>
@@ -745,6 +944,22 @@ export function PedidosSite() {
                         accent={v.dispatchedAt ? "border-l-brand" : "border-l-warning"}
                         badge={
                           <div className="flex flex-col gap-2">
+                            <StatusPicker
+                              status={v.status}
+                              meta={VISIT_STATUS_META}
+                              choices={VISIT_STATUS_CHOICES}
+                              busy={statusChangingId === v.id}
+                              open={statusMenuId === v.id}
+                              onToggle={() => setStatusMenuId((cur) => (cur === v.id ? null : v.id))}
+                              onPick={(s) => {
+                                setStatusMenuId(null);
+                                if (s === "PENDING" || s === "SCHEDULED") {
+                                  promoteVisita(v.id, s);
+                                } else {
+                                  mudarStatusVisita(v.id, s as "OPEN" | "DISPATCHED" | "DISCARDED");
+                                }
+                              }}
+                            />
                             {badge}
                             <DeleteControl onDelete={() => excluirVisita(v.id)} />
                           </div>
