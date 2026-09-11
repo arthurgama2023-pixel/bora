@@ -26,6 +26,7 @@ type Pedido = {
   total: number;
   status: "PENDING" | "SCHEDULED" | "CONFIRMED" | "CANCELLED";
   scheduledAt: string | null;
+  proofAt: string | null;
   createdAt: string;
 };
 type Visit = {
@@ -234,9 +235,19 @@ function PedidoCard({
   );
 }
 
-// Linha do tempo do pedido: encaminhado ao WhatsApp (createdAt) → entrega
-// agendada (scheduledAt, se já agendou).
-function PedidoTimeline({ createdAt, scheduledAt }: { createdAt: string; scheduledAt: string | null }) {
+// Linha do tempo da jornada do cliente: encaminhado ao WhatsApp (createdAt) →
+// entrega agendada (scheduledAt, se já agendou) → comprovante recebido (proofAt,
+// quem realmente fechou). O comprovante é só um selo — casado por telefone, não
+// muda o status do pedido.
+function PedidoTimeline({
+  createdAt,
+  scheduledAt,
+  proofAt,
+}: {
+  createdAt: string;
+  scheduledAt: string | null;
+  proofAt: string | null;
+}) {
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs">
       <div className="flex items-center gap-2">
@@ -254,6 +265,19 @@ function PedidoTimeline({ createdAt, scheduledAt }: { createdAt: string; schedul
             </>
           ) : (
             "Entrega agendada · pendente"
+          )}
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${proofAt ? "bg-success" : "bg-muted-foreground/30"}`} />
+        <span className="text-muted-foreground">
+          {proofAt ? (
+            <>
+              <span className="font-semibold text-success">✅ Agente IA finalizou</span> · comprovante em{" "}
+              <span className="font-medium text-foreground">{fmt(proofAt)}</span>
+            </>
+          ) : (
+            "Comprovante · aguardando"
           )}
         </span>
       </div>
@@ -581,7 +605,7 @@ export function PedidosSite() {
                     accent="border-l-warning"
                     badge={
                       <div className="flex flex-col gap-2">
-                        <PedidoTimeline createdAt={p.createdAt} scheduledAt={p.scheduledAt} />
+                        <PedidoTimeline createdAt={p.createdAt} scheduledAt={p.scheduledAt} proofAt={p.proofAt} />
                         <div
                           aria-disabled="true"
                           title="Vira 'entrega agendada' sozinho quando o agente fecha a entrega no WhatsApp"
@@ -614,7 +638,7 @@ export function PedidosSite() {
                         <div className="flex items-center gap-1.5 rounded-lg bg-success/10 px-3 py-2 text-sm font-semibold text-success">
                           <CalendarCheck className="h-4 w-4" /> Entrega agendada
                         </div>
-                        <PedidoTimeline createdAt={p.createdAt} scheduledAt={p.scheduledAt} />
+                        <PedidoTimeline createdAt={p.createdAt} scheduledAt={p.scheduledAt} proofAt={p.proofAt} />
                         <DeleteControl onDelete={() => excluirPedido(p.id)} />
                       </div>
                     }
