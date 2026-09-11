@@ -78,6 +78,7 @@ export async function upsertSiteVisit(companyId: string, input: SiteVisitInput) 
 export type SiteVisitRow = {
   id: string;
   stage: string;
+  status: string; // OPEN | DISPATCHED | DISCARDED (ver schema)
   customerName: string | null;
   phone: string | null;
   neighborhood: string | null;
@@ -90,16 +91,23 @@ export type SiteVisitRow = {
   updatedAt: Date;
 };
 
+// Status que o dono classifica a visita na aba "Não finalizou".
+export const VISIT_STATUSES = ["OPEN", "DISPATCHED", "DISCARDED"] as const;
+export type VisitStatus = (typeof VISIT_STATUSES)[number];
+
 // Lista as visitas recentes para o painel montar o funil. Últimas 300, mais
-// recentes primeiro (o painel separa em baldes por estágio).
+// recentes primeiro (o painel separa em baldes por estágio). Exclui as
+// DESCARTADAS (o dono tirou da aba). Deriva DISPATCHED pra linhas antigas que
+// já tinham disparo (dispatchedAt) mas nasceram sem o campo status.
 export async function listSiteVisits(companyId: string, limit = 300): Promise<SiteVisitRow[]> {
-  return prisma.siteVisit.findMany({
-    where: { companyId },
+  const rows = await prisma.siteVisit.findMany({
+    where: { companyId, status: { not: "DISCARDED" } },
     orderBy: { updatedAt: "desc" },
     take: limit,
     select: {
       id: true,
       stage: true,
+      status: true,
       customerName: true,
       phone: true,
       neighborhood: true,
@@ -112,6 +120,78 @@ export async function listSiteVisits(companyId: string, limit = 300): Promise<Si
       updatedAt: true,
     },
   });
+  return rows.map((v) => ({
+    ...v,
+    status: v.status === "OPEN" && v.dispatchedAt ? "DISPATCHED" : v.status,
+  }));
+}
+
+// Muda a classificação da visita (aba "Não finalizou"). Escopo por empresa.
+export async function updateSiteVisitStatus(
+  companyId: string,
+  id: string,
+  status: VisitStatus,
+): Promise<boolean> {
+  const res = await prisma.siteVisit.updateMany({ where: { id, companyId }, data: { status } });
+  return res.count > 0;
+}
+
+// PROMOVE uma visita a PEDIDO do site: cria um SiteOrder a partir do que o
+// cliente já tinha preenchido (linha da visita + snapshot `details`) com o
+// status escolhido (PENDING = encaminhado, SCHEDULED = entrega agendada) e
+// APAGA a visita (virou pedido, sai da aba "Não finalizou"). Retorna o pedido.
+export async function promoteVisitToOrder(
+  companyId: string,
+  visitId: string,
+  status: "PENDING" | "SCHEDULED",
+) {
+  const v = await prisma.siteVisit.findFirst({ where: { id: visitId, companyId } });
+  if (!v) return null;
+  let d: Record<string, unknown> = {};
+  try {
+    d = v.details ? (JSON.parse(v.details) as Record<string, unknown>) : {};
+  } catch {
+    d = {};
+  }
+  const s = (k: string): string | null => {
+    const val = d[k];
+    return typeof val === "string" && val.trim() ? val.trim() : null;
+  };
+  const items: Array<{ unitPrice?: number; quantity?: number }> = Array.isArray(d.items)
+    ? (d.items as Array<{ unitPrice?: number; quantity?: number }>)
+    : [];
+  const total =
+    v.total > 0
+      ? v.total
+      : items.reduce((sum: number, it) => sum + (it?.unitPrice ?? 0) * (it?.quantity ?? 0), 0);
+
+  const order = await prisma.siteOrder.create({
+    data: {
+      companyId,
+      customerName: v.customerName?.trim() || `Cliente ${v.phone ?? ""}`.trim(),
+      phone: v.phone ?? "",
+      email: s("email"),
+      document: s("document"),
+      deliveryMethod: v.deliveryMethod === "retirada" ? "retirada" : "entrega",
+      neighborhood: v.neighborhood,
+      city: v.city,
+      street: s("street"),
+      number: s("number"),
+      complement: s("complement"),
+      hasStairs: s("hasStairs"),
+      venueType: s("venueType"),
+      eventDate: s("eventDate"),
+      eventTime: s("eventTime"),
+      chopeiraType: s("chopeiraType"),
+      items: JSON.stringify(items),
+      total,
+      origin: "SITE",
+      status,
+      ...(status === "SCHEDULED" ? { scheduledAt: new Date() } : {}),
+    },
+  });
+  await prisma.siteVisit.deleteMany({ where: { id: visitId, companyId } });
+  return order;
 }
 
 // Mensagem de recuperação de carrinho — TEMPLATE editável no painel (por empresa,
@@ -209,7 +289,7 @@ export async function dispatchToVisit(companyId: string, visitId: string) {
 
   return prisma.siteVisit.update({
     where: { id: visit.id },
-    data: { dispatchedAt: new Date() },
+    data: { dispatchedAt: new Date(), status: "DISPATCHED" },
     select: { id: true, dispatchedAt: true },
   });
 }

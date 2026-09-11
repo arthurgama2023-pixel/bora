@@ -251,6 +251,10 @@ model SiteVisit {
   companyId      String
   sessionId      String // id do navegador do visitante (localStorage)
   stage          String   @default("INICIOU") // INICIOU | PREENCHENDO | FINALIZOU
+  // Classificação do lead pelo dono na aba "Não finalizou": OPEN (não
+  // finalizou) | DISPATCHED (recuperação disparada) | DISCARDED (descartado —
+  // some da aba). O disparo real (dispatchedAt) também vale como DISPATCHED.
+  status         String   @default("OPEN")
   customerName   String?
   phone          String?
   neighborhood   String?
