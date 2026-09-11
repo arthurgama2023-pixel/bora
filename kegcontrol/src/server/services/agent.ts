@@ -95,7 +95,9 @@ Você tem uma AJUDA de memória travada em código: se aparecer um bloco "JÁ CO
 
 # Fechamento e PIX (regra inviolável — é dinheiro do cliente)
 - Pra fechar o pedido, SEMPRE chame finalizar_pedido. Nunca feche "de cabeça".
-- NUNCA escreva uma chave PIX, CNPJ, CPF, banco, agência ou conta — NEM um espaço reservado/placeholder tipo "[chave aqui]", "[link do PIX]" ou "[anexo da chave]". NÃO invente, NÃO mascare com asteriscos, NÃO copie de memória. Você só apresenta o resumo (itens, total, frete grátis) e pede o sinal de 50% e o comprovante, e ENCERRA sua mensagem — o SISTEMA envia a chave PIX correta sozinho, numa MENSAGEM SEPARADA logo depois da sua (só o número, pro cliente copiar e colar no banco). Não anuncie a chave nem escreva nada no lugar dela.
+- Assim que o cliente responder o ÚLTIMO dado (normalmente a forma de pagamento), FINALIZE DIRETO, na MESMA resposta: NUNCA peça permissão ("posso fechar?", "posso confirmar?", "confirma pra mim?", "fecho o pedido?") nem espere um "sim" — com tudo em mãos, chame finalizar_pedido de uma vez. Mande UM RESUMO COMPLETO e organizado do pedido — TODOS os dados coletados (produto e quantidade, bairro e cidade, endereço, se tem escada, casa ou salão, data e horário, CPF, forma de pagamento, total e frete grátis) — e logo em seguida FINALIZE com clareza, avisando que o pedido está registrado e a EQUIPE já vai entrar em contato. Ex.: "Pronto! ✅ Seu pedido está registrado. A equipe da SS-Chopp já vai entrar em contato pra confirmar e combinar tudo. 🍺🚚".
+- PEDIDO FINALIZADO = FIM. Depois de mandar o resumo + o aviso de que a equipe vai entrar em contato, o pedido ACABOU: NÃO pergunte mais nada, NÃO reinicie o fluxo, NÃO repita perguntas nem fique "só confirmando". Se o cliente mandar mais mensagens, responda curto e caloroso ("A equipe já vai te chamar 😉") — só recomece o fluxo se ele CLARAMENTE quiser fazer um NOVO pedido.
+- NUNCA escreva uma chave PIX, CNPJ, CPF, banco, agência ou conta — NEM um espaço reservado/placeholder tipo "[chave aqui]", "[link do PIX]" ou "[anexo da chave]". NÃO invente, NÃO mascare com asteriscos, NÃO copie de memória. O SISTEMA envia a chave PIX correta sozinho, numa MENSAGEM SEPARADA logo depois da sua (só o número, pro cliente copiar e colar no banco). Não anuncie a chave nem escreva nada no lugar dela. O cliente pode fazer o sinal de 50% pra adiantar, mas você NÃO fica esperando/cobrando o comprovante — a equipe cuida do pagamento no contato.
 
 # Ordens de estilo do dono — cumpra AO PÉ DA LETRA
 As regras de "Jeito de falar"/estilo da sua personalidade são ORDENS diretas do dono. Cumpra-as EXATAMENTE como escritas, ao pé da letra, em TODA resposta. Se o dono mandou começar de um jeito, comece exatamente assim. Se mandou ser curto, ou responder "apenas"/"só" algo, faça só isso — NÃO adicione apresentação da empresa, história ("desde 2016"), frases de efeito, perguntas ou qualquer texto que não foi pedido. Menos é mais: entregue só o que foi pedido, do jeito que foi pedido.
@@ -798,7 +800,7 @@ const TOOLS: FunctionDeclaration[] = [
         endereco: { type: Type.STRING, description: "Endereço (rua, número), se informado" },
         bairro: { type: Type.STRING, description: "Bairro, se informado" },
         cidade: { type: Type.STRING, description: "Cidade, se informada" },
-        cpf: { type: Type.STRING, description: "CPF/CNPJ do cliente (pra nota), se informado" },
+        cpf: { type: Type.STRING, description: "CPF/CNPJ do cliente (pra registro do pedido), se informado" },
         pedido_costume: {
           type: Type.STRING,
           description: "O que o cliente costuma pedir, ex.: 'Belco 50L, Heineken'",
@@ -843,7 +845,7 @@ const TOOLS: FunctionDeclaration[] = [
         cpf: {
           type: Type.STRING,
           description:
-            "CPF (ou CNPJ) do cliente para a nota, se ele informou. Só os números/documento — sem rótulo. Opcional.",
+            "CPF (ou CNPJ) do cliente para registro do pedido, se ele informou. Só os números/documento — sem rótulo. Opcional.",
         },
         tipo_chopeira: {
           type: Type.STRING,
