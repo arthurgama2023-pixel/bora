@@ -327,6 +327,31 @@ export function PrecosSite() {
     setResetNonce((x) => x + 1);
   }
 
+  // Marca a região como "preço próprio" (cria a tabela própria a partir do
+  // padrão, pronta pra editar) sem precisar mudar um preço antes.
+  function makeCustom(city: string) {
+    setOverrides((prev) => (prev[city] ? prev : { ...prev, [city]: cloneBase() }));
+    setResetNonce((x) => x + 1);
+  }
+
+  // Alterna o status da região no clique do selo: padrão → próprio (vira
+  // editável) ou próprio → padrão (descarta os preços próprios da região,
+  // com confirmação pra não perder edição sem querer).
+  function toggleStatus(city: string) {
+    if (isCustom(city)) {
+      const ok =
+        typeof window === "undefined" ||
+        window.confirm(`Voltar "${city}" ao preço padrão? Os preços próprios desta região serão descartados.`);
+      if (ok) {
+        resetRegion(city);
+        fire(`${city} voltou ao preço padrão`);
+      }
+    } else {
+      makeCustom(city);
+      fire(`${city} agora tem preço próprio — edite a tabela e clique em Publicar`);
+    }
+  }
+
   const totalRegions = regions.reduce((a, c) => a + c.n, 0);
 
   // Adiciona um bairro/localidade a uma cidade (persistido em extraRegions).
@@ -773,10 +798,18 @@ export function PrecosSite() {
             const active = c.city === region;
             const custom = isCustom(c.city);
             return (
-              <button
+              <div
                 key={c.city}
+                role="button"
+                tabIndex={0}
                 onClick={() => { setRegion(c.city); setAddName(""); setQuickAdd(""); }}
-                className={`flex items-center justify-between gap-2 rounded-xl border px-3.5 py-3 text-left transition-colors ${
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setRegion(c.city); setAddName(""); setQuickAdd("");
+                  }
+                }}
+                className={`flex cursor-pointer items-center justify-between gap-2 rounded-xl border px-3.5 py-3 text-left transition-colors ${
                   active ? "border-brand bg-brand/10" : "border-border bg-card hover:bg-muted/50"
                 }`}
               >
@@ -789,12 +822,23 @@ export function PrecosSite() {
                     </span>
                   </span>
                 </span>
-                {custom ? (
-                  <Badge tone="brand">próprio</Badge>
-                ) : (
-                  <span className="text-[11px] text-muted-foreground">padrão</span>
-                )}
-              </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toggleStatus(c.city); }}
+                  title={
+                    custom
+                      ? "Preço próprio — clique para voltar ao padrão"
+                      : "Preço padrão — clique para dar preço próprio a esta região"
+                  }
+                  className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-colors ${
+                    custom
+                      ? "bg-brand/15 text-brand-strong hover:bg-brand/30"
+                      : "border border-border text-muted-foreground hover:border-brand hover:text-brand-strong"
+                  }`}
+                >
+                  {custom ? "próprio" : "padrão"}
+                </button>
+              </div>
             );
           })}
         </div>
@@ -805,11 +849,22 @@ export function PrecosSite() {
             <div>
               <div className="flex items-center gap-2 font-semibold">
                 <MapPin className="h-4 w-4 text-brand-strong" /> {region}
-                {isCustom(region) ? (
-                  <Badge tone="brand">preço próprio</Badge>
-                ) : (
-                  <Badge tone="neutral">seguindo padrão</Badge>
-                )}
+                <button
+                  type="button"
+                  onClick={() => toggleStatus(region)}
+                  title={
+                    isCustom(region)
+                      ? "Preço próprio — clique para voltar ao padrão"
+                      : "Seguindo o padrão — clique para dar preço próprio a esta região"
+                  }
+                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-colors ${
+                    isCustom(region)
+                      ? "bg-brand/15 text-brand-strong hover:bg-brand/30"
+                      : "border border-border text-muted-foreground hover:border-brand hover:text-brand-strong"
+                  }`}
+                >
+                  {isCustom(region) ? "preço próprio" : "seguindo padrão"}
+                </button>
               </div>
               <div className="mt-0.5 text-xs text-muted-foreground">
                 {regionInfo.n === 0
