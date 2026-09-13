@@ -144,7 +144,11 @@ export function coerceFlowQuestions(input: unknown): FlowQuestion[] {
   return out;
 }
 
-// Renderiza o roteiro como um bloco de checklist para o prompt do agente.
+// Renderiza o roteiro como um CHECKLIST leve para o prompt do agente.
+// IMPORTANTE: é só um lembrete de O QUE coletar e em QUE ORDEM — NÃO um script.
+// As perguntas ficam como exemplo/referência; o agente mantém o próprio tom e
+// jeito de falar (definidos na personalidade). Isso preserva o estilo natural
+// da conversa e evita que o agente vire um robô lendo frases prontas.
 export function renderFlowQuestions(questions: FlowQuestion[]): string {
   const list = questions.length ? questions : DEFAULT_FLOW_QUESTIONS;
   const body = list
@@ -152,13 +156,16 @@ export function renderFlowQuestions(questions: FlowQuestion[]): string {
       const flag = q.obrigatoria ? "" : " (opcional)";
       const pontos = q.pontos.length
         ? q.pontos.map((p) => `   - ${p}`).join("\n")
-        : "   - (sem pontos obrigatórios)";
-      return `${i + 1}. ${q.titulo}${flag}\n   Pergunte: "${q.pergunta}"\n   Só avance quando tiver captado:\n${pontos}`;
+        : "   - (livre)";
+      const ex = q.pergunta
+        ? `\n   Ex. (adapte ao SEU jeito, não copie ao pé da letra): "${q.pergunta}"`
+        : "";
+      return `${i + 1}. ${q.titulo}${flag} — precisa descobrir:\n${pontos}${ex}`;
     })
     .join("\n\n");
   return [
-    "ROTEIRO DE PERGUNTAS (fluxo de venda — obrigatório):",
-    "Conduza a conversa nesta ordem, UMA pergunta por vez, até fechar o pedido. Só passe para a próxima etapa depois de captar os pontos obrigatórios da atual. Não junte perguntas na mesma mensagem.",
+    "CHECKLIST DO PEDIDO (o que coletar e em que ordem):",
+    "MANTENHA seu tom e jeito de falar da personalidade acima — caloroso, natural, uma pergunta por vez, reagindo ao que o cliente diz. Este checklist NÃO muda seu estilo: ele só te lembra QUAIS dados coletar e em QUE ordem, até fechar o pedido. As frases abaixo são apenas EXEMPLOS — use sempre as SUAS palavras. Só avance de etapa depois de ter os dados da atual; não junte perguntas na mesma mensagem.",
     "",
     body,
   ].join("\n");
