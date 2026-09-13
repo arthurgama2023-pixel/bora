@@ -10,6 +10,7 @@ import {
   Copy,
   ListChecks,
   Lock,
+  Pencil,
   Plus,
   RotateCcw,
   Send,
@@ -44,6 +45,7 @@ type FlowQuestion = {
   obrigatoria: boolean;
 };
 
+
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
@@ -55,6 +57,10 @@ type ChatMessage = {
   // Mensagem SÓ da chave PIX (o número), enviada separada logo após o resumo —
   // igual ao WhatsApp. Aqui no playground a gente mostra pra o dono ver/copiar.
   pix?: { chave: string; nome: string };
+  // Marca que o dono editou/ensinou esta resposta (mostra o texto novo + selo).
+  taught?: boolean;
+  // Id do exemplo criado por esta mensagem — pra reeditar ATUALIZA o mesmo, não duplica.
+  taughtId?: string;
 };
 
 // Uma rodada do editor por conversa: a instrução do operador e a resposta da IA
@@ -205,6 +211,59 @@ export function AgentStudio({
   const [sending, setSending] = useState(false);
   const [copiedPix, setCopiedPix] = useState<number | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Ensinar direto no chat de treino: editar uma resposta do agente vira um
+  // "norte" salvo (mesma fonte da aba Conversas), aplicado nas próximas conversas.
+  const [teachChatIdx, setTeachChatIdx] = useState<number | null>(null);
+  const [chatIdeal, setChatIdeal] = useState("");
+  const [chatNota, setChatNota] = useState("");
+  const [savingChatTeach, setSavingChatTeach] = useState(false);
+
+  function startChatTeach(i: number, original: string) {
+    setTeachChatIdx(i);
+    setChatIdeal(original);
+    setChatNota("");
+  }
+  function cancelChatTeach() {
+    setTeachChatIdx(null);
+    setChatIdeal("");
+    setChatNota("");
+  }
+  async function saveChatTeach(i: number) {
+    if (!chatIdeal.trim()) return;
+    setSavingChatTeach(true);
+    // Manda só a resposta + o contexto — a IA descobre a situação sozinha.
+    const context = messages
+      .slice(Math.max(0, i - 6), i + 1)
+      .filter((m) => !m.pix)
+      .map((m) => ({ role: m.role, content: m.content }));
+    try {
+      const res = await fetch("/api/v1/agent/examples", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: messages[i]?.taughtId,
+          ideal: chatIdeal.trim(),
+          nota: chatNota.trim() || undefined,
+          context,
+        }),
+      });
+      const j = await res.json();
+      const savedId =
+        (j?.data?.examples ?? []).slice(-1)[0]?.id ?? messages[i]?.taughtId ?? "ex-saved";
+      // Torna a edição REALIDADE na tela: a mensagem mostra seu texto + selo.
+      setMessages((ms) =>
+        ms.map((mm, idx) =>
+          idx === i
+            ? { ...mm, content: chatIdeal.trim(), taught: true, taughtId: messages[i]?.taughtId ?? savedId }
+            : mm,
+        ),
+      );
+      cancelChatTeach();
+    } finally {
+      setSavingChatTeach(false);
+    }
+  }
 
   async function copyPix(idx: number, chave: string) {
     try {
@@ -946,7 +1005,10 @@ export function AgentStudio({
                 </div>
               </div>
             ) : (
-              <div key={i} className={cn("flex", m.role === "user" && "justify-end")}>
+              <div
+                key={i}
+                className={cn("group flex flex-col", m.role === "user" ? "items-end" : "items-start")}
+              >
                 <div
                   className={cn(
                     "max-w-[85%] whitespace-pre-wrap rounded-xl px-4 py-2.5 text-sm",
@@ -956,28 +1018,84 @@ export function AgentStudio({
                   )}
                 >
                   {m.content}
-                {m.images && m.images.length > 0 && (
-                  <div className="mt-2 flex flex-col gap-2">
-                    {m.images.map((img, j) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        key={j}
-                        src={img.url}
-                        alt={img.label}
-                        className="w-full max-w-[280px] rounded-lg border border-border"
-                      />
-                    ))}
-                  </div>
+                  {m.images && m.images.length > 0 && (
+                    <div className="mt-2 flex flex-col gap-2">
+                      {m.images.map((img, j) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          key={j}
+                          src={img.url}
+                          alt={img.label}
+                          className="w-full max-w-[280px] rounded-lg border border-border"
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {m.toolsUsed && m.toolsUsed.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
+                      <Wrench className="h-3 w-3" />
+                      {m.toolsUsed.join(", ")}
+                    </div>
+                  )}
+                </div>
+
+                {/* Ensinar: editar a resposta do agente vira um norte pras próximas conversas */}
+                {m.role === "assistant" && !m.content.startsWith("⚠️") && teachChatIdx !== i && (
+                  <button
+                    type="button"
+                    onClick={() => startChatTeach(i, m.content)}
+                    className={cn(
+                      "mt-0.5 flex items-center gap-1 px-1 text-[10px] transition hover:text-brand-strong",
+                      m.taught
+                        ? "font-medium text-success opacity-100"
+                        : "text-muted-foreground opacity-0 group-hover:opacity-100",
+                    )}
+                  >
+                    {m.taught ? (
+                      <>
+                        <Check className="h-3 w-3" /> Ensinado · editar de novo
+                      </>
+                    ) : (
+                      <>
+                        <Pencil className="h-3 w-3" /> Ensinar resposta
+                      </>
+                    )}
+                  </button>
                 )}
-                {m.toolsUsed && m.toolsUsed.length > 0 && (
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
-                    <Wrench className="h-3 w-3" />
-                    {m.toolsUsed.join(", ")}
+                {m.role === "assistant" && teachChatIdx === i && (
+                  <div className="mt-1 w-full max-w-[85%] rounded-xl border border-brand/40 bg-brand/5 p-3">
+                    <div className="mb-1 text-[11px] font-semibold text-brand-strong">
+                      Como você queria que ele tivesse respondido?
+                    </div>
+                    <Textarea
+                      rows={3}
+                      value={chatIdeal}
+                      onChange={(e) => setChatIdeal(e.target.value)}
+                      className="text-sm"
+                      placeholder="Escreva a resposta no jeito certo…"
+                    />
+                    <Input
+                      value={chatNota}
+                      onChange={(e) => setChatNota(e.target.value)}
+                      className="mt-2 text-xs"
+                      placeholder="Observação (opcional)"
+                    />
+                    <div className="mt-2 flex items-center gap-2">
+                      <Button size="sm" onClick={() => saveChatTeach(i)} disabled={savingChatTeach || !chatIdeal.trim()}>
+                        <Check className="h-4 w-4" /> {savingChatTeach ? "Salvando…" : "Salvar"}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={cancelChatTeach} disabled={savingChatTeach}>
+                        <X className="h-4 w-4" /> Cancelar
+                      </Button>
+                    </div>
+                    <p className="mt-2 text-[10px] text-muted-foreground">
+                      Só edita a resposta — a IA entende sozinha quando usar. Vale nas próximas
+                      conversas. Gerencie tudo na aba Conversas.
+                    </p>
                   </div>
                 )}
               </div>
-            </div>
-          ))}
+            ))}
           {sending && (
             <div className="rounded-xl rounded-tl-sm bg-muted px-4 py-2.5 text-sm text-muted-foreground">
               digitando…

@@ -41,6 +41,14 @@ import {
   renderFlowQuestions,
   type FlowQuestion,
 } from "./agent-flow";
+import {
+  CATEGORIAS,
+  coerceStyleExamples,
+  dedupeBySituation,
+  renderStyleExamples,
+  upsertExample,
+  type StyleExample,
+} from "./agent-examples";
 
 // Cliente reconhecido pelo número de WhatsApp (ou null se o número não bate
 // com nenhum cadastro). Passado ao agente para ele "conectar os pontos".
@@ -390,6 +398,115 @@ export async function saveFlowQuestions(
     create: { companyId, key: FLOW_QUESTIONS_KEY, value },
   });
   return { questions: clean };
+}
+
+// ─── Exemplos de comportamento ("norte" editado na aba Conversas) ────────────
+const STYLE_EXAMPLES_KEY = "agent.style_examples";
+
+export async function getStyleExamples(companyId: string): Promise<StyleExample[]> {
+  const row = await prisma.setting.findUnique({
+    where: { companyId_key: { companyId, key: STYLE_EXAMPLES_KEY } },
+    select: { value: true },
+  });
+  if (!row?.value?.trim()) return [];
+  try {
+    return coerceStyleExamples(JSON.parse(row.value));
+  } catch {
+    return [];
+  }
+}
+
+export async function saveStyleExamples(
+  companyId: string,
+  examples: StyleExample[],
+): Promise<{ examples: StyleExample[] }> {
+  // dedupeBySituation: rede de segurança — um ensino por situação (o último vence).
+  const clean = dedupeBySituation(coerceStyleExamples(examples));
+  const value = JSON.stringify(clean);
+  await prisma.setting.upsert({
+    where: { companyId_key: { companyId, key: STYLE_EXAMPLES_KEY } },
+    update: { value },
+    create: { companyId, key: STYLE_EXAMPLES_KEY, value },
+  });
+  return { examples: clean };
+}
+
+// ─── Ensino simples: você só edita a resposta; a IA descobre a situação ──────
+// A partir do fim da conversa + a resposta editada, a IA gera o "quando aplicar"
+// (situação) e a categoria — o dono não precisa preencher nada. Sem chave, cai
+// pro fallback (a última fala do cliente).
+async function autoSituation(
+  context: { role: string; content: string }[],
+  ideal: string,
+): Promise<{ gatilho: string; categoria: string }> {
+  const lastUser = [...context].reverse().find((m) => m.role === "user");
+  const fallback = { gatilho: lastUser?.content?.slice(0, 160) ?? "", categoria: "" };
+  if (!process.env.GEMINI_API_KEY) return fallback;
+  try {
+    const convo = context
+      .slice(-8)
+      .map((m) => `${m.role === "user" ? "Cliente" : "Agente"}: ${m.content}`)
+      .join("\n");
+    const prompt = `Você organiza correções de um agente de vendas de chope no WhatsApp.
+
+Fim da conversa:
+${convo}
+
+Resposta que o DONO quer que o agente dê NESSE momento:
+"${ideal}"
+
+Tarefa: descreva em UMA frase curta e GERAL a SITUAÇÃO/momento em que essa resposta deve ser usada (o "quando aplicar") — pela intenção do cliente, não pelas palavras exatas. E escolha UMA categoria desta lista: ${CATEGORIAS.join(", ")}.
+Responda SÓ com um JSON válido, nada mais: {"gatilho":"...","categoria":"..."}`;
+    const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const resp = await client.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: { thinkingConfig: { thinkingBudget: 512 } },
+    });
+    const txt = (resp.text ?? "").trim().replace(/^```json\s*|\s*```$/g, "");
+    const parsed = JSON.parse(txt) as { gatilho?: unknown; categoria?: unknown };
+    const gatilho = typeof parsed.gatilho === "string" && parsed.gatilho.trim() ? parsed.gatilho.trim() : fallback.gatilho;
+    const categoria =
+      typeof parsed.categoria === "string" && (CATEGORIAS as readonly string[]).includes(parsed.categoria)
+        ? parsed.categoria
+        : "";
+    return { gatilho, categoria };
+  } catch {
+    return fallback;
+  }
+}
+
+// Cria/atualiza uma CORREÇÃO a partir do contexto da conversa. O dono manda só a
+// resposta (ideal); a situação é detectada pela IA. Upsert por id (edição) —
+// novos são adicionados. Retorna a lista salva.
+export async function saveCorrectionFromContext(
+  companyId: string,
+  input: { id?: string; context: { role: string; content: string }[]; ideal: string; nota?: string },
+): Promise<{ examples: StyleExample[] }> {
+  const ideal = input.ideal.trim();
+  if (!ideal) throw new ApiError(422, "A resposta não pode ficar vazia.");
+  const list = await getStyleExamples(companyId);
+  const existing = input.id ? list.find((e) => e.id === input.id) : undefined;
+  // Detecta a situação quando há contexto (novo ensino). Editando um item sem
+  // contexto (ex.: só trocou o texto no card), mantém o gatilho que já existe.
+  const shouldDetect = (input.context?.length ?? 0) > 0 || !existing;
+  const { gatilho, categoria } = shouldDetect
+    ? await autoSituation(input.context ?? [], ideal)
+    : { gatilho: "", categoria: "" };
+  const lastUser = [...(input.context ?? [])].reverse().find((m) => m.role === "user");
+  const item: StyleExample = {
+    id: input.id ?? "ex" + Math.random().toString(36).slice(2, 8),
+    tipo: "exemplo",
+    gatilho: gatilho || existing?.gatilho || "",
+    categoria: categoria || existing?.categoria || "",
+    variacoes: existing?.variacoes ?? [],
+    cliente: lastUser?.content ?? existing?.cliente ?? "",
+    ideal,
+    original: existing?.original,
+    nota: input.nota?.trim() || existing?.nota || undefined,
+    createdAt: existing?.createdAt ?? new Date().toISOString(),
+  };
+  return saveStyleExamples(companyId, upsertExample(list, item));
 }
 
 // EDITOR POR SEÇÃO (v2). Em vez de reescrever o texto inteiro ("preserve todo o
@@ -972,6 +1089,9 @@ type ToolCtx = {
   // atualizar_dados_pedido, preco_por_bairro ou finalizar_pedido). chatWithAgent
   // funde isso no rascunho persistido (ver OrderDraft) depois do loop.
   draftPatch?: OrderDraft;
+  // CPF já coletado em turnos anteriores (do rascunho persistido) OU do cadastro
+  // do cliente — usado pra travar o fechamento sem CPF sem criar loop.
+  docSoFar?: string;
   // Marcado pelo finalizar_pedido quando o pedido fecha com sucesso — sinaliza
   // pra chatWithAgent limpar o rascunho desta sessão (pedido concluído).
   orderClosed?: boolean;
@@ -1263,6 +1383,18 @@ async function runTool(
           naoReconhecidos,
         });
       }
+      // CHECKLIST TRAVADA: não fecha sem CPF. Considera o CPF deste turno
+      // (input.cpf), o do rascunho e o do cadastro (ctx.docSoFar). Sem nenhum,
+      // devolve ok:false pedindo o CPF — impede pular essa etapa no fechamento.
+      const cpfNoFechamento =
+        normalizeDocument(input.cpf) || normalizeDocument(ctx.draftPatch?.document) || (ctx.docSoFar || "");
+      if (!cpfNoFechamento) {
+        return JSON.stringify({
+          ok: false,
+          motivo:
+            "Ainda falta o CPF — não feche o pedido nem envie o PIX. Peça o CPF do cliente primeiro (é pra emitir a nota) e só então finalize.",
+        });
+      }
       // Pedido válido: sinaliza pro webhook mandar a(s) foto(s) do(s) barril(is)
       // pedido(s) depois da resposta em texto (ver chatWithAgent/runGeminiLoop).
       if (ctx.photosOut) ctx.photosOut.push(...fotos);
@@ -1531,17 +1663,35 @@ export function isResetSignal(text: string): boolean {
 const PIX_KEY_LINE =
   /\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}|\*{3,}|^\s*(banco|ag[êe]ncia|conta|chave( pix)?|favorecido|cnpj|cpf|nome do? favorecido)\s*:/i;
 
+// Linha-PONTEIRO do PIX ("a chave PIX vem na próxima mensagem…"): o código anexa
+// UMA sozinho. Se a IA (ou uma correção ensinada pelo dono) também escrever uma,
+// duplicaria — então a gente remove qualquer ponteiro do texto antes de anexar.
+const PIX_POINTER_LINE =
+  /(chave (do )?pix).*(pr[óo]xima mensagem|copiar e colar)|vem na pr[óo]xima mensagem/i;
+
 // Blindagem do PIX (dinheiro do cliente): remove qualquer chave/dado de
-// pagamento que a IA tenha escrito (às vezes inventa/mascara/erra) e, quando há
-// pixInfo, anexa a chave CORRETA do sistema. Idempotente e testável.
+// pagamento que a IA tenha escrito (às vezes inventa/mascara/erra) e o ponteiro
+// duplicado; quando há pixInfo, anexa a chave CORRETA do sistema. Idempotente.
 export function shieldPix(
   reply: string,
   pixInfo: { chave: string; nome: string } | null,
 ): string {
-  if (!pixInfo && !PIX_KEY_LINE.test(reply)) return reply;
-  const limpo = reply
+  const temRepetida = (() => {
+    const ls = reply.split("\n").map((l) => l.trim());
+    return ls.some((l, i) => l && l === ls[i - 1]);
+  })();
+  if (!pixInfo && !PIX_KEY_LINE.test(reply) && !PIX_POINTER_LINE.test(reply) && !temRepetida) {
+    return reply;
+  }
+  const filtradas = reply
     .split("\n")
-    .filter((l) => !PIX_KEY_LINE.test(l))
+    .filter((l) => !PIX_KEY_LINE.test(l) && !PIX_POINTER_LINE.test(l));
+  const limpo = filtradas
+    // Colapsa linhas IGUAIS coladas (a IA às vezes repete o fechamento/pergunta).
+    .filter((l, i) => {
+      const t = l.trim();
+      return !t || t !== filtradas[i - 1]?.trim();
+    })
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -1621,7 +1771,11 @@ export async function chatWithAgent(
   // salvo, o `fluxo` da personalidade (já em config.personality) é a única base.
   const savedFlow = await getSavedFlowQuestions(companyId);
   const flowBlock = savedFlow ? renderFlowQuestions(savedFlow) : "";
-  const systemInstruction = [config.personality, flowBlock, NATURAL_CUSTOMER_RULES, orderDraftBlock, contextBlock]
+  // Exemplos de comportamento que o dono ensinou corrigindo respostas na aba
+  // Conversas — norte de tom/postura, não regra literal.
+  const styleExamples = await getStyleExamples(companyId);
+  const examplesBlock = styleExamples.length ? renderStyleExamples(styleExamples) : "";
+  const systemInstruction = [config.personality, flowBlock, examplesBlock, NATURAL_CUSTOMER_RULES, orderDraftBlock, contextBlock]
     .filter(Boolean)
     .join("\n\n---\n");
 
@@ -1659,6 +1813,8 @@ export async function chatWithAgent(
       customerId,
       pushName: opts.pushName,
       customerName,
+      // CPF já coletado antes (rascunho) — pra travar o fechamento sem CPF.
+      docSoFar: orderDraftBefore.document || "",
     });
     reply = result.reply;
     toolsUsed = result.toolsUsed;
@@ -1691,16 +1847,11 @@ export async function chatWithAgent(
     // Blindagem do PIX (é dinheiro do cliente): a IA às vezes inventa, mascara ou
     // erra a chave/banco mesmo instruída a não escrever. O código REMOVE qualquer
     // linha que pareça chave/dado de pagamento escrito pela IA e anexa a chave
-    // CORRETA do sistema. A chave vem do finalizar_pedido (result.pix); se a IA
-    // "fechou de cabeça" (falou de sinal/comprovante sem chamar a ferramenta),
-    // busca do Setting. Assim nunca sai chave errada, ausente nem duplicada.
-    let pixInfo = result.pix;
-    if (!pixInfo && /comprovante|sinal de 50|\b50\s*%/i.test(reply)) {
-      pixInfo = {
-        chave: (await getSetting(companyId, "pix_key")) ?? "12.345.678/0001-95",
-        nome: (await getSetting(companyId, "pix_nome")) ?? "SS-CHOPP DISTRIBUIDORA (PIX DE TESTE)",
-      };
-    }
+    // CORRETA do sistema. A chave vem SÓ do finalizar_pedido (result.pix) — assim
+    // o PIX só sai NO FINAL, quando o pedido é realmente fechado. (Antes um
+    // fallback disparava o PIX sempre que o texto citava "sinal de 50%", o que
+    // fazia a chave aparecer no meio da conversa.)
+    const pixInfo = result.pix;
     // Primeiro LIMPA qualquer chave/dado de pagamento que a IA tenha escrito
     // (nunca deixa sair chave inventada/mascarada). NÃO embute a chave no texto:
     // ela vai numa MENSAGEM SEPARADA, só o número, pra o cliente copiar e colar
