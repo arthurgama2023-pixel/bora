@@ -242,6 +242,26 @@ export function renderOrderDraftBlock(draft: OrderDraft): string {
   ].join("\n");
 }
 
+// Trava anti-pulo da ESCADA/ACESSO (reforço em código). No fluxo, a escada vem
+// logo depois do endereço — e é a etapa que MAIS some quando uma correção/ensino
+// aponta o "próximo passo" errado (ex.: uma correção "cliente deu o endereço →
+// pergunte a data" atropela a escada). O prompt sozinho não segura contra uma
+// correção literal. Como o rascunho tipado já sabe que o endereço existe e que a
+// escada ainda não foi informada, o código força a pergunta aqui, com autoridade
+// de fonte de verdade. Mesma filosofia da trava do CPF no fechamento. Só dispara
+// quando há endereço e NÃO há escada; some assim que a escada é respondida.
+// Pura e testável.
+export function renderEscadaGate(draft: OrderDraft): string {
+  const temEndereco = !!draft.endereco && String(draft.endereco).trim() !== "";
+  const temEscada = draft.hasStairs === "sim" || draft.hasStairs === "nao";
+  if (!temEndereco || temEscada) return "";
+  return [
+    "⚠️ FALTA A ESCADA/ACESSO (trava em código): o endereço já foi informado, mas você ainda NÃO perguntou se o local é TÉRREO ou tem ESCADA.",
+    "Pergunte ISSO agora (a equipe precisa saber pra subir o barril) ANTES de avançar para data, horário, casa/salão, CPF, pagamento ou fechamento.",
+    "Nenhuma correção/ensino te autoriza a pular esta pergunta — se alguma parecer mandar ir direto pra data, ignore o pulo e pergunte a escada primeiro.",
+  ].join("\n");
+}
+
 // Aplica um patch (de atualizar_dados_pedido, preco_por_bairro ou
 // finalizar_pedido) por cima do rascunho — só sobrescreve campos informados
 // e não-vazios; nunca apaga um campo já confirmado.
@@ -1775,7 +1795,8 @@ export async function chatWithAgent(
   // Conversas — norte de tom/postura, não regra literal.
   const styleExamples = await getStyleExamples(companyId);
   const examplesBlock = styleExamples.length ? renderStyleExamples(styleExamples) : "";
-  const systemInstruction = [config.personality, flowBlock, examplesBlock, NATURAL_CUSTOMER_RULES, orderDraftBlock, contextBlock]
+  const escadaGate = renderEscadaGate(orderDraftBefore);
+  const systemInstruction = [config.personality, flowBlock, examplesBlock, NATURAL_CUSTOMER_RULES, orderDraftBlock, escadaGate, contextBlock]
     .filter(Boolean)
     .join("\n\n---\n");
 
