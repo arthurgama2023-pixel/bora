@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renderOrderDraftBlock, mergeOrderDraft, type OrderDraft } from "./agent";
+import { renderOrderDraftBlock, renderEscadaGate, mergeOrderDraft, type OrderDraft } from "./agent";
 
 describe("renderOrderDraftBlock — memória de pedido em código", () => {
   it("rascunho vazio não gera bloco (nada pra reforçar)", () => {
@@ -74,5 +74,29 @@ describe("mergeOrderDraft — funde o que foi confirmado no turno, sem apagar o 
   it("quantidade zero/undefined não sobrescreve a já confirmada", () => {
     const antes: OrderDraft = { quantidade: 3 };
     expect(mergeOrderDraft(antes, { quantidade: undefined }).quantidade).toBe(3);
+  });
+});
+
+describe("renderEscadaGate — trava anti-pulo da escada/acesso", () => {
+  it("sem endereço ainda: não dispara (escada não é a vez)", () => {
+    expect(renderEscadaGate({})).toBe("");
+    expect(renderEscadaGate({ produto: "Heineken 50L", bairro: "Centro" })).toBe("");
+  });
+
+  it("endereço confirmado e escada ainda em aberto: FORÇA a pergunta", () => {
+    const g = renderEscadaGate({ endereco: "Rua das Flores, 100" });
+    expect(g).toContain("FALTA A ESCADA/ACESSO");
+    expect(g).toMatch(/T[ÉE]RREO ou tem ESCADA/i);
+    expect(g).toMatch(/ANTES de avançar/i);
+    expect(g).toMatch(/nenhuma corre[çc][ãa]o/i);
+  });
+
+  it("escada já respondida (sim ou nao): desliga, sem loop", () => {
+    expect(renderEscadaGate({ endereco: "Rua X, 1", hasStairs: "sim" })).toBe("");
+    expect(renderEscadaGate({ endereco: "Rua X, 1", hasStairs: "nao" })).toBe("");
+  });
+
+  it("endereço em branco não conta como confirmado", () => {
+    expect(renderEscadaGate({ endereco: "   " })).toBe("");
   });
 });
