@@ -7,6 +7,7 @@ import {
   Bot,
   Check,
   ChevronDown,
+  Copy,
   ListChecks,
   Lock,
   Plus,
@@ -51,6 +52,9 @@ type ChatMessage = {
   // Imagem(ns) da tabela de preços que o agente manda no WhatsApp — aqui no
   // playground a gente PRÉ-VISUALIZA o que o cliente recebe.
   images?: { url: string; label: string }[];
+  // Mensagem SÓ da chave PIX (o número), enviada separada logo após o resumo —
+  // igual ao WhatsApp. Aqui no playground a gente mostra pra o dono ver/copiar.
+  pix?: { chave: string; nome: string };
 };
 
 // Uma rodada do editor por conversa: a instrução do operador e a resposta da IA
@@ -199,7 +203,18 @@ export function AgentStudio({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [copiedPix, setCopiedPix] = useState<number | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  async function copyPix(idx: number, chave: string) {
+    try {
+      await navigator.clipboard.writeText(chave);
+      setCopiedPix(idx);
+      setTimeout(() => setCopiedPix((c) => (c === idx ? null : c)), 2000);
+    } catch {
+      // clipboard indisponível — ignora
+    }
+  }
 
   useEffect(() => {
     // Rola só DENTRO da caixa do chat (não a página), e nunca no mount vazio —
@@ -441,16 +456,23 @@ export function AgentStudio({
           { role: "assistant", content: `⚠️ ${json.error ?? "Erro no agente"}` },
         ]);
       } else {
-        setMessages((m) => [
-          ...m,
-          {
-            role: "assistant",
-            content: json.data.reply,
-            toolsUsed: json.data.toolsUsed,
-            simulated: json.data.simulated,
-            images: json.data.priceImages,
-          },
-        ]);
+        setMessages((m) => {
+          const next: ChatMessage[] = [
+            ...m,
+            {
+              role: "assistant",
+              content: json.data.reply,
+              toolsUsed: json.data.toolsUsed,
+              simulated: json.data.simulated,
+              images: json.data.priceImages,
+            },
+          ];
+          // Chave PIX numa mensagem SEPARADA (só o número), igual o WhatsApp faz.
+          if (json.data.pix?.chave) {
+            next.push({ role: "assistant", content: json.data.pix.chave, pix: json.data.pix });
+          }
+          return next;
+        });
       }
     } catch {
       setMessages((m) => [
@@ -496,10 +518,11 @@ export function AgentStudio({
             <h3 className="text-sm font-semibold">Roteiro de perguntas (fluxo de venda)</h3>
           </div>
           <p className="mb-3 text-[11px] leading-relaxed text-muted-foreground">
-            As perguntas que o agente faz, na ordem, até fechar o pedido — espelhadas do
-            fluxo real. Em cada etapa, os <strong>pontos que não podem faltar</strong> (o agente
-            só avança depois de captá-los). Edite, reordene e <strong>salve</strong> — a partir
-            daí o agente passa a seguir o seu roteiro.
+            A <strong>ordem</strong> e os <strong>dados que o agente coleta</strong> até fechar o
+            pedido — espelhados do fluxo real. O agente <strong>mantém o jeito de falar dele</strong>:
+            as perguntas aqui são só <strong>exemplos</strong> pra referência, ele adapta ao próprio
+            tom. Em cada etapa, os pontos que não podem faltar (só avança depois de captá-los).
+            Edite, reordene e <strong>salve</strong>.
           </p>
 
           <div className="space-y-2.5">
@@ -543,12 +566,15 @@ export function AgentStudio({
                   </button>
                 </div>
 
+                <label className="mt-2 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Pergunta (exemplo — o agente adapta ao tom dele)
+                </label>
                 <Textarea
                   rows={2}
                   value={q.pergunta}
                   onChange={(e) => updateFlow(q.id, "pergunta", e.target.value)}
-                  placeholder="Escreva a pergunta como o agente deve fazer…"
-                  className="mt-2 text-xs"
+                  placeholder="Ex. de como perguntar — o agente usa as palavras dele…"
+                  className="mt-1 text-xs"
                 />
 
                 <div className="mt-2 space-y-1.5">
@@ -889,17 +915,47 @@ export function AgentStudio({
               <div className="mt-1 text-[10px] text-muted-foreground">saudação configurada</div>
             </div>
           )}
-          {messages.map((m, i) => (
-            <div key={i} className={cn("flex", m.role === "user" && "justify-end")}>
-              <div
-                className={cn(
-                  "max-w-[85%] whitespace-pre-wrap rounded-xl px-4 py-2.5 text-sm",
-                  m.role === "user"
-                    ? "rounded-tr-sm bg-brand text-brand-foreground"
-                    : "rounded-tl-sm bg-muted",
-                )}
-              >
-                {m.content}
+          {messages.map((m, i) =>
+            m.pix ? (
+              <div key={i} className="flex">
+                <div className="max-w-[85%] rounded-xl rounded-tl-sm border border-brand/40 bg-brand/5 px-4 py-2.5">
+                  <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-brand-strong">
+                    <Copy className="h-3 w-3" /> Chave PIX (mensagem separada)
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 break-all font-mono text-sm font-semibold text-foreground">
+                      {m.pix.chave}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => copyPix(i, m.pix!.chave)}
+                      className="flex shrink-0 items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition hover:text-foreground"
+                    >
+                      {copiedPix === i ? (
+                        <>
+                          <Check className="h-3 w-3 text-success" /> copiado
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3 w-3" /> copiar
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <div className="mt-1 text-[11px] text-muted-foreground">Favorecido: {m.pix.nome}</div>
+                </div>
+              </div>
+            ) : (
+              <div key={i} className={cn("flex", m.role === "user" && "justify-end")}>
+                <div
+                  className={cn(
+                    "max-w-[85%] whitespace-pre-wrap rounded-xl px-4 py-2.5 text-sm",
+                    m.role === "user"
+                      ? "rounded-tr-sm bg-brand text-brand-foreground"
+                      : "rounded-tl-sm bg-muted",
+                  )}
+                >
+                  {m.content}
                 {m.images && m.images.length > 0 && (
                   <div className="mt-2 flex flex-col gap-2">
                     {m.images.map((img, j) => (
