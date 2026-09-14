@@ -162,13 +162,20 @@ export async function POST(req: NextRequest) {
   // não espera a resposta na resposta HTTP; o agente envia pela API do Evolution).
   enqueueBurst(`${companyId}:${sessionId}`, text, async (combined) => {
     try {
-      // Histórico recente (últimas 40 mensagens) pra dar contexto ao agente.
-      const previous = await prisma.agentMessage.findMany({
+      // Histórico RECENTE (últimas 40 mensagens) pra dar contexto ao agente.
+      // ATENÇÃO: precisa ser das MAIS NOVAS. Antes usava orderBy asc + take 40,
+      // que pegava as 40 mais ANTIGAS — numa conversa longa (100+ msgs) o agente
+      // ficava preso lendo o começo da conversa (às vezes de semanas atrás) e
+      // NÃO via o que o cliente acabou de dizer, então repetia perguntas em
+      // loop (marca→litragem→marca…). Correto: pegar as 40 últimas (desc) e
+      // devolver em ordem cronológica.
+      const recent = await prisma.agentMessage.findMany({
         where: { companyId, sessionId },
-        orderBy: { createdAt: "asc" },
+        orderBy: { createdAt: "desc" },
         take: 40,
-        select: { role: true, content: true },
+        select: { role: true, content: true, createdAt: true },
       });
+      const previous = recent.reverse();
       const history: ChatTurn[] = [
         ...previous.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
         { role: "user", content: combined },

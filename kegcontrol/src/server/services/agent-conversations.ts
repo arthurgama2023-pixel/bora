@@ -97,3 +97,22 @@ export async function listAgentConversations(
   }
   return out;
 }
+
+// Zera UMA conversa (por sessionId): apaga o histórico de mensagens e o rascunho
+// do pedido em código daquela sessão. Serve pra o dono destravar um cliente que
+// ficou preso num contexto antigo — o próximo "oi" dele começa do ZERO, já no
+// código/fluxo mais novo. NÃO mexe no cadastro do cliente (nome, endereço, CPF
+// aprendidos): "zerar a conversa" nunca apaga o cadastro real — só o papo.
+// Mesma limpeza que o "comece de novo" faz, mas acionada pelo painel.
+export async function resetAgentConversation(
+  companyId: string,
+  sessionId: string,
+): Promise<{ deletedMessages: number }> {
+  const del = await prisma.agentMessage.deleteMany({ where: { companyId, sessionId } });
+  // Rascunho do pedido em código (Setting "agent.order_draft.<sessionId>") — o
+  // mesmo prefixo usado em agent.ts. deleteMany não falha se não existir.
+  await prisma.setting.deleteMany({
+    where: { companyId, key: `agent.order_draft.${sessionId}` },
+  });
+  return { deletedMessages: del.count };
+}
