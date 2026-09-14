@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Check,
   GraduationCap,
@@ -9,6 +9,7 @@ import {
   Pencil,
   Phone,
   Plus,
+  RefreshCw,
   RotateCcw,
   ScrollText,
   Trash2,
@@ -54,6 +55,7 @@ export function Conversas() {
   const [examples, setExamples] = useState<StyleExample[]>([]);
   const [saving, setSaving] = useState(false);
   const [zerando, setZerando] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [editor, setEditor] = useState<EditorState | null>(null);
 
@@ -62,27 +64,46 @@ export function Conversas() {
   const [instrText, setInstrText] = useState("");
   const [instrNota, setInstrNota] = useState("");
 
+  // Carrega as conversas do banco. Reusada no primeiro load e no botão
+  // "Atualizar". PRESERVA a conversa selecionada se ela ainda existir (senão
+  // cai na primeira) — assim atualizar não te tira de onde você estava.
+  const loadConversas = useCallback(async (manual = false) => {
+    if (manual) setRefreshing(true);
+    try {
+      const r = await fetch("/api/v1/agent/conversations", { cache: "no-store" });
+      const j = await r.json();
+      if (!j?.ok) return;
+      const data: Conversa[] = j.data ?? [];
+      setConvos(data);
+      setSel((cur) =>
+        cur && data.some((c) => c.sessionId === cur) ? cur : (data[0]?.sessionId ?? null),
+      );
+    } catch {
+      // silencioso — mantém o que já estava na tela
+    } finally {
+      if (manual) setRefreshing(false);
+    }
+  }, []);
+
   useEffect(() => {
     let alive = true;
-    fetch("/api/v1/agent/conversations", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((j) => {
-        if (!alive || !j?.ok) return;
-        setConvos(j.data);
-        if (j.data.length) setSel(j.data[0].sessionId);
-      })
-      .catch(() => {})
-      .finally(() => alive && setLoading(false));
-    fetch("/api/v1/agent/examples", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((j) => {
+    void (async () => {
+      await loadConversas();
+      if (alive) setLoading(false);
+    })();
+    void (async () => {
+      try {
+        const r = await fetch("/api/v1/agent/examples", { cache: "no-store" });
+        const j = await r.json();
         if (alive && j?.ok) setExamples(j.data?.examples ?? []);
-      })
-      .catch(() => {});
+      } catch {
+        // silencioso
+      }
+    })();
     return () => {
       alive = false;
     };
-  }, []);
+  }, [loadConversas]);
 
   const atual = convos.find((c) => c.sessionId === sel) ?? null;
 
@@ -375,6 +396,24 @@ export function Conversas() {
           </Card>
 
           {/* ── Conversas ─────────────────────────────────────────────────── */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-brand-strong" />
+              <h2 className="text-sm font-semibold">Conversas do WhatsApp</h2>
+              <span className="text-xs text-muted-foreground">{convos.length}</span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => loadConversas(true)}
+              disabled={refreshing}
+              title="Buscar as mensagens mais recentes"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+              {refreshing ? "Atualizando…" : "Atualizar"}
+            </Button>
+          </div>
+
           {convos.length === 0 ? (
             <EmptyState message="Nenhuma conversa no WhatsApp ainda." />
           ) : (
