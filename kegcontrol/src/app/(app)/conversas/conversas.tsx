@@ -9,6 +9,7 @@ import {
   Pencil,
   Phone,
   Plus,
+  RotateCcw,
   ScrollText,
   Trash2,
   X,
@@ -52,6 +53,7 @@ export function Conversas() {
 
   const [examples, setExamples] = useState<StyleExample[]>([]);
   const [saving, setSaving] = useState(false);
+  const [zerando, setZerando] = useState(false);
 
   const [editor, setEditor] = useState<EditorState | null>(null);
 
@@ -160,6 +162,34 @@ export function Conversas() {
 
   async function removeExample(id: string) {
     await persist(examples.filter((e) => e.id !== id));
+  }
+
+  // Zera a conversa selecionada: apaga histórico + rascunho daquele número, pra
+  // o cliente recomeçar do ZERO (destrava quem ficou preso num contexto antigo).
+  // Não mexe no cadastro. Depois de zerar, some da lista (não há mais mensagens).
+  async function zerarConversa(sessionId: string) {
+    if (
+      !window.confirm(
+        "Zerar esta conversa? Apaga o histórico e o rascunho deste número para o cliente recomeçar do zero, já no fluxo mais novo. O cadastro do cliente NÃO é afetado.",
+      )
+    )
+      return;
+    setZerando(true);
+    try {
+      const res = await fetch("/api/v1/agent/conversations/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      const j = await res.json();
+      if (j?.ok) {
+        const next = convos.filter((c) => c.sessionId !== sessionId);
+        setConvos(next);
+        setSel(next[0]?.sessionId ?? null);
+      }
+    } finally {
+      setZerando(false);
+    }
   }
 
   const instrucoes = examples.filter((e) => e.tipo === "instrucao");
@@ -387,6 +417,16 @@ export function Conversas() {
                       <MessageSquare className="h-4 w-4 text-brand-strong" />
                       <span className="font-semibold">{atual.customerName ?? atual.phone}</span>
                       <span className="text-xs text-muted-foreground">· {atual.phone}</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => zerarConversa(atual.sessionId)}
+                        disabled={zerando}
+                        className="ml-auto text-danger hover:bg-danger/10 hover:text-danger"
+                        title="Apaga o histórico e o rascunho deste número para o cliente recomeçar do zero (não afeta o cadastro)"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" /> {zerando ? "Zerando…" : "Zerar conversa"}
+                      </Button>
                     </div>
                     <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-4">
                       {atual.messages.map((m, i) => (
