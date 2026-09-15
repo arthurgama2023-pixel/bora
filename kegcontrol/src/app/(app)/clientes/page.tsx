@@ -20,6 +20,7 @@ import {
 import { formatCpfCnpj } from "@/lib/utils";
 import { countCustomersBySource, listCustomers } from "@/server/services/customers";
 import { getAutoEnableNew } from "@/server/services/agent-access";
+import { AgenteClientesTabs } from "@/components/agente-clientes-tabs";
 import { AgentToggle } from "./agent-toggle";
 import { AutoEnableNewToggle } from "./auto-enable-toggle";
 import { AutoRefresh } from "./auto-refresh";
@@ -62,6 +63,7 @@ export default async function CustomersPage({
       {/* Atualiza a contagem/lista sozinha — contatos novos do WhatsApp aparecem
           em "Não registrados" quase em tempo real, sem recarregar. */}
       <AutoRefresh />
+      <AgenteClientesTabs />
       <PageHeader
         title="Clientes"
         subtitle={`${customers.length} cliente(s)`}

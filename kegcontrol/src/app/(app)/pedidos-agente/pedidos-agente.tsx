@@ -18,6 +18,7 @@ import {
   User,
   X,
 } from "lucide-react";
+import { AgenteClientesTabs } from "@/components/agente-clientes-tabs";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui";
 
 type Item = { id?: string; name: string; quantity: number; unitPrice: number };
@@ -124,6 +125,7 @@ export function PedidosAgente() {
 
   return (
     <>
+      <AgenteClientesTabs />
       <PageHeader
         title="Pedidos do Agente"
         subtitle="Pedidos fechados pelo agente IA no WhatsApp, com o comprovante de PIX que o cliente enviou — ou marcados como aguardando comprovante."
