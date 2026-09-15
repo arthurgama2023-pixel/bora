@@ -17,15 +17,15 @@ describe("navItemsForRole", () => {
 
   it("ESTOQUISTA não vê nada restrito — só o operacional", () => {
     const doEstoquista = hrefs("STOCKIST");
-    // o que ele PODE ver
-    expect(doEstoquista).toContain("/estoque");
+    // o que ele PODE ver (itens sem restrição de papel)
+    expect(doEstoquista).toContain("/dashboard");
+    expect(doEstoquista).toContain("/barris");
     expect(doEstoquista).toContain("/movimentacoes");
-    expect(doEstoquista).toContain("/clientes");
     // o que ele NÃO pode ver
-    expect(doEstoquista).not.toContain("/usuarios");
     expect(doEstoquista).not.toContain("/relatorios");
     expect(doEstoquista).not.toContain("/central-ia");
     expect(doEstoquista).not.toContain("/precos-site");
+    expect(doEstoquista).not.toContain("/pedidos-agente");
   });
 
   it("GERENTE vê o financeiro, mas não gerencia usuários", () => {
@@ -36,16 +36,17 @@ describe("navItemsForRole", () => {
     expect(doGerente).not.toContain("/usuarios"); // só ADMIN
   });
 
-  it("/usuarios é exclusivo do ADMIN", () => {
+  it("/usuarios saiu do menu (agora vive no cabeçalho, ao lado do tema)", () => {
     for (const papel of ROLES) {
-      const podeVer = hrefs(papel).includes("/usuarios");
-      expect(podeVer, `papel ${papel}`).toBe(papel === "ADMIN");
+      expect(hrefs(papel), `papel ${papel}`).not.toContain("/usuarios");
     }
   });
 
   it("quanto menor o papel, menos itens — nunca o contrário", () => {
+    // ADMIN e MANAGER veem o mesmo menu (Usuários saiu para o cabeçalho); o
+    // estoquista vê estritamente menos.
     expect(hrefs("STOCKIST").length).toBeLessThan(hrefs("MANAGER").length);
-    expect(hrefs("MANAGER").length).toBeLessThan(hrefs("ADMIN").length);
+    expect(hrefs("MANAGER").length).toBeLessThanOrEqual(hrefs("ADMIN").length);
   });
 
   it("todo item de todo papel está completo e é uma rota interna", () => {

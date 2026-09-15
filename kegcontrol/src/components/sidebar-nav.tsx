@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, LayoutGrid } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import type { Role } from "@/lib/enums";
@@ -19,10 +19,9 @@ function NavPending() {
 
 export function SidebarNav({ role }: { role: Role }) {
   const pathname = usePathname();
-  const items = [
-    { href: "/inicio", label: "Início", icon: LayoutGrid },
-    ...navItemsForRole(role),
-  ];
+  // "Início" agora é a home unificada (/dashboard), primeira em NAV_ITEMS —
+  // sem entrada duplicada de Início/Dashboard.
+  const items = navItemsForRole(role);
   return (
     <nav className="flex flex-col gap-1 px-3">
       {items.map((item) => {

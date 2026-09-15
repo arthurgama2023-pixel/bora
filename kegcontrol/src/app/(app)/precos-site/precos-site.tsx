@@ -16,6 +16,8 @@ import {
   X,
   Save,
   MessageCircle,
+  Tags,
+  Sparkles,
 } from "lucide-react";
 import { Badge, Button, Card, PageHeader, StatCard } from "@/components/ui";
 import { REGIONS_BY_CITY } from "@/server/data/site-regions";
@@ -543,6 +545,10 @@ export function PrecosSite() {
     }
   }
 
+  // Abas no topo (igual Pedidos do Agente): dividem a tela em "Preços por
+  // região" e "Promoções", pra não ficar tudo numa rolagem só.
+  const [tab, setTab] = useState<"regiao" | "promocoes">("regiao");
+
   const regionInfo = regions.find((c) => c.city === region)!;
   const regionProds = effFor(region);
   const priceInput =
@@ -605,6 +611,26 @@ export function PrecosSite() {
         <StatCard label="Frete" value="Grátis" hint="em todas as regiões" />
       </div>
 
+      {/* Abas: Preços por região | Promoções */}
+      <div className="mb-6 inline-flex rounded-xl border border-border bg-card p-1">
+        <button
+          type="button"
+          onClick={() => setTab("regiao")}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${tab === "regiao" ? "bg-brand text-brand-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+        >
+          <Tags className="h-4 w-4" /> Preços por região
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("promocoes")}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${tab === "promocoes" ? "bg-brand text-brand-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+        >
+          <Sparkles className="h-4 w-4" /> Promoções
+        </button>
+      </div>
+
+      {tab === "regiao" && (
+      <>
       {/* 1 · PREÇOS POR REGIÃO */}
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">1 · Preços por região</h2>
@@ -786,7 +812,7 @@ export function PrecosSite() {
           })()}
 
           <p className="mt-3 text-[11px] text-muted-foreground">
-            Todas as regiões de cada cidade já vêm <b>pré-selecionadas</b> (verdes = cobertas). Digite para filtrar; se não existir, aparece a opção de adicionar — ou cole vários de uma vez em <b>“Adicionar bairros da zona”</b>. Os <b>bairros oficiais pendentes</b> (tracejados) são sugestão da fonte oficial — clique para aprovar um por um, ou "Aprovar todos". Clique em <b>Publicar no site</b> (topo da página) para valer de verdade no seletor do site.
+            Todas as regiões de cada cidade já vêm <b>pré-selecionadas</b> (verdes = cobertas). Digite para filtrar; se não existir, aparece a opção de adicionar — ou cole vários de uma vez em <b>“Adicionar bairros da zona”</b>. Os <b>bairros oficiais pendentes</b> (tracejados) são sugestão da fonte oficial — clique para aprovar um por um, ou “Aprovar todos”. Clique em <b>Publicar no site</b> (topo da página) para valer de verdade no seletor do site.
           </p>
         </Card>
       )}
@@ -934,9 +960,13 @@ export function PrecosSite() {
       <p className="mt-3 rounded-lg border border-dashed border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
         Edite os preços de uma região para atender preço de concorrência ou custo de entrega mais alto sem mexer nas outras. <b>Voltar ao padrão</b> descarta os preços próprios e a região volta a seguir a tabela padrão.
       </p>
+      </>
+      )}
 
+      {tab === "promocoes" && (
+      <>
       {/* 2 · PROMOÇÕES */}
-      <h2 className="mt-10 mb-1 text-lg font-semibold">2 · Promoções programadas</h2>
+      <h2 className="mb-1 text-lg font-semibold">2 · Promoções programadas</h2>
       <p className="mb-3 text-sm text-muted-foreground">
         Ligue/desligue e agende. A promoção ativa aparece no site (banner + contagem) e o agente passa a oferecer.
       </p>
@@ -970,6 +1000,8 @@ export function PrecosSite() {
           </Card>
         ))}
       </div>
+      </>
+      )}
 
       <p className="mt-8 rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
         <b className="text-foreground">Como funciona:</b> <b>Salvar</b> guarda seu rascunho no Supabase — dá pra fechar e continuar depois, sem mexer no que está no ar. <b>Publicar no site</b> copia o rascunho pro ao vivo — aí o site do SS-Chopp e o agente do WhatsApp passam a usar na hora, sem precisar republicar o site.

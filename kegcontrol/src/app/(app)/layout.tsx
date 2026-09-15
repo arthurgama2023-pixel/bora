@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { UserCog } from "lucide-react";
 import { redirect } from "next/navigation";
 import { GlobalSearch } from "@/components/global-search";
 import { Logo } from "@/components/logo";
@@ -34,6 +36,16 @@ export default async function AppLayout({
           <div className="flex flex-1 justify-center lg:justify-start">
             <GlobalSearch />
           </div>
+          {session.role === "ADMIN" && (
+            <Link
+              href="/usuarios"
+              title="Usuários"
+              aria-label="Usuários"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card transition-colors hover:bg-muted"
+            >
+              <UserCog className="h-4 w-4" />
+            </Link>
+          )}
           <ThemeToggle />
           <UserMenu name={session.name} role={session.role} />
         </header>

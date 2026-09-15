@@ -7,14 +7,11 @@ import {
   BarChart3,
   Beer,
   Bot,
-  LayoutDashboard,
+  Home,
   MessagesSquare,
   PackageCheck,
   ShoppingBag,
   Tags,
-  Users,
-  UserCog,
-  Warehouse,
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "@/lib/enums";
@@ -30,27 +27,15 @@ export interface NavItem {
 export const NAV_ITEMS: readonly NavItem[] = [
   {
     href: "/dashboard",
-    label: "Dashboard",
-    description: "Visão geral do patrimônio e movimentações recentes",
-    icon: LayoutDashboard,
-  },
-  {
-    href: "/clientes",
-    label: "Clientes",
-    description: "Cadastro, contratos e barris em comodato",
-    icon: Users,
+    label: "Início",
+    description: "Visão geral, atalhos e movimentações recentes",
+    icon: Home,
   },
   {
     href: "/barris",
     label: "Barril & Chopeira",
     description: "Catálogo de tipos de barril e equipamentos",
     icon: Beer,
-  },
-  {
-    href: "/estoque",
-    label: "Estoque",
-    description: "Posição em tempo real de todo o parque de barris",
-    icon: Warehouse,
   },
   {
     href: "/movimentacoes",
@@ -71,13 +56,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
     description: "Faturamento estimado, contas em aberto e exportações",
     icon: BarChart3,
     roles: ["ADMIN", "MANAGER"],
-  },
-  {
-    href: "/usuarios",
-    label: "Usuários",
-    description: "Contas e permissões da equipe",
-    icon: UserCog,
-    roles: ["ADMIN"],
   },
   {
     href: "/precos-site",

@@ -1,18 +1,21 @@
 import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { redirect } from "next/navigation";
 import { Badge, Card, PageHeader, StatCard, Table, Td, Th } from "@/components/ui";
 import { getSession } from "@/lib/auth";
 import {
   MOVEMENT_TYPE_LABELS,
+  ROLE_LABELS,
   type MovementType,
 } from "@/lib/enums";
+import { navItemsForRole } from "@/lib/nav-items";
 import { formatCurrency, formatDateTime, movementCode } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
 import { listMovements } from "@/server/services/movements";
 import { getMonthlyMovementStats } from "@/server/services/reports";
 import { getStockSummary } from "@/server/services/stock";
 
-export const metadata = { title: "Dashboard" };
+export const metadata = { title: "Início" };
 export const dynamic = "force-dynamic";
 
 const TYPE_TONES: Record<string, "success" | "info" | "warning" | "danger" | "brand" | "neutral"> = {
@@ -25,6 +28,10 @@ const TYPE_TONES: Record<string, "success" | "info" | "warning" | "danger" | "br
   LOSS: "danger",
   MAINTENANCE: "warning",
 };
+
+// Destinos que NÃO viram atalho na home (acessíveis pela sidebar): a própria
+// home, e os que o dono pediu pra deixar fora do hub.
+const SEM_ATALHO = ["/dashboard", "/usuarios", "/central-ia", "/barris", "/estoque"];
 
 export default async function DashboardPage() {
   const session = await getSession();
@@ -40,14 +47,22 @@ export default async function DashboardPage() {
   ]);
   const t = summary.totals;
   const max = Math.max(...months.map((m) => m.count), 1);
+  const atalhos = navItemsForRole(session.role).filter((i) => !SEM_ATALHO.includes(i.href));
 
   return (
     <>
       <PageHeader
-        title="Dashboard"
-        subtitle={`Visão geral do patrimônio de barris · ${formatDateTime(new Date())}`}
+        title={`Olá, ${session.name.split(" ")[0]} 👋`}
+        subtitle={`${ROLE_LABELS[session.role]} · visão geral do patrimônio · ${formatDateTime(new Date())}`}
       />
 
+      {/* KPIs do parque de barris (= posição de estoque; detalhe por tipo em /estoque) */}
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-muted-foreground">Patrimônio de barris</h2>
+        <Link href="/estoque" className="text-sm font-medium text-brand-strong hover:underline">
+          ver estoque completo →
+        </Link>
+      </div>
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
         <StatCard label="Total de barris" value={t.total} hint={`${formatCurrency(t.assetValue)} em patrimônio`} accent />
         <StatCard label="Disponíveis" value={t.available} hint="prontos no depósito" />
@@ -57,7 +72,36 @@ export default async function DashboardPage() {
         <StatCard label="Em manutenção" value={t.maintenance} hint={t.lost > 0 ? `${t.lost} perdido(s)` : "—"} />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+      {/* Atalhos rápidos (antigo "Início") */}
+      {atalhos.length > 0 && (
+        <div className="mt-8">
+          <h2 className="mb-3 text-sm font-semibold text-muted-foreground">Atalhos rápidos</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+            {atalhos.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="group flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-brand/50 hover:shadow-md"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand/15 text-brand-strong transition-colors group-hover:bg-brand group-hover:text-brand-foreground">
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold">{item.label}</div>
+                    <p className="truncate text-xs text-muted-foreground">{item.description}</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Atividade: gráfico + últimas movimentações */}
+      <div className="mt-8 grid gap-6 lg:grid-cols-3">
         <Card className="p-5 lg:col-span-1">
           <h2 className="mb-1 font-semibold">Movimentações por mês</h2>
           <p className="mb-4 text-xs text-muted-foreground">últimos 6 meses</p>
@@ -69,9 +113,7 @@ export default async function DashboardPage() {
                   className="w-full rounded-t bg-brand transition-all"
                   style={{ height: `${Math.max((m.count / max) * 100, 3)}%` }}
                 />
-                <span className="text-[10px] uppercase text-muted-foreground">
-                  {m.label}
-                </span>
+                <span className="text-[10px] uppercase text-muted-foreground">{m.label}</span>
               </div>
             ))}
           </div>
