@@ -113,6 +113,68 @@ export async function listSiteOrders(
   });
 }
 
+// Pedidos FECHADOS PELO AGENTE IA (origin "AGENTE"), pra a aba "Pedidos do
+// Agente". Casa, por telefone, o COMPROVANTE de PIX mais recente que o cliente
+// mandou no WhatsApp — devolvendo o id (pra exibir a imagem via
+// /api/v1/payment-proofs/[id]/image), a data e a legenda. Sem comprovante casado
+// = o pedido está "aguardando comprovante". Exclui cancelados (não aguardam
+// nada). Casa por chave canônica de telefone (tolera formato). Só leitura.
+export type AgentOrderProof = { id: string; createdAt: Date; caption: string | null };
+
+// Forma de pagamento do RESTANTE (na entrega), extraída do texto de `notes`
+// (ex.: "Pagamento do restante (na entrega): Cartão"). Cartão primeiro porque a
+// nota pode citar o sinal em PIX junto. null = a etapa de pagamento não foi
+// registrada (fluxo não chegou ao fim).
+export type PaymentMethod = "pix" | "cartao" | "dinheiro";
+export function detectPaymentMethod(notes: string | null): PaymentMethod | null {
+  if (!notes) return null;
+  const t = notes.toLowerCase();
+  if (/cart[aã]o|cr[eé]dito|d[eé]bito|\bcard\b/.test(t)) return "cartao";
+  if (/dinheiro|esp[eé]cie/.test(t)) return "dinheiro";
+  if (/pix/.test(t)) return "pix";
+  return null;
+}
+
+// REGRA da aba "Pedidos do Agente": só entra o pedido que PASSOU POR TODAS AS
+// ETAPAS e chegou ao PAGAMENTO (o cliente vai enviar o PIX / escolheu cartão).
+// O sinal disso é a forma de pagamento registrada em `notes` — pedidos sem ela
+// são fluxos incompletos e ficam de fora. Cada pedido traz: o comprovante de PIX
+// casado por telefone (ou aguardando) e a forma de pagamento (pra avisar quando
+// é CARTÃO, aí não se espera comprovante de PIX).
+export async function listAgentOrders(companyId: string) {
+  const orders = await prisma.siteOrder.findMany({
+    where: { companyId, origin: "AGENTE", status: { not: "CANCELLED" } },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+  if (orders.length === 0) return [];
+  // Comprovantes da empresa em ordem desc — o PRIMEIRO de cada telefone é o mais
+  // recente. Uma query só (evita N+1).
+  const proofs = await prisma.paymentProof.findMany({
+    where: { companyId },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, phone: true, createdAt: true, caption: true },
+  });
+  const proofByKey = new Map<string, AgentOrderProof>();
+  for (const p of proofs) {
+    const key = phoneMatchKey(p.phone);
+    if (key && !proofByKey.has(key)) {
+      proofByKey.set(key, { id: p.id, createdAt: p.createdAt, caption: p.caption });
+    }
+  }
+  return orders
+    .map((o) => {
+      const key = phoneMatchKey(o.phone);
+      return {
+        ...o,
+        proof: key ? proofByKey.get(key) ?? null : null,
+        paymentMethod: detectPaymentMethod(o.notes),
+      };
+    })
+    // Regra: só mostra quem chegou ao pagamento (tem forma de pagamento).
+    .filter((o) => o.paymentMethod !== null);
+}
+
 export async function updateSiteOrderStatus(
   companyId: string,
   id: string,
