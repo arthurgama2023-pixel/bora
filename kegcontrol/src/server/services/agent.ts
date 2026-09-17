@@ -109,7 +109,7 @@ Você tem uma AJUDA de memória travada em código: se aparecer um bloco "JÁ CO
 
 # Fechamento e PIX (regra inviolável — é dinheiro do cliente)
 - Pra fechar o pedido, SEMPRE chame finalizar_pedido. Nunca feche "de cabeça".
-- Assim que o cliente responder o ÚLTIMO dado (normalmente a forma de pagamento), FINALIZE DIRETO, na MESMA resposta: NUNCA peça permissão ("posso fechar?", "posso confirmar?", "confirma pra mim?", "fecho o pedido?") nem espere um "sim" — com tudo em mãos, chame finalizar_pedido de uma vez. Mande UM RESUMO COMPLETO e organizado do pedido — TODOS os dados coletados (produto e quantidade, bairro e cidade, endereço, se tem escada, casa ou salão, data e horário, CPF, forma de pagamento, total e frete grátis) — e logo em seguida FINALIZE com clareza, avisando que o pedido está registrado e a EQUIPE já vai entrar em contato. Ex.: "Pronto! ✅ Seu pedido está registrado. A equipe da SS-Chopp já vai entrar em contato pra confirmar e combinar tudo. 🍺🚚".
+- Assim que o cliente responder o ÚLTIMO dado (normalmente a forma de pagamento), FINALIZE DIRETO, na MESMA resposta: NUNCA peça permissão ("posso fechar?", "posso confirmar?", "confirma pra mim?", "fecho o pedido?") nem espere um "sim" — com tudo em mãos, chame finalizar_pedido de uma vez. Mande UM RESUMO COMPLETO e organizado do pedido — TODOS os dados coletados (nome do cliente, produto e quantidade, tipo de chopeira (elétrica ou de gelo), bairro e cidade, endereço, se tem escada, casa ou salão, data e horário, CPF, forma de pagamento, total e frete grátis) — e logo em seguida FINALIZE com clareza, avisando que o pedido está registrado e a EQUIPE já vai entrar em contato. Ex.: "Pronto! ✅ Seu pedido está registrado. A equipe da SS-Chopp já vai entrar em contato pra confirmar e combinar tudo. 🍺🚚".
 - PEDIDO FINALIZADO = FIM. Depois de mandar o resumo + o aviso de que a equipe vai entrar em contato, o pedido ACABOU: NÃO pergunte mais nada, NÃO reinicie o fluxo, NÃO repita perguntas nem fique "só confirmando". Se o cliente mandar mais mensagens, responda curto e caloroso ("A equipe já vai te chamar 😉") — só recomece o fluxo se ele CLARAMENTE quiser fazer um NOVO pedido.
 - NUNCA escreva uma chave PIX, CNPJ, CPF, banco, agência ou conta — NEM um espaço reservado/placeholder tipo "[chave aqui]", "[link do PIX]" ou "[anexo da chave]". NÃO invente, NÃO mascare com asteriscos, NÃO copie de memória. O SISTEMA envia a chave PIX correta sozinho, numa MENSAGEM SEPARADA logo depois da sua (só o número, pro cliente copiar e colar no banco). Não anuncie a chave nem escreva nada no lugar dela. O cliente pode fazer o sinal de 50% pra adiantar, mas você NÃO fica esperando/cobrando o comprovante — a equipe cuida do pagamento no contato.
 
@@ -180,6 +180,7 @@ export type OrderDraft = {
   hasStairs?: "sim" | "nao";
   document?: string;
   formaPagamento?: string;
+  nome?: string; // nome completo do cliente (perguntado no fluxo)
 };
 
 const ORDER_DRAFT_PREFIX = "agent.order_draft.";
@@ -215,6 +216,7 @@ async function saveOrderDraft(companyId: string, sessionId: string, draft: Order
 }
 
 const DRAFT_LABELS: Record<keyof OrderDraft, string> = {
+  nome: "Nome do cliente",
   produto: "Produto (marca+litragem)",
   quantidade: "Quantidade de barris",
   bairro: "Bairro",
@@ -1002,10 +1004,11 @@ const TOOLS: FunctionDeclaration[] = [
   {
     name: "atualizar_dados_pedido",
     description:
-      "Grave IMEDIATAMENTE, na mesma resposta em que o cliente confirmar, qualquer um destes dados do pedido em andamento: produto (marca+litragem), quantidade de barris, bairro, tipo de entrega (entrega/retirada), endereço, tipo de chopeira (elétrica/gelo), se tem escada, CPF/CNPJ ou forma de pagamento do restante. Chame só com os campos que acabaram de ser confirmados nesta mensagem — não precisa ter tudo de uma vez, nem repetir o que já foi salvo antes. Isso é o que garante que você NUNCA mais pergunte de novo algo que o cliente já respondeu — sem chamar esta ferramenta a cada confirmação, o dado se perde e a pergunta se repete por engano.",
+      "Grave IMEDIATAMENTE, na mesma resposta em que o cliente confirmar, qualquer um destes dados do pedido em andamento: NOME completo do cliente, produto (marca+litragem), quantidade de barris, bairro, tipo de entrega (entrega/retirada), endereço, tipo de chopeira (elétrica/gelo), se tem escada, CPF/CNPJ ou forma de pagamento do restante. Chame só com os campos que acabaram de ser confirmados nesta mensagem — não precisa ter tudo de uma vez, nem repetir o que já foi salvo antes. Isso é o que garante que você NUNCA mais pergunte de novo algo que o cliente já respondeu — sem chamar esta ferramenta a cada confirmação, o dado se perde e a pergunta se repete por engano.",
     parameters: {
       type: Type.OBJECT,
       properties: {
+        nome: { type: Type.STRING, description: "Nome completo do cliente, confirmado nesta mensagem" },
         produto: { type: Type.STRING, description: "Produto confirmado nesta mensagem, ex.: 'Belco 30L'" },
         quantidade: { type: Type.INTEGER, description: "Quantidade de barris confirmada nesta mensagem" },
         bairro: { type: Type.STRING, description: "Bairro confirmado nesta mensagem" },
@@ -1112,6 +1115,10 @@ type ToolCtx = {
   // CPF já coletado em turnos anteriores (do rascunho persistido) OU do cadastro
   // do cliente — usado pra travar o fechamento sem CPF sem criar loop.
   docSoFar?: string;
+  // Rascunho ACUMULADO do pedido (turnos anteriores). No fechamento, o handler
+  // completa os campos que a IA esqueceu de repassar (chopeira, escada, forma de
+  // pagamento, nome) — a IA muitas vezes pergunta mas não reenvia no finalizar.
+  draftSoFar?: OrderDraft;
   // Marcado pelo finalizar_pedido quando o pedido fecha com sucesso — sinaliza
   // pra chatWithAgent limpar o rascunho desta sessão (pedido concluído).
   orderClosed?: boolean;
@@ -1339,6 +1346,7 @@ async function runTool(
       // Só acumula no patch do turno (ctx.draftPatch) — quem persiste é o
       // chatWithAgent, depois do loop. Aceita qualquer subconjunto de campos.
       if (ctx.draftPatch) {
+        if (typeof input.nome === "string" && input.nome.trim()) ctx.draftPatch.nome = input.nome.trim();
         if (typeof input.produto === "string" && input.produto.trim()) ctx.draftPatch.produto = input.produto.trim();
         if (input.quantidade !== undefined) {
           const qtd = Math.floor(Number(input.quantidade));
@@ -1425,11 +1433,17 @@ async function runTool(
       // papo — mesmos campos que o formulário do site já coleta. Normalizados
       // aqui pra gravar certinho no pedido (equipe vê) e, no caso do CPF, no
       // cadastro do cliente (não pergunta de novo no próximo pedido).
-      const cpf = normalizeDocument(input.cpf);
-      const chopeiraType = normalizeChopeira(input.tipo_chopeira);
-      const hasStairs = normalizeEscada(input.escada);
+      // A IA muitas vezes PERGUNTA esses dados mas NÃO os repassa no
+      // finalizar_pedido — então completa a partir do rascunho acumulado
+      // (ctx.draftSoFar). Sem isso, chopeira/escada/forma/nome sumiam do pedido.
+      const draftSoFar = ctx.draftSoFar ?? {};
+      const cpf = cpfNoFechamento || null;
+      const chopeiraType = normalizeChopeira(input.tipo_chopeira) ?? draftSoFar.chopeiraType ?? null;
+      const hasStairs = normalizeEscada(input.escada) ?? draftSoFar.hasStairs ?? null;
       const formaPagamento =
-        typeof input.forma_pagamento === "string" ? input.forma_pagamento.trim() : "";
+        typeof input.forma_pagamento === "string" && input.forma_pagamento.trim()
+          ? input.forma_pagamento.trim()
+          : draftSoFar.formaPagamento || "";
       const orderNotes = formaPagamento
         ? `Pagamento do restante (na entrega): ${formaPagamento}`
         : null;
@@ -1440,7 +1454,11 @@ async function runTool(
       // telefone real, então não grava (mesmo critério de salvar_cliente).
       if (ctx.phone) {
         await createAgentSiteOrder(companyId, {
-          customerName: ctx.customerName?.trim() || `Cliente ${ctx.phone}`,
+          customerName:
+            ctx.draftPatch?.nome?.trim() ||
+            draftSoFar.nome?.trim() ||
+            ctx.customerName?.trim() ||
+            `Cliente ${ctx.phone}`,
           phone: ctx.phone,
           deliveryMethod,
           neighborhood: zona.bairro,
@@ -1522,6 +1540,13 @@ async function runTool(
           ok: true,
           nota: "Sem número (modo teste) — nada gravado. Siga a conversa naturalmente.",
         });
+      }
+      // Também grava o NOME no rascunho do pedido (não só no cadastro): o
+      // fechamento usa draft.nome pro customerName, e o bloco "JÁ CONFIRMADO"
+      // passa a mostrar o nome (reforça o resumo). Assim, tanto faz a IA usar
+      // salvar_cliente ou atualizar_dados_pedido pro nome — o rascunho pega.
+      if (ctx.draftPatch && typeof input.nome === "string" && input.nome.trim()) {
+        ctx.draftPatch.nome = input.nome.trim();
       }
       const res = await upsertCustomerFromAgent(companyId, ctx.phone, {
         name: input.nome ? String(input.nome) : undefined,
@@ -1836,6 +1861,9 @@ export async function chatWithAgent(
       customerName,
       // CPF já coletado antes (rascunho) — pra travar o fechamento sem CPF.
       docSoFar: orderDraftBefore.document || "",
+      // Rascunho acumulado — pro fechamento completar chopeira/escada/forma/nome
+      // quando a IA não repassa no finalizar_pedido.
+      draftSoFar: orderDraftBefore,
     });
     reply = result.reply;
     toolsUsed = result.toolsUsed;

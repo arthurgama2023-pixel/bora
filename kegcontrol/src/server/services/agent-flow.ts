@@ -84,9 +84,19 @@ export const DEFAULT_FLOW_QUESTIONS: FlowQuestion[] = [
     ],
   },
   {
+    id: "nome",
+    titulo: "Nome do cliente",
+    pergunta: "Pra registrar o pedido, me diz seu nome completo?",
+    obrigatoria: true,
+    pontos: [
+      "Nome COMPLETO do cliente (nome + sobrenome)",
+      "Se já houver nome real no cadastro (não 'Cliente <número>'), não pedir de novo",
+    ],
+  },
+  {
     id: "cpf",
     titulo: "CPF",
-    pergunta: "Me passa o CPF pra emitir a nota?",
+    pergunta: "E o seu CPF, pra emitir a nota?",
     obrigatoria: true,
     pontos: ["CPF do cliente", "Se já houver CPF no cadastro, não pedir de novo"],
   },
@@ -108,7 +118,7 @@ export const DEFAULT_FLOW_QUESTIONS: FlowQuestion[] = [
     obrigatoria: true,
     pontos: [
       "Chamar finalizar_pedido de uma vez",
-      "Resumo completo: produto e quantidade, bairro e cidade, endereço, escada, casa/salão, data e horário, CPF, forma de pagamento, total e frete grátis",
+      "Resumo completo: nome do cliente, produto e quantidade, tipo de chopeira (elétrica/gelo), bairro e cidade, endereço, escada, casa/salão, data e horário, CPF, forma de pagamento, total e frete grátis",
       'Finalizar com a linha: "Pronto! ✅ Seu pedido já está registrado. A equipe da SS-Chopp já vai entrar em contato pra confirmar e combinar tudo. 🍺🚚"',
       "A chave PIX é anexada pelo sistema em mensagem separada — nunca digitar de memória; não ficar cobrando comprovante",
     ],
