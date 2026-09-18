@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nameIsJustPushName, normalizePersonName } from "./customers";
+import { customerStatedName, nameIsJustPushName, normalizePersonName } from "./customers";
 
 // Por que este teste existe: o nome do cliente é gravado no pedido e no
 // cadastro (e vai pra nota). O agente NÃO pode usar o nome de exibição do
@@ -31,5 +31,25 @@ describe("nameIsJustPushName", () => {
     expect(nameIsJustPushName("", "Zé")).toBe(false);
     expect(nameIsJustPushName(null, "Zé")).toBe(false);
     expect(nameIsJustPushName("Zé", null)).toBe(false);
+  });
+});
+
+describe("customerStatedName", () => {
+  // O caso do bug: o nome real do cliente é IGUAL ao nome do WhatsApp. Se ele
+  // digitou, tem que ser aceito (senão o agente fica preso pedindo o nome).
+  it("aceita quando o cliente DIGITOU o nome na conversa (mesmo == pushName)", () => {
+    const userText = "quero um chope\n50l\nBelco\nArthur gama\ngelo";
+    expect(customerStatedName("Arthur Gama", userText)).toBe(true);
+    expect(customerStatedName("arthur gama", userText)).toBe(true);
+  });
+
+  it("não confirma um nome que o cliente nunca escreveu", () => {
+    const userText = "quero um chope\n50l\nBelco\ngelo";
+    expect(customerStatedName("Arthur Gama", userText)).toBe(false);
+  });
+
+  it("nome vazio nunca é confirmado", () => {
+    expect(customerStatedName("", "qualquer coisa")).toBe(false);
+    expect(customerStatedName(null, "qualquer coisa")).toBe(false);
   });
 });

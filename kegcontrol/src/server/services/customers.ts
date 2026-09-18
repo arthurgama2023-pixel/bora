@@ -187,6 +187,15 @@ export function nameIsJustPushName(name?: string | null, pushName?: string | nul
   const n = normalizePersonName(name);
   return !!n && n === normalizePersonName(pushName);
 }
+// true quando o cliente REALMENTE digitou esse nome em alguma mensagem dele
+// (userText = todas as mensagens do cliente juntas). Serve pra ACEITAR um nome
+// mesmo que ele seja igual ao pushName: se a pessoa digitou, é o nome dela — o
+// bloqueio do pushName só vale quando a IA "pega" o apelido do contexto sem o
+// cliente ter falado.
+export function customerStatedName(name?: string | null, userText?: string | null): boolean {
+  const n = normalizePersonName(name);
+  return !!n && normalizePersonName(userText).includes(n);
+}
 
 export async function upsertCustomerFromAgent(
   companyId: string,
@@ -213,11 +222,13 @@ export async function upsertCustomerFromAgent(
   // fica placeholder ("Cliente <telefone>") até o agente PERGUNTAR o nome, e o
   // fluxo (etapa "nome") de fato pergunta em vez de assumir o nome do WhatsApp.
   const pushName = val(fields.pushName);
-  // Se o "nome" que veio é igual ao pushName do WhatsApp, é o nome do WhatsApp
-  // disfarçado (a IA às vezes lê o pushName no contexto e tenta salvá-lo). NÃO
-  // conta como nome real — fica só na coluna pushName; `name` segue placeholder.
-  const rawRealName = val(fields.name);
-  const realName = rawRealName && !nameIsJustPushName(rawRealName, pushName) ? rawRealName : undefined;
+  // A validação "esse nome é real (não só o pushName)?" acontece na camada do
+  // agente (que tem o texto do cliente pra confirmar) ANTES de chamar aqui.
+  // Então o `name` que chega já é confiável — inclusive quando coincide com o
+  // pushName porque o cliente digitou o próprio nome. O pushName do WhatsApp
+  // continua na coluna própria; nunca entra por este campo (o webhook manda só
+  // pushName, sem name).
+  const realName = val(fields.name);
 
   if (existing) {
     const patch: Record<string, unknown> = {};
