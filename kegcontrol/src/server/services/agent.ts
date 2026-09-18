@@ -8,6 +8,7 @@ import { formatCurrency } from "@/lib/utils";
 import {
   getCustomerBalance,
   getCustomerPrices,
+  nameIsJustPushName,
   upsertCustomerFromAgent,
   wipeAgentLearnedProfile,
 } from "./customers";
@@ -1036,6 +1037,11 @@ const TOOLS: FunctionDeclaration[] = [
           description:
             "Dia/data combinado para a entrega ou retirada, SE o cliente já definiu (ex.: '25/12', 'sábado', 'hoje à noite'). Opcional — deixe vazio se ainda não combinaram a data.",
         },
+        nome: {
+          type: Type.STRING,
+          description:
+            "Nome COMPLETO do cliente (nome + sobrenome), como ELE informou na conversa. NÃO use o nome de exibição do WhatsApp. Obrigatório pra fechar.",
+        },
         cpf: {
           type: Type.STRING,
           description:
@@ -1115,6 +1121,10 @@ type ToolCtx = {
   // CPF já coletado em turnos anteriores (do rascunho persistido) OU do cadastro
   // do cliente — usado pra travar o fechamento sem CPF sem criar loop.
   docSoFar?: string;
+  // Nome REAL já cadastrado (não o placeholder "Cliente <telefone>" nem o
+  // pushName do WhatsApp) — usado pra travar o fechamento sem nome sem criar
+  // loop com quem já tem nome de verdade de um pedido anterior.
+  realNameSoFar?: string;
   // Rascunho ACUMULADO do pedido (turnos anteriores). No fechamento, o handler
   // completa os campos que a IA esqueceu de repassar (chopeira, escada, forma de
   // pagamento, nome) — a IA muitas vezes pergunta mas não reenvia no finalizar.
@@ -1346,7 +1356,10 @@ async function runTool(
       // Só acumula no patch do turno (ctx.draftPatch) — quem persiste é o
       // chatWithAgent, depois do loop. Aceita qualquer subconjunto de campos.
       if (ctx.draftPatch) {
-        if (typeof input.nome === "string" && input.nome.trim()) ctx.draftPatch.nome = input.nome.trim();
+        // Ignora "nome" que seja só o pushName do WhatsApp (a IA às vezes lê o
+        // apelido no contexto e tenta gravá-lo como nome do cliente).
+        if (typeof input.nome === "string" && input.nome.trim() && !nameIsJustPushName(input.nome, ctx.pushName))
+          ctx.draftPatch.nome = input.nome.trim();
         if (typeof input.produto === "string" && input.produto.trim()) ctx.draftPatch.produto = input.produto.trim();
         if (input.quantidade !== undefined) {
           const qtd = Math.floor(Number(input.quantidade));
@@ -1423,6 +1436,26 @@ async function runTool(
             "Ainda falta o CPF — não feche o pedido nem envie o PIX. Peça o CPF do cliente primeiro (é pra emitir a nota) e só então finalize.",
         });
       }
+      // CHECKLIST TRAVADA: não fecha sem o NOME COMPLETO. O nome do WhatsApp
+      // (pushName) NÃO conta — só vale o que o cliente disse (input.nome /
+      // rascunho) ou um nome real já cadastrado (ctx.realNameSoFar). Sem isso,
+      // pede o nome antes de fechar (o LLM às vezes pula a etapa "nome").
+      // Aceita o nome do fechamento só se NÃO for o pushName do WhatsApp.
+      const nomeInputRaw = typeof input.nome === "string" ? input.nome.trim() : "";
+      const nomeInput = nomeInputRaw && !nameIsJustPushName(nomeInputRaw, ctx.pushName) ? nomeInputRaw : "";
+      if (nomeInput && ctx.draftPatch) ctx.draftPatch.nome = nomeInput;
+      const nomeNoFechamento =
+        nomeInput ||
+        ctx.draftPatch?.nome?.trim() ||
+        ctx.draftSoFar?.nome?.trim() ||
+        (ctx.realNameSoFar || "");
+      if (!nomeNoFechamento) {
+        return JSON.stringify({
+          ok: false,
+          motivo:
+            "Ainda falta o NOME COMPLETO do cliente — não feche o pedido nem envie o PIX. Pergunte o nome completo (nome e sobrenome) e só então finalize. O nome de exibição do WhatsApp NÃO conta como nome do cliente.",
+        });
+      }
       // Pedido válido: sinaliza pro webhook mandar a(s) foto(s) do(s) barril(is)
       // pedido(s) depois da resposta em texto (ver chatWithAgent/runGeminiLoop).
       if (ctx.photosOut) ctx.photosOut.push(...fotos);
@@ -1454,11 +1487,7 @@ async function runTool(
       // telefone real, então não grava (mesmo critério de salvar_cliente).
       if (ctx.phone) {
         await createAgentSiteOrder(companyId, {
-          customerName:
-            ctx.draftPatch?.nome?.trim() ||
-            draftSoFar.nome?.trim() ||
-            ctx.customerName?.trim() ||
-            `Cliente ${ctx.phone}`,
+          customerName: nomeNoFechamento, // travado acima — nunca vazio nem pushName
           phone: ctx.phone,
           deliveryMethod,
           neighborhood: zona.bairro,
@@ -1475,11 +1504,16 @@ async function runTool(
           console.error("[agent] createAgentSiteOrder falhou:", e);
           Sentry.captureException(e, { tags: { companyId, tool: "finalizar_pedido" } });
         });
-        // CPF é dado de identidade estável: guarda no cadastro (só preenche se
-        // estiver vazio) pra não perguntar de novo em pedidos futuros.
-        if (cpf) {
-          await upsertCustomerFromAgent(companyId, ctx.phone, { document: cpf }).catch((e) => {
-            console.error("[agent] salvar CPF no cadastro falhou:", e);
+        // CPF e NOME são dados de identidade estáveis: guarda no cadastro (o
+        // nome só sobrescreve o placeholder "Cliente <telefone>") pra não
+        // perguntar de novo em pedidos futuros. O nome vem do fechamento
+        // (nomeNoFechamento), então nunca é o pushName do WhatsApp.
+        if (cpf || nomeNoFechamento) {
+          await upsertCustomerFromAgent(companyId, ctx.phone, {
+            document: cpf ?? undefined,
+            name: nomeNoFechamento || undefined,
+          }).catch((e) => {
+            console.error("[agent] salvar CPF/nome no cadastro falhou:", e);
           });
         }
       }
@@ -1545,7 +1579,12 @@ async function runTool(
       // fechamento usa draft.nome pro customerName, e o bloco "JÁ CONFIRMADO"
       // passa a mostrar o nome (reforça o resumo). Assim, tanto faz a IA usar
       // salvar_cliente ou atualizar_dados_pedido pro nome — o rascunho pega.
-      if (ctx.draftPatch && typeof input.nome === "string" && input.nome.trim()) {
+      if (
+        ctx.draftPatch &&
+        typeof input.nome === "string" &&
+        input.nome.trim() &&
+        !nameIsJustPushName(input.nome, ctx.pushName)
+      ) {
         ctx.draftPatch.nome = input.nome.trim();
       }
       const res = await upsertCustomerFromAgent(companyId, ctx.phone, {
@@ -1853,6 +1892,9 @@ export async function chatWithAgent(
     const rawName = opts.identifiedCustomer?.name?.trim();
     const customerName =
       rawName && !PLACEHOLDER_NAME.test(rawName) ? rawName : opts.pushName;
+    // Nome REAL já cadastrado (exclui placeholder E pushName) — pra travar o
+    // fechamento sem nome sem re-perguntar quem já tem nome de verdade.
+    const realNameSoFar = rawName && !PLACEHOLDER_NAME.test(rawName) ? rawName : "";
     const result = await runGeminiLoop(companyId, systemInstruction, history, {
       channel,
       phone: opts.phone,
@@ -1861,6 +1903,7 @@ export async function chatWithAgent(
       customerName,
       // CPF já coletado antes (rascunho) — pra travar o fechamento sem CPF.
       docSoFar: orderDraftBefore.document || "",
+      realNameSoFar,
       // Rascunho acumulado — pro fechamento completar chopeira/escada/forma/nome
       // quando a IA não repassa no finalizar_pedido.
       draftSoFar: orderDraftBefore,
