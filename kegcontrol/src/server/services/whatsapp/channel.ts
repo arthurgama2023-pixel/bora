@@ -185,13 +185,15 @@ export class WhatsAppEvolutionChannel {
     return { base64: media.base64, mimetype: mime };
   }
 
-  async sendMessage(companyId: string, externalId: string, text: string): Promise<void> {
+  // Retorna true se o Evolution aceitou o envio, false caso contrário — o
+  // chamador (webhook) usa isso pra rastrear, ex.: a 2ª mensagem do PIX.
+  async sendMessage(companyId: string, externalId: string, text: string): Promise<boolean> {
     // O núcleo gera **negrito** (markdown do chat web); o WhatsApp usa *negrito*.
     const whatsappText = text.replace(/\*\*(.+?)\*\*/g, "*$1*");
     const cfg = await getWhatsAppConfig(companyId);
     if (!cfg) {
       console.warn("[whatsapp] Evolution não configurada — mensagem não enviada:", whatsappText);
-      return;
+      return false;
     }
     // delay: mostra "digitando..." por ~3s antes de entregar — parece humano
     // (o Evolution segura a mensagem e exibe a presença "composing" nesse tempo).
@@ -202,7 +204,9 @@ export class WhatsAppEvolutionChannel {
     });
     if (!res?.ok) {
       console.error("[whatsapp] falha ao enviar:", res?.status, await res?.text().catch(() => ""));
+      return false;
     }
+    return true;
   }
 
   // Envia uma imagem por URL pública (ex.: foto do barril publicada no site).

@@ -186,12 +186,35 @@ export async function POST(req: NextRequest) {
         history,
         { channel: "WHATSAPP", phone, pushName, identifiedCustomer },
       );
+      // LOG DE RASTREIO DO PIX (temporário): registra se o fechamento devolveu a
+      // chave e se a 2ª mensagem (só o número) foi realmente enviada. Ajuda a
+      // diagnosticar "faltou o número do PIX depois".
+      const replyPrometePix = /(chave )?pix.*(pr[óo]xima mensagem|copiar e colar)|vem na pr[óo]xima mensagem/i.test(reply);
+      console.log(
+        `[pix-trace] phone=${phone} | pix=${pix ? "SIM(" + pix.chave + ")" : "NAO"} | replyPrometeChave=${replyPrometePix}`,
+      );
       await channel.sendMessage(companyId, phone, reply);
       // Chave PIX numa mensagem SÓ com o número (logo após o resumo, seguindo o
       // ponteiro "a chave vem na próxima mensagem 👇"): o cliente copia e cola
       // limpo no banco, sem pegar texto junto.
       if (pix) {
-        await channel.sendMessage(companyId, phone, pix.chave);
+        const okPix = await channel.sendMessage(companyId, phone, pix.chave);
+        console.log(`[pix-trace] 2a mensagem (chave ${pix.chave}) enviada=${okPix} para ${phone}`);
+        if (!okPix) {
+          Sentry.captureMessage("Falha ao enviar a 2a mensagem do PIX (a chave)", {
+            level: "error",
+            tags: { companyId, whatsapp: "pix-send" },
+          });
+        }
+      } else if (replyPrometePix) {
+        // O texto prometeu a chave na próxima mensagem, mas o fechamento NÃO
+        // devolveu pix → o número NÃO vai sair. É exatamente o sintoma "faltou o
+        // número do PIX depois". Reporta pra investigar.
+        console.error(`[pix-trace] ALERTA: reply promete PIX na proxima msg mas pix=null — numero NAO enviado. phone=${phone}`);
+        Sentry.captureMessage("Reply prometeu PIX na próxima mensagem mas pix veio null", {
+          level: "error",
+          tags: { companyId, whatsapp: "pix-missing" },
+        });
       }
       // Perguntou preço de um bairro coberto: manda a IMAGEM da tabela logo
       // depois do texto (mesma fonte que o agente cotou). PNG explícito porque a
