@@ -27,6 +27,18 @@ export type FlowQuestion = {
 // este roteiro passa a valer para o agente.
 export const DEFAULT_FLOW_QUESTIONS: FlowQuestion[] = [
   {
+    id: "nome",
+    titulo: "Nome de quem recebe",
+    pergunta: "Pra começar seu pedido, com quem eu falo? Me diz seu nome completo — ou o nome de quem vai receber a entrega.",
+    obrigatoria: true,
+    pontos: [
+      "PERGUNTE o nome LOGO NO COMEÇO, antes de puxar o pedido (é a primeira coisa)",
+      "Nome COMPLETO de quem vai receber a entrega (pode ser o próprio cliente ou outra pessoa) — nome + sobrenome",
+      "O nome de exibição do WhatsApp NÃO conta como cadastro; mesmo que apareça um nome/apelido, confirme o nome completo com o cliente",
+      "Só não peça de novo se já houver nome REAL no cadastro (não 'Cliente <número>') vindo de um pedido anterior",
+    ],
+  },
+  {
     id: "produto",
     titulo: "Produto",
     pergunta: "Qual chopp você quer e qual litragem — 30L ou 50L?",
@@ -81,17 +93,6 @@ export const DEFAULT_FLOW_QUESTIONS: FlowQuestion[] = [
       "Horário — só depois de responder a data",
       "Casa ou salão — só depois do horário (uma de cada vez, mensagens separadas)",
       "Não insista se o cliente não quiser informar",
-    ],
-  },
-  {
-    id: "nome",
-    titulo: "Nome de quem recebe",
-    pergunta: "Pra registrar a entrega, me diz seu nome completo — ou o nome de quem vai receber?",
-    obrigatoria: true,
-    pontos: [
-      "Nome COMPLETO de quem vai receber a entrega (pode ser o próprio cliente ou outra pessoa) — nome + sobrenome",
-      "SEMPRE pergunte o nome — o nome de exibição do WhatsApp NÃO conta como cadastro; mesmo que apareça um nome/apelido, confirme o nome completo com o cliente",
-      "Só não peça de novo se já houver nome REAL no cadastro (não 'Cliente <número>') vindo de um pedido anterior",
     ],
   },
   {
