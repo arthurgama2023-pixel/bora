@@ -1453,7 +1453,7 @@ async function runTool(
         return JSON.stringify({
           ok: false,
           motivo:
-            "Ainda falta o NOME COMPLETO do cliente — não feche o pedido nem envie o PIX. Pergunte o nome completo (nome e sobrenome) e só então finalize. O nome de exibição do WhatsApp NÃO conta como nome do cliente.",
+            "Ainda falta o NOME COMPLETO de quem vai receber — não feche o pedido nem envie o PIX. Pergunte 'seu nome completo ou o nome de quem vai receber a entrega' (nome e sobrenome) e só então finalize. O nome de exibição do WhatsApp NÃO conta.",
         });
       }
       // Pedido válido: sinaliza pro webhook mandar a(s) foto(s) do(s) barril(is)
@@ -1666,8 +1666,8 @@ async function buildIdentityContext(
   // perguntas no WhatsApp (ao contrário do chat, que não tem este bloco).
   const nomeLinha = isPlaceholder
     ? pushName
-      ? `- Nome: ainda NÃO cadastrado. "${pushName}" é só o apelido do WhatsApp (pode usar pra saudar; nunca o chame pelo número). PERGUNTE o nome COMPLETO pra registrar o pedido e guarde com salvar_cliente — o nome do WhatsApp não conta como cadastro.`
-      : `- Nome: ainda desconhecido — PERGUNTE o nome COMPLETO pra registrar o pedido. Nunca o chame pelo número.`
+      ? `- Nome: ainda NÃO cadastrado. "${pushName}" é só o apelido do WhatsApp (pode usar pra saudar; nunca o chame pelo número). PERGUNTE o nome COMPLETO dele — ou de quem vai receber a entrega — e guarde com salvar_cliente. O nome do WhatsApp não conta como cadastro.`
+      : `- Nome: ainda desconhecido — PERGUNTE o nome COMPLETO (dele ou de quem vai receber a entrega). Nunca o chame pelo número.`
     : `- Nome: ${displayName}`;
 
   return [
@@ -1698,8 +1698,8 @@ function buildUnknownContext(_phone: string, pushName?: string): string {
   return [
     "DADOS DO CLIENTE (primeiro contato — o estilo e o fluxo seguem sua personalidade normal, igual ao treino):",
     pushName
-      ? `- Nome: ainda NÃO cadastrado. "${pushName}" é só o apelido do WhatsApp (pode saudar assim; nunca pelo número). PERGUNTE o nome COMPLETO pra registrar o pedido — o nome do WhatsApp não conta como cadastro.`
-      : `- Nome: ainda desconhecido — PERGUNTE o nome COMPLETO pra registrar o pedido. Nunca o chame pelo número.`,
+      ? `- Nome: ainda NÃO cadastrado. "${pushName}" é só o apelido do WhatsApp (pode saudar assim; nunca pelo número). PERGUNTE o nome COMPLETO dele — ou de quem vai receber a entrega — o nome do WhatsApp não conta como cadastro.`
+      : `- Nome: ainda desconhecido — PERGUNTE o nome COMPLETO (dele ou de quem vai receber a entrega). Nunca o chame pelo número.`,
   ].join("\n");
 }
 

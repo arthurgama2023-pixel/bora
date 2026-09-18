@@ -85,11 +85,11 @@ export const DEFAULT_FLOW_QUESTIONS: FlowQuestion[] = [
   },
   {
     id: "nome",
-    titulo: "Nome do cliente",
-    pergunta: "Pra registrar o pedido, me diz seu nome completo?",
+    titulo: "Nome de quem recebe",
+    pergunta: "Pra registrar a entrega, me diz seu nome completo — ou o nome de quem vai receber?",
     obrigatoria: true,
     pontos: [
-      "Nome COMPLETO do cliente (nome + sobrenome)",
+      "Nome COMPLETO de quem vai receber a entrega (pode ser o próprio cliente ou outra pessoa) — nome + sobrenome",
       "SEMPRE pergunte o nome — o nome de exibição do WhatsApp NÃO conta como cadastro; mesmo que apareça um nome/apelido, confirme o nome completo com o cliente",
       "Só não peça de novo se já houver nome REAL no cadastro (não 'Cliente <número>') vindo de um pedido anterior",
     ],
