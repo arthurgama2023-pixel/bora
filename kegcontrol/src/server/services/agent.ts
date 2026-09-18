@@ -110,6 +110,7 @@ Você tem uma AJUDA de memória travada em código: se aparecer um bloco "JÁ CO
 
 # Fechamento e PIX (regra inviolável — é dinheiro do cliente)
 - Pra fechar o pedido, SEMPRE chame finalizar_pedido. Nunca feche "de cabeça".
+- A frase de confirmação ("Pronto! ✅ Seu pedido já está registrado…") SÓ pode ser dita DEPOIS de chamar finalizar_pedido e receber ok:true. NUNCA escreva essa confirmação por conta própria — sem a ferramenta, o pedido NÃO fica registrado e o PIX NÃO é enviado. Se você trocou um produto/dado no fim (ex.: item indisponível), chame finalizar_pedido DE NOVO com os dados atualizados antes de confirmar.
 - Assim que o cliente responder o ÚLTIMO dado (normalmente a forma de pagamento), FINALIZE DIRETO, na MESMA resposta: NUNCA peça permissão ("posso fechar?", "posso confirmar?", "confirma pra mim?", "fecho o pedido?") nem espere um "sim" — com tudo em mãos, chame finalizar_pedido de uma vez. Mande UM RESUMO COMPLETO e organizado do pedido — TODOS os dados coletados (nome do cliente, produto e quantidade, tipo de chopeira (elétrica ou de gelo), bairro e cidade, endereço, se tem escada, casa ou salão, data e horário, CPF, forma de pagamento, total e frete grátis) — e logo em seguida FINALIZE com clareza, avisando que o pedido está registrado e a EQUIPE já vai entrar em contato. Ex.: "Pronto! ✅ Seu pedido está registrado. A equipe da SS-Chopp já vai entrar em contato pra confirmar e combinar tudo. 🍺🚚".
 - PEDIDO FINALIZADO = FIM. Depois de mandar o resumo + o aviso de que a equipe vai entrar em contato, o pedido ACABOU: NÃO pergunte mais nada, NÃO reinicie o fluxo, NÃO repita perguntas nem fique "só confirmando". Se o cliente mandar mais mensagens, responda curto e caloroso ("A equipe já vai te chamar 😉") — só recomece o fluxo se ele CLARAMENTE quiser fazer um NOVO pedido.
 - NUNCA escreva uma chave PIX, CNPJ, CPF, banco, agência ou conta — NEM um espaço reservado/placeholder tipo "[chave aqui]", "[link do PIX]" ou "[anexo da chave]". NÃO invente, NÃO mascare com asteriscos, NÃO copie de memória. O SISTEMA envia a chave PIX correta sozinho, numa MENSAGEM SEPARADA logo depois da sua (só o número, pro cliente copiar e colar no banco). Não anuncie a chave nem escreva nada no lugar dela. O cliente pode fazer o sinal de 50% pra adiantar, mas você NÃO fica esperando/cobrando o comprovante — a equipe cuida do pagamento no contato.
@@ -1997,6 +1998,37 @@ export function looksLikeReasoningLeak(text: string): boolean {
   return REASONING_LEAK.some((re) => re.test(text));
 }
 
+// Assinatura do FECHAMENTO na resposta do agente: a frase de confirmação que só
+// pode sair DEPOIS de finalizar_pedido rodar (registra o pedido e gera o PIX). O
+// LLM às vezes ESCREVE essa confirmação sem chamar a ferramenta (ex.: depois de
+// trocar um produto indisponível no fim) — aí o pedido não é registrado e o PIX
+// não é enviado. Detectamos isso pra acionar a rede de segurança (auto-fecha
+// pelo rascunho). É passado (não pergunta): "posso registrar?" não casa.
+const ORDER_CLOSING_LINE =
+  /seu pedido (j[áa] )?est[áa] (registrado|fechado)|pedido (j[áa] )?(est[áa]|foi) registrado|pronto!?\s*✅/i;
+export function looksLikeOrderClosing(text: string): boolean {
+  return ORDER_CLOSING_LINE.test(text);
+}
+
+// Monta o input do finalizar_pedido a partir do rascunho acumulado — usado pela
+// rede de segurança quando o LLM narra o fechamento sem chamar a ferramenta.
+function finalizeInputFromDraft(draft: OrderDraft): Record<string, unknown> {
+  return {
+    bairro: draft.bairro,
+    entrega: draft.entrega && /retirada/i.test(draft.entrega) ? "retirada" : "entrega",
+    endereco: draft.endereco,
+    itens:
+      draft.produto && draft.quantidade
+        ? [{ produto: draft.produto, quantidade: draft.quantidade }]
+        : [],
+    nome: draft.nome,
+    cpf: draft.document,
+    tipo_chopeira: draft.chopeiraType,
+    escada: draft.hasStairs,
+    forma_pagamento: draft.formaPagamento,
+  };
+}
+
 async function runGeminiLoop(
   companyId: string,
   systemInstruction: string,
@@ -2066,6 +2098,32 @@ async function runGeminiLoop(
       // vazou o "pensamento" (SPECIAL INSTRUCTION, análise em inglês...), trata
       // como vazio: cutuca uma resposta final curta — o cliente jamais vê isso.
       if (text && !looksLikeReasoningLeak(text)) {
+        // REDE DE SEGURANÇA: o modelo escreveu a confirmação de fechamento
+        // ("Pronto! ✅ Seu pedido já está registrado") SEM ter chamado
+        // finalizar_pedido — então o pedido não foi registrado nem o PIX
+        // enviado. Fecha pelo rascunho acumulado pra garantir o registro e o
+        // PIX. Só tenta se há dados mínimos (produto+quantidade+bairro); as
+        // travas internas (CPF, nome) do finalizar_pedido continuam valendo.
+        if (!ctx.orderClosed && looksLikeOrderClosing(text)) {
+          const d: OrderDraft = { ...(ctx.draftSoFar ?? {}), ...draftPatch };
+          if (d.produto && d.quantidade && d.bairro) {
+            try {
+              await runTool(companyId, "finalizar_pedido", finalizeInputFromDraft(d), ctx);
+            } catch (e) {
+              Sentry.captureException(e, { tags: { companyId, tool: "finalizar_pedido", via: "safety-net" } });
+            }
+            if (!ctx.orderClosed) {
+              // Não deu pra fechar pelo rascunho (faltou CPF/nome, produto não
+              // reconhecido…): NÃO deixa sair uma confirmação falsa. Reporta e
+              // pede a informação que falta, sem afirmar que registrou.
+              Sentry.captureMessage("Agente narrou fechamento sem finalizar_pedido e o auto-fechamento falhou", {
+                level: "warning",
+                tags: { companyId },
+              });
+              return { reply: "Só um instante pra eu confirmar seu pedido — pode me repetir o produto (marca e litragem) e o bairro, por favor? 😉", toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: null, draftPatch, orderClosed: false };
+            }
+          }
+        }
         return { reply: text, toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: ctx.pixOut ?? null, draftPatch, orderClosed: ctx.orderClosed ?? false };
       }
       if (text && looksLikeReasoningLeak(text)) {
