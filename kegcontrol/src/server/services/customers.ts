@@ -170,6 +170,24 @@ function mergeUsualOrder(notes: string | null, usual: string): string {
 const PLACEHOLDER_NAME = /^Cliente \+?\d+$/;
 const isPlaceholderName = (n?: string | null) => !!n && PLACEHOLDER_NAME.test(n.trim());
 
+// Normaliza um nome pra comparação: sem acento/emoji/pontuação, minúsculo,
+// espaços colapsados. Usado pra detectar quando o "nome" que a IA quer salvar
+// é na verdade o nome de exibição do WhatsApp (pushName) — que NÃO vale como
+// nome do cliente (ver upsertCustomerFromAgent e a trava do fechamento).
+export function normalizePersonName(s?: string | null): string {
+  return (s ?? "")
+    .normalize("NFKD")
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+// true quando `name` é, na prática, o mesmo texto do pushName do WhatsApp.
+export function nameIsJustPushName(name?: string | null, pushName?: string | null): boolean {
+  const n = normalizePersonName(name);
+  return !!n && n === normalizePersonName(pushName);
+}
+
 export async function upsertCustomerFromAgent(
   companyId: string,
   phone: string,
@@ -194,8 +212,12 @@ export async function upsertCustomerFromAgent(
   // `pushName`, só pra saudar e pro dono reconhecer o contato. Assim `name`
   // fica placeholder ("Cliente <telefone>") até o agente PERGUNTAR o nome, e o
   // fluxo (etapa "nome") de fato pergunta em vez de assumir o nome do WhatsApp.
-  const realName = val(fields.name);
   const pushName = val(fields.pushName);
+  // Se o "nome" que veio é igual ao pushName do WhatsApp, é o nome do WhatsApp
+  // disfarçado (a IA às vezes lê o pushName no contexto e tenta salvá-lo). NÃO
+  // conta como nome real — fica só na coluna pushName; `name` segue placeholder.
+  const rawRealName = val(fields.name);
+  const realName = rawRealName && !nameIsJustPushName(rawRealName, pushName) ? rawRealName : undefined;
 
   if (existing) {
     const patch: Record<string, unknown> = {};
