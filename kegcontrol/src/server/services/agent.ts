@@ -1627,8 +1627,8 @@ async function buildIdentityContext(
   // perguntas no WhatsApp (ao contrário do chat, que não tem este bloco).
   const nomeLinha = isPlaceholder
     ? pushName
-      ? `- Nome: "${pushName}" (do WhatsApp; se ele disser o nome real, guarde). Nunca o chame pelo número.`
-      : `- Nome: ainda desconhecido — pergunte com naturalidade quando fizer sentido. Nunca o chame pelo número.`
+      ? `- Nome: ainda NÃO cadastrado. "${pushName}" é só o apelido do WhatsApp (pode usar pra saudar; nunca o chame pelo número). PERGUNTE o nome COMPLETO pra registrar o pedido e guarde com salvar_cliente — o nome do WhatsApp não conta como cadastro.`
+      : `- Nome: ainda desconhecido — PERGUNTE o nome COMPLETO pra registrar o pedido. Nunca o chame pelo número.`
     : `- Nome: ${displayName}`;
 
   return [
@@ -1659,8 +1659,8 @@ function buildUnknownContext(_phone: string, pushName?: string): string {
   return [
     "DADOS DO CLIENTE (primeiro contato — o estilo e o fluxo seguem sua personalidade normal, igual ao treino):",
     pushName
-      ? `- Nome: "${pushName}" (do WhatsApp; pode chamá-lo assim). Nunca o chame pelo número.`
-      : `- Nome: ainda desconhecido — pergunte com naturalidade quando fizer sentido. Nunca o chame pelo número.`,
+      ? `- Nome: ainda NÃO cadastrado. "${pushName}" é só o apelido do WhatsApp (pode saudar assim; nunca pelo número). PERGUNTE o nome COMPLETO pra registrar o pedido — o nome do WhatsApp não conta como cadastro.`
+      : `- Nome: ainda desconhecido — PERGUNTE o nome COMPLETO pra registrar o pedido. Nunca o chame pelo número.`,
   ].join("\n");
 }
 

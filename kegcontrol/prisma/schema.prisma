@@ -69,6 +69,10 @@ model Customer {
   id          String   @id @default(cuid())
   companyId   String
   name        String
+  // Nome de exibição do WhatsApp (pushName). NÃO é o nome do cadastro — serve só
+  // pra saudar e pro dono reconhecer o contato em "Não registrados". O nome real
+  // vem quando o AGENTE PERGUNTA e o cliente responde (aí grava em `name`).
+  pushName    String?
   companyName String?
   type        String   @default("COMERCIO") // COMERCIO | DELIVERY | EVENTOS
   document    String? // CPF/CNPJ
