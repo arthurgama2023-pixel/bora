@@ -6,6 +6,7 @@ import { phoneMatchKey } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
 import {
+  customerStatedName,
   getCustomerBalance,
   getCustomerPrices,
   nameIsJustPushName,
@@ -1126,6 +1127,10 @@ type ToolCtx = {
   // pushName do WhatsApp) — usado pra travar o fechamento sem nome sem criar
   // loop com quem já tem nome de verdade de um pedido anterior.
   realNameSoFar?: string;
+  // Todas as mensagens do CLIENTE juntas (texto). Serve pra confirmar que um
+  // nome foi realmente DIGITADO por ele — aí a gente aceita mesmo que coincida
+  // com o pushName (ex.: o nome real da pessoa é igual ao nome do WhatsApp).
+  userText?: string;
   // Rascunho ACUMULADO do pedido (turnos anteriores). No fechamento, o handler
   // completa os campos que a IA esqueceu de repassar (chopeira, escada, forma de
   // pagamento, nome) — a IA muitas vezes pergunta mas não reenvia no finalizar.
@@ -1160,6 +1165,18 @@ function priceTableImageUrl(companyId: string, zona: { bairro: string; city: str
 
 // Fechamento fixo colado depois da tabela de preços montada em código.
 const PRICE_TABLE_CLOSING = "É só me falar qual chopp e a litragem que eu já monto seu pedido! 🍺";
+
+// Decide se um "nome" informado pela IA vale como nome do cliente. Aceita se:
+// (a) o cliente REALMENTE digitou esse nome na conversa (mesmo que coincida com
+// o pushName — o nome real da pessoa pode ser igual ao do WhatsApp), OU
+// (b) o nome não é o pushName do WhatsApp. Rejeita só quando a IA "pega" o
+// apelido do contexto sem o cliente ter falado. Retorna o nome limpo ou "".
+function acceptedCustomerName(name: unknown, ctx: ToolCtx): string {
+  const n = typeof name === "string" ? name.trim() : "";
+  if (!n) return "";
+  if (customerStatedName(n, ctx.userText) || !nameIsJustPushName(n, ctx.pushName)) return n;
+  return "";
+}
 
 async function runTool(
   companyId: string,
@@ -1357,10 +1374,12 @@ async function runTool(
       // Só acumula no patch do turno (ctx.draftPatch) — quem persiste é o
       // chatWithAgent, depois do loop. Aceita qualquer subconjunto de campos.
       if (ctx.draftPatch) {
-        // Ignora "nome" que seja só o pushName do WhatsApp (a IA às vezes lê o
-        // apelido no contexto e tenta gravá-lo como nome do cliente).
-        if (typeof input.nome === "string" && input.nome.trim() && !nameIsJustPushName(input.nome, ctx.pushName))
-          ctx.draftPatch.nome = input.nome.trim();
+        // Aceita o nome se o cliente o digitou (mesmo == pushName) ou se não é
+        // o pushName; ignora quando a IA só "pegou" o apelido do contexto.
+        {
+          const nomeOk = acceptedCustomerName(input.nome, ctx);
+          if (nomeOk) ctx.draftPatch.nome = nomeOk;
+        }
         if (typeof input.produto === "string" && input.produto.trim()) ctx.draftPatch.produto = input.produto.trim();
         if (input.quantidade !== undefined) {
           const qtd = Math.floor(Number(input.quantidade));
@@ -1441,9 +1460,9 @@ async function runTool(
       // (pushName) NÃO conta — só vale o que o cliente disse (input.nome /
       // rascunho) ou um nome real já cadastrado (ctx.realNameSoFar). Sem isso,
       // pede o nome antes de fechar (o LLM às vezes pula a etapa "nome").
-      // Aceita o nome do fechamento só se NÃO for o pushName do WhatsApp.
-      const nomeInputRaw = typeof input.nome === "string" ? input.nome.trim() : "";
-      const nomeInput = nomeInputRaw && !nameIsJustPushName(nomeInputRaw, ctx.pushName) ? nomeInputRaw : "";
+      // Aceita o nome do fechamento se o cliente o digitou (mesmo == pushName)
+      // ou se não é o pushName do WhatsApp.
+      const nomeInput = acceptedCustomerName(input.nome, ctx);
       if (nomeInput && ctx.draftPatch) ctx.draftPatch.nome = nomeInput;
       const nomeNoFechamento =
         nomeInput ||
@@ -1580,16 +1599,13 @@ async function runTool(
       // fechamento usa draft.nome pro customerName, e o bloco "JÁ CONFIRMADO"
       // passa a mostrar o nome (reforça o resumo). Assim, tanto faz a IA usar
       // salvar_cliente ou atualizar_dados_pedido pro nome — o rascunho pega.
-      if (
-        ctx.draftPatch &&
-        typeof input.nome === "string" &&
-        input.nome.trim() &&
-        !nameIsJustPushName(input.nome, ctx.pushName)
-      ) {
-        ctx.draftPatch.nome = input.nome.trim();
-      }
+      // Aceita o nome se o cliente digitou (mesmo == pushName) ou se não é o
+      // pushName. Só grava (rascunho + cadastro) um nome válido — nunca o
+      // apelido do WhatsApp que a IA tenha "pegado" do contexto.
+      const nomeValido = acceptedCustomerName(input.nome, ctx);
+      if (ctx.draftPatch && nomeValido) ctx.draftPatch.nome = nomeValido;
       const res = await upsertCustomerFromAgent(companyId, ctx.phone, {
-        name: input.nome ? String(input.nome) : undefined,
+        name: nomeValido || undefined,
         address: input.endereco ? String(input.endereco) : undefined,
         neighborhood: input.bairro ? String(input.bairro) : undefined,
         city: input.cidade ? String(input.cidade) : undefined,
@@ -1905,6 +1921,9 @@ export async function chatWithAgent(
       // CPF já coletado antes (rascunho) — pra travar o fechamento sem CPF.
       docSoFar: orderDraftBefore.document || "",
       realNameSoFar,
+      // Texto de TODAS as mensagens do cliente — pra confirmar que um nome foi
+      // realmente digitado por ele (aceita nome == pushName nesse caso).
+      userText: history.filter((m) => m.role === "user").map((m) => m.content).join("\n"),
       // Rascunho acumulado — pro fechamento completar chopeira/escada/forma/nome
       // quando a IA não repassa no finalizar_pedido.
       draftSoFar: orderDraftBefore,
