@@ -1894,6 +1894,25 @@ export async function chatWithAgent(
     });
   }
 
+  // ABERTURA DETERMINÍSTICA: na PRIMEIRA resposta da conversa, se o cliente
+  // ainda não tem nome real no cadastro, respondemos com uma abertura FIXA que
+  // cumprimenta e já pede o nome — sem passar pelo LLM (que às vezes reflexa
+  // "Como posso te ajudar?" e esquece de pedir o nome). Os dados que o cliente
+  // tenha mandado na 1ª mensagem NÃO se perdem: ficam no histórico e o LLM os
+  // aproveita no próximo turno. Não vale pra quem já tem nome (greeting
+  // personalizado via LLM) nem pro "recomeçar" (tratado acima).
+  const rawNameOpen = opts.identifiedCustomer?.name?.trim();
+  const isFirstContact = !history.some((m) => m.role === "assistant");
+  const hasRealName = !!rawNameOpen && !PLACEHOLDER_NAME.test(rawNameOpen);
+  if (isFirstContact && !hasRealName) {
+    const opener =
+      "Oi! Eu sou o Chopinho, da SS-Chopp 🍺 Pra começar, com quem eu falo? Me diz seu nome completo (ou o nome de quem vai receber a entrega).";
+    await prisma.agentMessage.create({
+      data: { companyId, sessionId, role: "assistant", content: opener, customerId, channel },
+    });
+    return { reply: opener, toolsUsed: [], simulated: false, photos: [], priceImages: [], priceTableText: "", pix: null };
+  }
+
   let reply: string;
   let toolsUsed: string[] = [];
   let simulated = false;
