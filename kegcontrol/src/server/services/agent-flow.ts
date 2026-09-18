@@ -90,7 +90,8 @@ export const DEFAULT_FLOW_QUESTIONS: FlowQuestion[] = [
     obrigatoria: true,
     pontos: [
       "Nome COMPLETO do cliente (nome + sobrenome)",
-      "Se já houver nome real no cadastro (não 'Cliente <número>'), não pedir de novo",
+      "SEMPRE pergunte o nome — o nome de exibição do WhatsApp NÃO conta como cadastro; mesmo que apareça um nome/apelido, confirme o nome completo com o cliente",
+      "Só não peça de novo se já houver nome REAL no cadastro (não 'Cliente <número>') vindo de um pedido anterior",
     ],
   },
   {

@@ -29,6 +29,10 @@ import { CustomerFilters } from "./filters";
 export const metadata = { title: "Clientes" };
 export const dynamic = "force-dynamic";
 
+// Nome-placeholder gerado quando o agente ainda não perguntou o nome real do
+// contato (ver upsertCustomerFromAgent). Nesse caso a lista mostra o pushName.
+const isPlaceholderName = (n: string) => /^Cliente \+?\d+$/.test(n.trim());
+
 const STATUS_TONES: Record<CustomerStatus, "success" | "neutral" | "danger"> = {
   ACTIVE: "success",
   INACTIVE: "neutral",
@@ -121,8 +125,15 @@ export default async function CustomersPage({
                     href={`/clientes/${c.id}`}
                     className="font-medium text-brand-strong hover:underline"
                   >
-                    {c.name}
+                    {isPlaceholderName(c.name) && c.pushName ? c.pushName : c.name}
                   </Link>
+                  {/* Nome ainda não perguntado pelo agente: mostra o do WhatsApp
+                      pra reconhecer o contato, deixando claro que é provisório. */}
+                  {isPlaceholderName(c.name) && (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {c.pushName ? "(nome do WhatsApp)" : "(sem nome ainda)"}
+                    </span>
+                  )}
                 </Td>
                 <Td>
                   <Badge tone={TYPE_TONES[c.type as CustomerType] ?? "neutral"}>

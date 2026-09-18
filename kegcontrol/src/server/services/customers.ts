@@ -189,7 +189,13 @@ export async function upsertCustomerFromAgent(
 ): Promise<{ id: string; created: boolean; name: string }> {
   const existing = await findCustomerByPhone(companyId, phone);
   const val = (s?: string) => (s && s.trim() ? s.trim() : undefined);
-  const nameOrPushName = val(fields.name) ?? val(fields.pushName);
+  // Nome REAL: só o que o cliente DISSE (fields.name, via salvar_cliente). O
+  // pushName do WhatsApp NUNCA vira o nome do cadastro — ele mora na coluna
+  // `pushName`, só pra saudar e pro dono reconhecer o contato. Assim `name`
+  // fica placeholder ("Cliente <telefone>") até o agente PERGUNTAR o nome, e o
+  // fluxo (etapa "nome") de fato pergunta em vez de assumir o nome do WhatsApp.
+  const realName = val(fields.name);
+  const pushName = val(fields.pushName);
 
   if (existing) {
     const patch: Record<string, unknown> = {};
@@ -199,8 +205,13 @@ export async function upsertCustomerFromAgent(
       const cur = (existing as Record<string, unknown>)[key];
       if (v && (!cur || !String(cur).trim())) patch[key] = v;
     };
-    if (nameOrPushName && (!existing.name?.trim() || isPlaceholderName(existing.name))) {
-      patch.name = nameOrPushName;
+    // Nome real sobrescreve placeholder/vazio (nunca o pushName sozinho).
+    if (realName && (!existing.name?.trim() || isPlaceholderName(existing.name))) {
+      patch.name = realName;
+    }
+    // Mantém o pushName da coluna própria atualizado (não toca no `name`).
+    if (pushName && pushName !== (existing as { pushName?: string | null }).pushName) {
+      patch.pushName = pushName;
     }
     fillIfEmpty("address", val(fields.address));
     fillIfEmpty("neighborhood", val(fields.neighborhood));
@@ -214,11 +225,13 @@ export async function upsertCustomerFromAgent(
     return { id: existing.id, created: false, name: (patch.name as string) ?? existing.name };
   }
 
-  const name = nameOrPushName ?? `Cliente ${phone}`;
+  // Placeholder até o agente PERGUNTAR o nome. O pushName vai na coluna própria.
+  const name = realName ?? `Cliente ${phone}`;
   const customer = await prisma.customer.create({
     data: {
       companyId,
       name,
+      pushName: pushName ?? null,
       whatsapp: phone,
       address: val(fields.address) ?? null,
       neighborhood: val(fields.neighborhood) ?? null,
