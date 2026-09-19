@@ -70,11 +70,19 @@ export async function GET(req: Request) {
   const expectedPrice = unitPriceFor(product, 1);
   const question = `Quanto custa ${product.name} pra ${zona.bairro}?`;
 
+  // Passa um cliente JÁ identificado (com nome) de propósito: desde que o fluxo
+  // pede o NOME como primeira etapa, uma conversa nova responde "me diz seu nome"
+  // em vez do preço — o que faria o canário acusar "preço errado" toda vez (falso
+  // positivo). Com um nome, a etapa de nome é pulada e o agente cota o preço
+  // direto — que é o que este canário existe pra verificar.
   const result = await chatWithAgent(
     companyId,
     `price-check-${Date.now()}`, // sessão descartável, não colide com conversa real
     [{ role: "user", content: question }],
-    { channel: "PLAYGROUND" },
+    {
+      channel: "PLAYGROUND",
+      identifiedCustomer: { id: "price-check-canary", name: "Canário de Preço", status: "ACTIVE", type: "COMERCIO" },
+    },
   );
 
   const extractedPrice = firstPriceIn(result.reply);
