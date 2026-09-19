@@ -52,6 +52,42 @@ import {
   type StyleExample,
 } from "./agent-examples";
 
+// ─── Retry do Gemini (resiliência sob carga) ────────────────────────────────
+// O Gemini devolve 429 (rate limit / cota) e 503 (sobrecarga) de forma
+// transitória — e isso fica MAIS comum quando várias conversas rodam ao mesmo
+// tempo (ex.: 20 clientes juntos, cada mensagem dispara até 6 chamadas). Sem
+// retry, cada erro desses vira "Tive um problema" na cara do cliente. Aqui a
+// gente re-tenta com backoff exponencial + jitter. Roda depois do 200 pro
+// Evolution (webhook processa em background), então alguns segundos a mais são
+// aceitáveis. Erros NÃO-transitórios (ex.: prompt inválido) sobem na hora.
+export function isTransientGeminiError(e: unknown): boolean {
+  const status = (e as { status?: number; code?: number })?.status ?? (e as { code?: number })?.code;
+  if (status === 429 || status === 500 || status === 503 || status === 504) return true;
+  const msg = String((e as { message?: string })?.message ?? "");
+  return /overload|unavailable|rate.?limit|resource.?exhausted|deadline|timeout|ECONNRESET|ETIMEDOUT|socket hang up|fetch failed/i.test(msg);
+}
+
+async function generateContentWithRetry(
+  client: GoogleGenAI,
+  params: Parameters<GoogleGenAI["models"]["generateContent"]>[0],
+  label: string,
+  tries = 4,
+): Promise<Awaited<ReturnType<GoogleGenAI["models"]["generateContent"]>>> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= tries; attempt++) {
+    try {
+      return await client.models.generateContent(params);
+    } catch (e) {
+      lastErr = e;
+      if (!isTransientGeminiError(e) || attempt === tries) throw e;
+      const backoff = 500 * 2 ** (attempt - 1) + Math.floor(Math.random() * 250); // 0.5s,1s,2s (+jitter)
+      console.warn(`[gemini-retry] ${label}: erro transitório (tentativa ${attempt}/${tries}), aguardando ${backoff}ms`);
+      await new Promise((r) => setTimeout(r, backoff));
+    }
+  }
+  throw lastErr;
+}
+
 // Cliente reconhecido pelo número de WhatsApp (ou null se o número não bate
 // com nenhum cadastro). Passado ao agente para ele "conectar os pontos".
 export type IdentifiedCustomer = {
@@ -483,11 +519,11 @@ Resposta que o DONO quer que o agente dê NESSE momento:
 Tarefa: descreva em UMA frase curta e GERAL a SITUAÇÃO/momento em que essa resposta deve ser usada (o "quando aplicar") — pela intenção do cliente, não pelas palavras exatas. E escolha UMA categoria desta lista: ${CATEGORIAS.join(", ")}.
 Responda SÓ com um JSON válido, nada mais: {"gatilho":"...","categoria":"..."}`;
     const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    const resp = await client.models.generateContent({
+    const resp = await generateContentWithRetry(client, {
       model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       config: { thinkingConfig: { thinkingBudget: 512 } },
-    });
+    }, "classifica-situacao");
     const txt = (resp.text ?? "").trim().replace(/^```json\s*|\s*```$/g, "");
     const parsed = JSON.parse(txt) as { gatilho?: unknown; categoria?: unknown };
     const gatilho = typeof parsed.gatilho === "string" && parsed.gatilho.trim() ? parsed.gatilho.trim() : fallback.gatilho;
@@ -584,7 +620,7 @@ export async function editPersonalitySections(
   const userMsg = `SEÇÕES ATUAIS:\n${secoesTxt}\n\nINSTRUÇÃO DO OPERADOR:\n"""\n${instruction}\n"""`;
 
   const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  const response = await client.models.generateContent({
+  const response = await generateContentWithRetry(client, {
     model: "gemini-2.5-flash",
     contents: [{ role: "user", parts: [{ text: userMsg }] }],
     config: {
@@ -592,7 +628,7 @@ export async function editPersonalitySections(
       responseMimeType: "application/json",
       thinkingConfig: { thinkingBudget: 1024 },
     },
-  });
+  }, "editor-secoes");
 
   const raw = (response.text ?? "").trim();
   let parsed: { changes?: unknown; summary?: unknown; blocked?: unknown };
@@ -2110,7 +2146,7 @@ async function runGeminiLoop(
   }));
 
   for (let i = 0; i < 6; i++) {
-    const response = await client.models.generateContent({
+    const response = await generateContentWithRetry(client, {
       model: "gemini-2.5-flash",
       contents,
       config: {
@@ -2127,7 +2163,7 @@ async function runGeminiLoop(
         // A objetividade fica por conta da personalidade (regra "seja direto").
         thinkingConfig: { thinkingBudget: 2048 },
       },
-    });
+    }, "agente-loop");
 
     const calls = response.functionCalls;
     if (!calls || calls.length === 0) {
