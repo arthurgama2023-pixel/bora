@@ -9,9 +9,18 @@ import {
   type ChatTurn,
 } from "@/server/services/agent";
 import { getAutoEnableNew } from "@/server/services/agent-access";
+import {
+  isAgentPausedByHuman,
+  pauseAgentForHuman,
+  HUMAN_PAUSE_MINUTES,
+} from "@/server/services/agent-conversations";
 import { findCustomerByPhone, upsertCustomerFromAgent } from "@/server/services/customers";
 import { savePaymentProof } from "@/server/services/payment-proofs";
-import { getWhatsAppChannel, isWhatsAppNumberAllowed } from "@/server/services/whatsapp/channel";
+import {
+  getWhatsAppChannel,
+  isWhatsAppNumberAllowed,
+  wasRecentlySentByAgent,
+} from "@/server/services/whatsapp/channel";
 import { enqueueBurst } from "@/server/services/whatsapp/burst-buffer";
 import { findCompanyByWebhookToken } from "@/server/services/whatsapp/config";
 
@@ -46,6 +55,22 @@ export async function POST(req: NextRequest) {
         console.error("[whatsapp] reconcile falhou:", e);
         Sentry.captureException(e, { tags: { companyId, whatsapp: "reconcile" } });
       });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  // HUMANO NA CONVERSA (pausa de segurança): se saiu uma mensagem de texto do
+  // NOSSO número (fromMe) que NÃO é o eco do próprio agente, foi um humano
+  // (dono/atendente) respondendo o cliente manualmente → pausa o agente por
+  // ~20 min naquela conversa, pra não atropelar o atendimento humano.
+  const outgoing = raw ? channel.parseOutgoing(raw) : null;
+  if (outgoing) {
+    if (!wasRecentlySentByAgent(outgoing.externalId, outgoing.text)) {
+      await pauseAgentForHuman(companyId, `wa-${outgoing.externalId}`, HUMAN_PAUSE_MINUTES).catch((e) => {
+        console.error("[whatsapp] pauseAgentForHuman falhou:", e);
+        Sentry.captureException(e, { tags: { companyId, whatsapp: "human-pause" } });
+      });
+      console.log(`[human-pause] humano respondeu ${outgoing.externalId} — agente pausado ${HUMAN_PAUSE_MINUTES}min`);
     }
     return NextResponse.json({ ok: true });
   }
@@ -108,6 +133,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // PAUSA POR HUMANO: se um humano assumiu esta conversa nos últimos ~20 min, o
+  // agente fica em SILÊNCIO — não responde texto/áudio nem manda ACK de imagem.
+  // O comprovante de PIX ainda é guardado (registro passivo, sem mensagem).
+  const sessionId = `wa-${incoming.externalId}`;
+  const pausedByHuman = await isAgentPausedByHuman(companyId, sessionId);
+
   // Foto: provável comprovante de PIX. NÃO passa pelo agente/Gemini — só
   // guarda pra revisão humana (aba Verificação) e confirma o recebimento.
   // Tratado à parte, antes da lógica de texto/áudio, e sempre retorna aqui.
@@ -124,10 +155,18 @@ export async function POST(req: NextRequest) {
         console.error("[whatsapp] savePaymentProof falhou:", e);
         Sentry.captureException(e, { tags: { companyId, whatsapp: "payment-proof" } });
       });
-      await channel.sendMessage(companyId, incoming.externalId, IMAGE_RECEIVED_ACK);
+      // Se o humano assumiu, não manda o ACK (ele responde direto ao cliente).
+      if (!pausedByHuman) {
+        await channel.sendMessage(companyId, incoming.externalId, IMAGE_RECEIVED_ACK);
+      }
     } else {
       console.error("[whatsapp] falha ao baixar imagem do Evolution — comprovante não salvo");
     }
+    return NextResponse.json({ ok: true });
+  }
+
+  // Humano assumiu: agente em silêncio (não transcreve áudio, não responde).
+  if (pausedByHuman) {
     return NextResponse.json({ ok: true });
   }
 
@@ -146,7 +185,6 @@ export async function POST(req: NextRequest) {
   }
   if (!text) return NextResponse.json({ ok: true });
 
-  const sessionId = `wa-${incoming.externalId}`;
   const phone = incoming.externalId;
   const pushName = incoming.pushName;
   const identifiedCustomer = customer

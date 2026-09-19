@@ -116,3 +116,39 @@ export async function resetAgentConversation(
   });
   return { deletedMessages: del.count };
 }
+
+// ─── Pausa de segurança: humano na conversa ──────────────────────────────────
+// Quando um HUMANO (dono/atendente) responde manualmente um cliente pelo
+// WhatsApp, o agente fica em SILÊNCIO por um tempo naquela conversa — pra não
+// atropelar o atendimento humano. Guardado como Setting por sessão, com um
+// timestamp de expiração (ms). Ausente/expirado = agente ativo normalmente.
+const HUMAN_PAUSE_PREFIX = "agent.human_pause.";
+export const HUMAN_PAUSE_MINUTES = 20;
+
+// Pausa o agente nesta sessão por `minutes` a partir de agora. Retorna o
+// instante (ms) até quando fica pausado.
+export async function pauseAgentForHuman(
+  companyId: string,
+  sessionId: string,
+  minutes: number = HUMAN_PAUSE_MINUTES,
+): Promise<number> {
+  const until = Date.now() + minutes * 60_000;
+  const key = `${HUMAN_PAUSE_PREFIX}${sessionId}`;
+  await prisma.setting.upsert({
+    where: { companyId_key: { companyId, key } },
+    update: { value: String(until) },
+    create: { companyId, key, value: String(until) },
+  });
+  return until;
+}
+
+// true se o agente está pausado (humano assumiu) nesta sessão AGORA.
+export async function isAgentPausedByHuman(companyId: string, sessionId: string): Promise<boolean> {
+  const row = await prisma.setting.findUnique({
+    where: { companyId_key: { companyId, key: `${HUMAN_PAUSE_PREFIX}${sessionId}` } },
+    select: { value: true },
+  });
+  if (!row) return false;
+  const until = Number(row.value);
+  return Number.isFinite(until) && Date.now() < until;
+}

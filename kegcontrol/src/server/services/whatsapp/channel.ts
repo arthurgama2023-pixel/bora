@@ -88,8 +88,50 @@ function phoneFromJid(jid: string): string {
   return jid.split("@")[0];
 }
 
+// Rastro EM MEMÓRIA das mensagens que o AGENTE acabou de enviar, para distinguir
+// o ECO (fromMe) das mensagens de um HUMANO que entrou na conversa manualmente.
+// Chave = telefone + texto normalizado; valor = quando foi enviado. O kegcontrol
+// roda como processo Node único no Render, então isto persiste entre webhooks
+// (igual ao burst-buffer). Se o processo reiniciar, no pior caso uma resposta do
+// agente logo após o restart pode ser lida como "humano" e pausar por 20 min —
+// aceitável e raro.
+const AGENT_SEND_TTL_MS = 3 * 60_000;
+const recentAgentSends = new Map<string, number>();
+function sendFingerprint(externalId: string, text: string): string {
+  return `${phoneFromJid(externalId)}::${text.trim().replace(/\s+/g, " ").toLowerCase()}`;
+}
+export function rememberAgentSend(externalId: string, text: string): void {
+  const now = Date.now();
+  recentAgentSends.set(sendFingerprint(externalId, text), now);
+  if (recentAgentSends.size > 500) {
+    for (const [k, t] of recentAgentSends) if (now - t > AGENT_SEND_TTL_MS) recentAgentSends.delete(k);
+  }
+}
+// true quando `text` bate com algo que o agente enviou para `externalId` há
+// pouco — ou seja, é o eco da própria mensagem, NÃO um humano.
+export function wasRecentlySentByAgent(externalId: string, text: string): boolean {
+  const t = recentAgentSends.get(sendFingerprint(externalId, text));
+  return t !== undefined && Date.now() - t <= AGENT_SEND_TTL_MS;
+}
+
 export class WhatsAppEvolutionChannel {
   // ---- Mensagens ----
+
+  // Detecta uma mensagem de TEXTO que SAIU do nosso número (fromMe) numa conversa
+  // 1:1 — pode ser o ECO do próprio agente OU um HUMANO que respondeu manualmente
+  // ao cliente (WhatsApp do dono/atendente). Devolve o telefone do CLIENTE
+  // (remoteJid) e o texto; quem chama decide se é eco (wasRecentlySentByAgent) ou
+  // humano. null quando não é texto fromMe individual.
+  parseOutgoing(raw: unknown): { externalId: string; text: string } | null {
+    const payload = raw as EvolutionWebhookPayload;
+    const data = payload?.data;
+    const key = data?.key;
+    if (!data || !key || !key.fromMe) return null;
+    if (key.remoteJid.endsWith("@g.us")) return null;
+    const text = data.message?.conversation ?? data.message?.extendedTextMessage?.text;
+    if (!text || !text.trim()) return null;
+    return { externalId: phoneFromJid(key.remoteJid), text };
+  }
 
   parseWebhook(raw: unknown): IncomingMessage | null {
     const payload = raw as EvolutionWebhookPayload;
@@ -190,6 +232,9 @@ export class WhatsAppEvolutionChannel {
   async sendMessage(companyId: string, externalId: string, text: string): Promise<boolean> {
     // O núcleo gera **negrito** (markdown do chat web); o WhatsApp usa *negrito*.
     const whatsappText = text.replace(/\*\*(.+?)\*\*/g, "*$1*");
+    // Marca como "enviado pelo agente" ANTES de enviar — quando o eco (fromMe)
+    // voltar pelo webhook, é reconhecido e NÃO conta como humano na conversa.
+    rememberAgentSend(externalId, whatsappText);
     const cfg = await getWhatsAppConfig(companyId);
     if (!cfg) {
       console.warn("[whatsapp] Evolution não configurada — mensagem não enviada:", whatsappText);
