@@ -72,33 +72,61 @@ export async function GET(req: Request) {
 
   // Passa um cliente JÁ identificado (com nome) de propósito: desde que o fluxo
   // pede o NOME como primeira etapa, uma conversa nova responde "me diz seu nome"
-  // em vez do preço — o que faria o canário acusar "preço errado" toda vez (falso
-  // positivo). Com um nome, a etapa de nome é pulada e o agente cota o preço
-  // direto — que é o que este canário existe pra verificar.
-  const result = await chatWithAgent(
-    companyId,
-    `price-check-${Date.now()}`, // sessão descartável, não colide com conversa real
-    [{ role: "user", content: question }],
-    {
-      channel: "PLAYGROUND",
-      identifiedCustomer: { id: "price-check-canary", name: "Canário de Preço", status: "ACTIVE", type: "COMERCIO" },
-    },
-  );
+  // em vez do preço. E MESMO com nome, o agente às vezes (~4% medido) cumprimenta
+  // primeiro em vez de cotar. Isso NÃO é preço errado — mas faria o canário
+  // acusar falso positivo. Por isso tentamos ATÉ 3 vezes (sessões novas) e só
+  // consideramos ERRO se NENHUMA tentativa cotar o preço certo. Um preço
+  // realmente errado (regressão) falha as 3 de forma consistente e alerta.
+  const MAX_TRIES = 3;
+  let lastReply = "";
+  let lastExtracted: number | null = null;
+  let lastUsedTool = false;
+  let simulated = false;
+  let quotedButWrong = false; // cotou um preço, mas diferente do esperado (erro real)
+  let match = false;
+  let tries = 0;
 
-  const extractedPrice = firstPriceIn(result.reply);
-  const usedPriceTool = result.toolsUsed.includes("preco_por_bairro");
-  const match = usedPriceTool && extractedPrice !== null && extractedPrice === expectedPrice;
+  for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
+    tries = attempt;
+    const result = await chatWithAgent(
+      companyId,
+      `price-check-${Date.now()}-${attempt}`, // sessão descartável, não colide com conversa real
+      [{ role: "user", content: question }],
+      {
+        channel: "PLAYGROUND",
+        identifiedCustomer: { id: "price-check-canary", name: "Canário de Preço", status: "ACTIVE", type: "COMERCIO" },
+      },
+    );
+    lastReply = result.reply;
+    simulated = result.simulated;
+    lastUsedTool = result.toolsUsed.includes("preco_por_bairro");
+    lastExtracted = firstPriceIn(result.reply);
+
+    if (lastUsedTool && lastExtracted !== null && lastExtracted === expectedPrice) {
+      match = true; // cotou certo — passou
+      break;
+    }
+    if (lastUsedTool && lastExtracted !== null && lastExtracted !== expectedPrice) {
+      // Cotou um preço DIFERENTE do esperado: isso é erro real de preço — não
+      // adianta re-tentar, alerta na hora.
+      quotedButWrong = true;
+      break;
+    }
+    // Senão (não cotou — cumprimentou/pediu nome): tenta de novo numa nova sessão.
+  }
 
   return NextResponse.json({
     ok: true,
     match,
+    quotedButWrong, // true = cotou um valor ERRADO (alerta de verdade); false num "não cotou"
+    tries,
     question,
     bairro: zona.bairro,
     produto: product.name,
     expectedPrice,
-    extractedPrice,
-    agentReply: result.reply,
-    toolsUsed: result.toolsUsed,
-    simulated: result.simulated, // true = rodou sem GEMINI_API_KEY (modo simulado) — resultado não é confiável
+    extractedPrice: lastExtracted,
+    usedPriceTool: lastUsedTool,
+    agentReply: lastReply,
+    simulated, // true = rodou sem GEMINI_API_KEY (modo simulado) — resultado não é confiável
   });
 }

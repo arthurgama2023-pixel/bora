@@ -70,7 +70,7 @@ jobs:
           match="$(echo "$resp" | jq -r '.match')"
           if [ "$match" = "true" ]; then
             produto="$(echo "$resp" | jq -r '.produto')"
-            echo "✅ Preço correto ($produto, R\$$(echo "$resp" | jq -r '.expectedPrice'))."
+            echo "✅ Preço correto ($produto, R\$$(echo "$resp" | jq -r '.expectedPrice')) em $(echo "$resp" | jq -r '.tries') tentativa(s)."
             exit 0
           fi
 
@@ -79,7 +79,21 @@ jobs:
           esperado="$(echo "$resp" | jq -r '.expectedPrice')"
           extraido="$(echo "$resp" | jq -r '.extractedPrice // "nenhum"')"
           resposta="$(echo "$resp" | jq -r '.agentReply')"
+          quotedWrong="$(echo "$resp" | jq -r '.quotedButWrong')"
 
-          echo "🚨 PREÇO DIVERGENTE detectado."
-          alert="🚨 PREÇO ERRADO detectado: ${produto} em ${bairro} — banco diz R\$${esperado}, agente falou R\$${extraido}."$'\n'"Resposta do agente: \"${resposta}\""
-          send_telegram "$alert"
+          # 🚨 SÓ alerta como "PREÇO ERRADO" quando o agente REALMENTE cotou um
+          # valor diferente do banco (quotedButWrong=true). Isso torna o alerta
+          # confiável — sem falso positivo de quando ele só cumprimentou/pediu o
+          # nome em vez de cotar (o canário já tentou 3x).
+          if [ "$quotedWrong" = "true" ]; then
+            echo "🚨 PREÇO ERRADO detectado."
+            alert="🚨 PREÇO ERRADO detectado: ${produto} em ${bairro} — banco diz R\$${esperado}, agente falou R\$${extraido}."$'\n'"Resposta do agente: \"${resposta}\""
+            send_telegram "$alert"
+            exit 0
+          fi
+
+          # Não cotou preço em 3 tentativas (raro ~0,006%): NÃO é erro de preço.
+          # Aviso suave, sem o alarme vermelho — só pra você saber que a rodada
+          # não confirmou (ex.: o agente cumprimentou nas 3 tentativas).
+          echo "⚠️ Canário não confirmou o preço nesta rodada (agente não cotou em ${MAX_TRIES:-3} tentativas) — NÃO é preço errado."
+          send_telegram "⚠️ Canário de preço: não consegui confirmar o preço de ${produto} em ${bairro} nesta rodada (o agente não cotou em 3 tentativas). Não é erro de preço — só um aviso pra olhar quando puder."
