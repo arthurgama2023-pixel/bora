@@ -252,6 +252,13 @@ export function nudgeMessage(template: string, name: string | null, details: str
 //     que o dono já decidiu);
 //  3) marca a visita como "disparada" (dispatchedAt) pro card mostrar.
 export async function dispatchToVisit(companyId: string, visitId: string) {
+  // PORTÃO ÚNICO: nada é disparado enquanto o interruptor de disparo estiver
+  // DESLIGADO — nem o automático (cron), nem o botão manual do card. Só dispara
+  // quando o dono liga o interruptor. Assim "desligado" significa ZERO mensagem
+  // de recuperação saindo, sem exceção.
+  if (!(await getAutoDispatchEnabled(companyId))) {
+    throw new ApiError(409, "O disparo está DESLIGADO. Ligue o interruptor de disparo antes de disparar (nem manual sai com ele desligado).");
+  }
   const visit = await prisma.siteVisit.findFirst({
     where: { id: visitId, companyId },
     select: { id: true, phone: true, customerName: true, details: true, dispatchedAt: true },
