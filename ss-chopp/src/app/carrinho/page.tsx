@@ -82,6 +82,17 @@ function isValidCPFOrCNPJ(value: string): boolean {
   return validateCPF(value) || validateCNPJ(value);
 }
 
+// Datas especiais (Natal e Ano Novo): 24, 25, 30 e 31 de dezembro. Nessas datas
+// os valores NÃO são os da tabela — ficam "a combinar" com a equipe. `dataEvento`
+// vem do <input type="date"> no formato YYYY-MM-DD.
+const DATAS_A_COMBINAR = new Set([1224, 1225, 1230, 1231]); // MMDD (dezembro)
+function isDataACombinar(dataEvento: string): boolean {
+  if (!dataEvento) return false;
+  const [, m, d] = dataEvento.split("-").map(Number);
+  return DATAS_A_COMBINAR.has((m || 0) * 100 + (d || 0));
+}
+const A_COMBINAR = "A combinar";
+
 export default function CarrinhoPage() {
   const {
     items,
@@ -313,6 +324,8 @@ export default function CarrinhoPage() {
 
   const finalDeliveryFee = deliveryMethod === "entrega" ? deliveryFee : 0;
   const finalTotal = subtotal + finalDeliveryFee;
+  // Natal/Ano Novo: valores a combinar (esconde preços e total, mostra aviso).
+  const precoACombinar = isDataACombinar(address.dataEvento);
   const addressComplete = address.rua && address.numero && address.bairro && address.cpfCnpj;
   const telefoneOk = telefone.replace(/\D/g, "").length >= 10;
   const chopeiraEscolhida = !hasChopeira || !!chopeiraType;
@@ -372,7 +385,8 @@ export default function CarrinhoPage() {
       const product = getProductById(item.productId);
       if (!product) return "";
       const lineTotal = unitPrice(item.productId, item.quantity) * item.quantity;
-      return `    ${product.emoji} ${product.name}\n       ${item.quantity}x = ${formatPrice(lineTotal)}`;
+      const valor = precoACombinar ? A_COMBINAR : formatPrice(lineTotal);
+      return `    ${product.emoji} ${product.name}\n       ${item.quantity}x = ${valor}`;
     });
 
     const chopeiraLabel = chopeiraType
@@ -426,10 +440,17 @@ export default function CarrinhoPage() {
       ...(chopeiraLabel ? ["", `🍺 Chopeira: ${chopeiraLabel}`] : []),
       "",
       "─────────────────────────────────",
-      `💰 Subtotal: ${formatPrice(subtotal)}`,
-      `🚛 Taxa de entrega: ${finalDeliveryFee > 0 ? formatPrice(finalDeliveryFee) : "GRÁTIS 🎉"}`,
-      "",
-      `✅ *TOTAL: ${formatPrice(finalTotal)}*`,
+      ...(precoACombinar
+        ? [
+            "🎄 *Natal / Ano Novo*",
+            `✅ *TOTAL: ${A_COMBINAR}* (a equipe passa os valores)`,
+          ]
+        : [
+            `💰 Subtotal: ${formatPrice(subtotal)}`,
+            `🚛 Taxa de entrega: ${finalDeliveryFee > 0 ? formatPrice(finalDeliveryFee) : "GRÁTIS 🎉"}`,
+            "",
+            `✅ *TOTAL: ${formatPrice(finalTotal)}*`,
+          ]),
       "─────────────────────────────────",
       "",
       ...(paymentLabel ? [`💳 Pagamento: ${paymentLabel}`, ""] : []),
@@ -476,7 +497,9 @@ export default function CarrinhoPage() {
               </div>
               <div className="flex-1">
                 <p className="font-bold text-brand-black">{product.name}</p>
-                <p className="text-sm text-gray-500">{formatPrice(unitPrice(item.productId, item.quantity))}/un.</p>
+                <p className="text-sm text-gray-500">
+                  {precoACombinar ? A_COMBINAR : `${formatPrice(unitPrice(item.productId, item.quantity))}/un.`}
+                </p>
                 <div className="mt-1 flex items-center gap-2">
                   <button
                     onClick={() => updateQuantity(item.productId, Math.max(0, item.quantity - 1))}
@@ -494,8 +517,8 @@ export default function CarrinhoPage() {
                 </div>
               </div>
               <div className="flex flex-col items-end gap-2">
-                <p className="font-bold text-brand-amber">{formatPrice(lineTotal)}</p>
-                {savings > 0 && (
+                <p className="font-bold text-brand-amber">{precoACombinar ? A_COMBINAR : formatPrice(lineTotal)}</p>
+                {!precoACombinar && savings > 0 && (
                   <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-bold text-green-700">
                     economizou {formatPrice(savings)}
                   </span>
@@ -621,6 +644,12 @@ export default function CarrinhoPage() {
           </div>
         </div>
 
+        {precoACombinar && (
+          <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+            🎄 Natal / Ano Novo: nessa data os valores são <b>a combinar</b> com a equipe da SS-Chopp. Finalize o pedido normalmente que a gente passa os valores por lá. 😉
+          </p>
+        )}
+
         {deliveryMethod === "entrega" && (
           <div className="mt-4 grid grid-cols-2 gap-2">
             <input
@@ -729,22 +758,31 @@ export default function CarrinhoPage() {
       </div>
 
       <div className="mt-6 rounded-xl border border-brand-black/10 bg-white p-4 shadow-sm">
-        <div className="flex justify-between text-sm text-gray-600">
-          <span>Subtotal</span>
-          <span>{formatPrice(subtotal)}</span>
-        </div>
-        <div className="flex justify-between text-sm text-gray-600">
-          <span>Taxa de entrega</span>
-          {finalDeliveryFee > 0 ? (
-            <span>{formatPrice(finalDeliveryFee)}</span>
-          ) : (
-            <span className="font-bold text-green-600">Grátis 🎉</span>
-          )}
-        </div>
-        <div className="mt-2 flex justify-between border-t border-gray-100 pt-2 text-lg font-extrabold text-brand-black">
-          <span>Total</span>
-          <span>{formatPrice(finalTotal)}</span>
-        </div>
+        {precoACombinar ? (
+          <div className="flex items-center justify-between">
+            <span className="text-lg font-extrabold text-brand-black">Total</span>
+            <span className="text-lg font-extrabold text-brand-amber">{A_COMBINAR}</span>
+          </div>
+        ) : (
+          <>
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Subtotal</span>
+              <span>{formatPrice(subtotal)}</span>
+            </div>
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Taxa de entrega</span>
+              {finalDeliveryFee > 0 ? (
+                <span>{formatPrice(finalDeliveryFee)}</span>
+              ) : (
+                <span className="font-bold text-green-600">Grátis 🎉</span>
+              )}
+            </div>
+            <div className="mt-2 flex justify-between border-t border-gray-100 pt-2 text-lg font-extrabold text-brand-black">
+              <span>Total</span>
+              <span>{formatPrice(finalTotal)}</span>
+            </div>
+          </>
+        )}
       </div>
 
       <button
