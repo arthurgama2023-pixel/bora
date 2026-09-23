@@ -145,10 +145,11 @@ Você tem uma AJUDA de memória travada em código: se aparecer um bloco "JÁ CO
 - Se o cliente perguntou de UM produto específico ("quanto é a Brahma?"): chame preco_por_bairro com tabela_completa=false e responda em UMA frase natural só o preço daquele produto (ex.: "Belco 50L pra Xerém sai R$600 a unidade, R$550 levando 2, ou R$500 de 3+, com frete grátis") — sem listar os outros.
 - Se o cliente quer o TOTAL de N barris ("quanto fica 3 Belco 50?", "quero 3 belco 50 quanto no total"): chame preco_por_bairro com produto E quantidade — a ferramenta devolve o total EXATO no campo "cotacao". Informe esse total ao pé da letra. NUNCA multiplique de cabeça: você erra a faixa por quantidade.
 
-# Datas especiais — Natal e Ano Novo (valores A COMBINAR)
-- Se a entrega/festa for em 24, 25, 30 ou 31 de DEZEMBRO (Natal ou Ano Novo), os valores são A COMBINAR. Nessas datas você NÃO cota preço fixo nem total: diga com naturalidade que, para Natal/Ano Novo, os valores são "a combinar" e a equipe passa os valores. NÃO chame preco_por_bairro pra dar número nessas datas.
-- Se o cliente disser a data DEPOIS de você já ter cotado um preço, corrija na hora: "ah, como é pra o Natal/Ano Novo, aí os valores são a combinar — a equipe te passa certinho".
-- Mesmo com "a combinar", siga o fluxo normal (nome, endereço, etc.) e registre o pedido — só o preço/total que fica "a combinar" (não cobre sinal/PIX de valor fixo nessas datas; a equipe combina).
+# Datas especiais — Natal e Ano Novo (a EQUIPE assume; NÃO continue o atendimento)
+- Se a entrega/festa for em 24, 25, 30 ou 31 de DEZEMBRO (Natal, véspera, Ano Novo ou réveillon), é um caso ESPECIAL que você NÃO atende: NÃO cota preço, NÃO chama preco_por_bairro, NÃO pergunta os próximos dados (nome, produto, endereço, chopeira, CPF, pagamento) e NÃO chama finalizar_pedido nessa data.
+- Assim que perceber que a data é uma dessas, PARE o fluxo na hora e passe pra equipe com UMA mensagem curta e calorosa — e só isso. Ex.: "Ah, pra Natal/Ano Novo a nossa equipe cuida pessoalmente pra combinar tudo com você (valores, disponibilidade, horário) 🎄 Já vou passar seu contato pra eles te chamarem por aqui, tá? 😉".
+- Vale mesmo que o cliente já tenha dado outros dados OU você já tenha cotado um preço: no instante em que a data de Natal/Ano Novo aparecer, mude pra esse modo e NÃO feche pedido nesse dia.
+- Se o cliente insistir ou mandar mais mensagens, responda curtinho reforçando que a equipe já vai chamar pra combinar o Natal/Ano Novo — NÃO reinicie o fluxo, NÃO pergunte mais dados e NÃO finalize.
 
 # Fechamento e PIX (regra inviolável — é dinheiro do cliente)
 - Pra fechar o pedido, SEMPRE chame finalizar_pedido. Nunca feche "de cabeça".
@@ -1123,6 +1124,20 @@ const TOOLS: FunctionDeclaration[] = [
   },
 ];
 
+// Detecta se uma data em TEXTO LIVRE cai em Natal/Ano Novo (24, 25, 30 ou 31 de
+// dezembro) — aí o pedido é "a combinar" e a EQUIPE assume (o agente não fecha).
+// Pega datas (24/12, 25-12, "24 de dezembro") e palavras (natal, ano novo,
+// réveillon, virada). Exige o mês 12 / a palavra "dez" pra não confundir com um
+// número solto de endereço (ex.: "rua 24").
+export function isHolidayDateText(input?: string | null): boolean {
+  if (!input) return false;
+  const s = input.toLowerCase();
+  if (/\b(natal|r[eé]veillon|reveillon|ano[\s-]*novo|virada\s+do\s+ano|v[eé]spera\s+de\s+ano\s+novo)\b/.test(s)) return true;
+  if (/\b(24|25|30|31)\s*[/\-.]\s*12\b/.test(s)) return true; // dd/12
+  if (/\b(24|25|30|31)\s*(?:de\s+)?dez(?:embro)?\b/.test(s)) return true; // "24 de dezembro"
+  return false;
+}
+
 // Lê uma configuração da empresa (model Setting). Retorna null se não existir.
 async function getSetting(companyId: string, key: string): Promise<string | null> {
   const row = await prisma.setting.findUnique({
@@ -1442,6 +1457,17 @@ async function runTool(
       return JSON.stringify({ ok: true });
     }
     case "finalizar_pedido": {
+      // BLOQUEIO Natal/Ano Novo (rede de proteção): se a data combinada cai em
+      // 24, 25, 30 ou 31/12, NÃO fecha o pedido nem envia PIX de valor fixo — a
+      // equipe assume pra combinar tudo. Cobre o caso do LLM tentar finalizar
+      // mesmo com a regra do prompt.
+      if (isHolidayDateText(input.data_entrega ? String(input.data_entrega) : null)) {
+        return JSON.stringify({
+          ok: false,
+          motivo:
+            "Data de Natal/Ano Novo (24, 25, 30 ou 31/12): NÃO feche o pedido e NÃO envie PIX. Diga com carinho que, pra Natal/Ano Novo, a equipe da SS-Chopp assume pra combinar tudo (valores, disponibilidade) e já vai chamar o cliente — e não continue o fluxo.",
+        });
+      }
       // Liberado em todos os canais (inclusive WhatsApp): fecha o pedido e envia
       // o PIX. A chave PIX vem do Setting (pix_key/pix_nome), com fallback de teste.
       const bairro = String(input.bairro ?? "");
