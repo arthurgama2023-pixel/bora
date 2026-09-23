@@ -95,22 +95,19 @@ export async function listSiteOrders(
     take: 200,
   });
   if (orders.length === 0) return [];
+  // Comprovante casado por telefone DENTRO da janela de tempo do pedido (ver
+  // matchProofsToOrders) — não basta ser o mais recente do número, senão um
+  // pedido novo herdava o comprovante de uma compra anterior.
   const proofs = await prisma.paymentProof.findMany({
     where: { companyId },
-    orderBy: { createdAt: "desc" },
-    select: { phone: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, phone: true, createdAt: true, caption: true },
   });
-  // chave do telefone -> comprovante mais recente (proofs vem em ordem desc, então
-  // o PRIMEIRO de cada chave já é o mais recente).
-  const proofByKey = new Map<string, Date>();
-  for (const p of proofs) {
-    const key = phoneMatchKey(p.phone);
-    if (key && !proofByKey.has(key)) proofByKey.set(key, p.createdAt);
-  }
-  return orders.map((o) => {
-    const key = phoneMatchKey(o.phone);
-    return { ...o, proofAt: key ? proofByKey.get(key) ?? null : null };
-  });
+  const proofByOrderId = matchProofsToOrders(orders, proofs);
+  return orders.map((o) => ({
+    ...o,
+    proofAt: proofByOrderId.get(o.id)?.createdAt ?? null,
+  }));
 }
 
 // Pedidos FECHADOS PELO AGENTE IA (origin "AGENTE"), pra a aba "Pedidos do
@@ -141,6 +138,61 @@ export function detectPaymentMethod(notes: string | null): PaymentMethod | null 
 // são fluxos incompletos e ficam de fora. Cada pedido traz: o comprovante de PIX
 // casado por telefone (ou aguardando) e a forma de pagamento (pra avisar quando
 // é CARTÃO, aí não se espera comprovante de PIX).
+// Casa cada pedido com o comprovante que caiu na JANELA DE TEMPO dele: do próprio
+// pedido (menos uma folga, caso o cliente mande o comprovante segundos antes do
+// registro) — mas nunca antes do pedido ANTERIOR do mesmo telefone — até o pedido
+// SEGUINTE do mesmo telefone. Assim um comprovante nunca "vaza" pra um pedido de
+// outra data (o bug de mostrar comprovante ANTIGO num pedido novo). Casa por chave
+// canônica de telefone. Devolve Map<orderId, comprovante>.
+export const PROOF_GRACE_MS = 30 * 60 * 1000; // 30 min
+export function matchProofsToOrders(
+  orders: { id: string; phone: string; createdAt: Date }[],
+  proofs: { id: string; phone: string; createdAt: Date; caption: string | null }[],
+): Map<string, AgentOrderProof> {
+  const proofsByKey = new Map<string, AgentOrderProof[]>();
+  for (const p of proofs) {
+    const key = phoneMatchKey(p.phone);
+    if (!key) continue;
+    const item = { id: p.id, createdAt: p.createdAt, caption: p.caption };
+    const arr = proofsByKey.get(key);
+    if (arr) arr.push(item);
+    else proofsByKey.set(key, [item]);
+  }
+  for (const arr of proofsByKey.values()) {
+    arr.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
+  const ordersByKey = new Map<string, { id: string; phone: string; createdAt: Date }[]>();
+  for (const o of orders) {
+    const key = phoneMatchKey(o.phone);
+    if (!key) continue;
+    const arr = ordersByKey.get(key);
+    if (arr) arr.push(o);
+    else ordersByKey.set(key, [o]);
+  }
+
+  const result = new Map<string, AgentOrderProof>();
+  for (const [key, list] of ordersByKey) {
+    const proofList = proofsByKey.get(key) ?? [];
+    if (proofList.length === 0) continue;
+    const asc = [...list].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    for (let i = 0; i < asc.length; i++) {
+      const at = asc[i].createdAt.getTime();
+      const prevAt = i > 0 ? asc[i - 1].createdAt.getTime() : -Infinity;
+      const nextAt = i < asc.length - 1 ? asc[i + 1].createdAt.getTime() : Infinity;
+      const lower = Math.max(at - PROOF_GRACE_MS, prevAt);
+      // proofList em ordem crescente → o último que cai na janela é o mais recente.
+      let matched: AgentOrderProof | undefined;
+      for (const p of proofList) {
+        const t = p.createdAt.getTime();
+        if (t >= lower && t < nextAt) matched = p;
+      }
+      if (matched) result.set(asc[i].id, matched);
+    }
+  }
+  return result;
+}
+
 export async function listAgentOrders(companyId: string) {
   const orders = await prisma.siteOrder.findMany({
     where: { companyId, origin: "AGENTE", status: { not: "CANCELLED" } },
@@ -148,29 +200,21 @@ export async function listAgentOrders(companyId: string) {
     take: 200,
   });
   if (orders.length === 0) return [];
-  // Comprovantes da empresa em ordem desc — o PRIMEIRO de cada telefone é o mais
-  // recente. Uma query só (evita N+1).
+  // Comprovantes casados por telefone MAS dentro da JANELA DE TEMPO de cada pedido
+  // (ver matchProofsToOrders) — senão um pedido novo herdava o comprovante de uma
+  // compra ANTERIOR do mesmo número (falso "comprovante recebido").
   const proofs = await prisma.paymentProof.findMany({
     where: { companyId },
-    orderBy: { createdAt: "desc" },
+    orderBy: { createdAt: "asc" },
     select: { id: true, phone: true, createdAt: true, caption: true },
   });
-  const proofByKey = new Map<string, AgentOrderProof>();
-  for (const p of proofs) {
-    const key = phoneMatchKey(p.phone);
-    if (key && !proofByKey.has(key)) {
-      proofByKey.set(key, { id: p.id, createdAt: p.createdAt, caption: p.caption });
-    }
-  }
+  const proofByOrderId = matchProofsToOrders(orders, proofs);
   return orders
-    .map((o) => {
-      const key = phoneMatchKey(o.phone);
-      return {
-        ...o,
-        proof: key ? proofByKey.get(key) ?? null : null,
-        paymentMethod: detectPaymentMethod(o.notes),
-      };
-    })
+    .map((o) => ({
+      ...o,
+      proof: proofByOrderId.get(o.id) ?? null,
+      paymentMethod: detectPaymentMethod(o.notes),
+    }))
     // Regra: só mostra quem chegou ao pagamento (tem forma de pagamento).
     .filter((o) => o.paymentMethod !== null);
 }
