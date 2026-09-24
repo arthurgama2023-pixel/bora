@@ -145,6 +145,13 @@ Você tem uma AJUDA de memória travada em código: se aparecer um bloco "JÁ CO
 - Se o cliente perguntou de UM produto específico ("quanto é a Brahma?"): chame preco_por_bairro com tabela_completa=false e responda em UMA frase natural só o preço daquele produto (ex.: "Belco 50L pra Xerém sai R$600 a unidade, R$550 levando 2, ou R$500 de 3+, com frete grátis") — sem listar os outros.
 - Se o cliente quer o TOTAL de N barris ("quanto fica 3 Belco 50?", "quero 3 belco 50 quanto no total"): chame preco_por_bairro com produto E quantidade — a ferramenta devolve o total EXATO no campo "cotacao". Informe esse total ao pé da letra. NUNCA multiplique de cabeça: você erra a faixa por quantidade.
 
+# Pedido vindo do SITE (informação em massa — leia TUDO e feche de uma vez)
+- Às vezes a PRIMEIRA mensagem já é o PEDIDO COMPLETO montado pelo nosso site (um resumo com cabeçalho "PEDIDO SS-CHOPP", lista de "ITENS DO PEDIDO", endereço, nome, CPF, forma de pagamento, total e "Confirme o pedido por favor!"). Isso é o cliente te entregando TODOS os dados de uma vez.
+- Nesse caso NÃO dê a saudação de "me diz seu nome" nem pergunte nada que já veio no resumo. LEIA e aproveite TODOS os campos: nome, produto(s) e quantidade(s), bairro/cidade, endereço, se tem escada, casa/salão, data, horário, CPF/CNPJ e forma de pagamento.
+- O cliente já pediu "confirme o pedido": então, se tiver o obrigatório (produto, quantidade, bairro coberto, entrega/retirada, nome e CPF — que vêm no resumo), chame finalizar_pedido JÁ NESTE TURNO com todos esses dados, sem pedir um "sim" de novo. Passe a data no campo data_entrega.
+- USE o total que o finalizar_pedido devolver — NUNCA repita/di­gite o total que veio escrito no resumo do site nem invente um número (pode estar diferente). Se algum produto do resumo não for reconhecido pela ferramenta, confirme com o cliente esse item antes de fechar.
+- Se o resumo for de Natal/Ano Novo (aparece "🎄", "a combinar" ou a data é 24/25/30/31/12), siga a regra de Datas especiais abaixo: NÃO feche, passe pra equipe.
+
 # Datas especiais — Natal e Ano Novo (a EQUIPE assume; NÃO continue o atendimento)
 - Se a entrega/festa for em 24, 25, 30 ou 31 de DEZEMBRO (Natal, véspera, Ano Novo ou réveillon), é um caso ESPECIAL que você NÃO atende: NÃO cota preço, NÃO chama preco_por_bairro, NÃO pergunta os próximos dados (nome, produto, endereço, chopeira, CPF, pagamento) e NÃO chama finalizar_pedido nessa data.
 - Assim que perceber que a data é uma dessas, PARE o fluxo na hora e passe pra equipe com UMA mensagem curta e calorosa — e só isso. Ex.: "Ah, pra Natal/Ano Novo a nossa equipe cuida pessoalmente pra combinar tudo com você (valores, disponibilidade, horário) 🎄 Já vou passar seu contato pra eles te chamarem por aqui, tá? 😉".
@@ -1138,6 +1145,45 @@ export function isHolidayDateText(input?: string | null): boolean {
   return false;
 }
 
+// Detecta se a mensagem é o PEDIDO COMPLETO gerado pelo site (checkout do
+// ss-chopp abre o WhatsApp com esse resumão). Aí o cliente mandou TODOS os dados
+// de uma vez ("informação em massa") — o agente deve ler tudo e já fechar, sem
+// re-perguntar nem dar a saudação padrão. Casa pelo cabeçalho do site ou pela
+// combinação de marcadores estruturais do resumo.
+export function looksLikeSiteOrder(text?: string | null): boolean {
+  if (!text) return false;
+  const s = text.toLowerCase();
+  if (/pedido\s+ss-?chopp/.test(s)) return true; // cabeçalho "PEDIDO SS-CHOPP DISTRIBUIDORA"
+  const marcadores = [
+    /itens do pedido/.test(s),
+    /confirme o pedido/.test(s),
+    /cpf\/cnpj|cpf|cnpj/.test(s),
+    /total:/.test(s),
+  ].filter(Boolean).length;
+  return marcadores >= 3; // vários marcadores juntos = é o resumo do site
+}
+
+// Garante o TOTAL CORRETO (da tabela) no texto do fechamento — a IA às vezes
+// transcreve o número errado (dinheiro do cliente). NÃO destrói o resumo: se já
+// existe uma linha de "total" com valor em R$, troca só o número por ali (a
+// PRIMEIRA linha de total, ignorando "subtotal"); se não existe nenhuma, anexa
+// uma linha canônica no fim.
+export function enforceOrderTotal(reply: string, total: number): string {
+  const totalTxt = formatCurrency(total);
+  let replaced = false;
+  const out = reply.split("\n").map((line) => {
+    if (replaced) return line;
+    const l = line.toLowerCase();
+    if (/(?<!sub)total/.test(l) && /r\$\s*[\d.,]+/i.test(line)) {
+      replaced = true;
+      return line.replace(/r\$\s*[\d.,]+/i, totalTxt);
+    }
+    return line;
+  });
+  const res = out.join("\n");
+  return replaced ? res : `${res.trimEnd()}\n\n✅ Total do pedido: ${totalTxt} (frete grátis).`;
+}
+
 // Lê uma configuração da empresa (model Setting). Retorna null se não existir.
 async function getSetting(companyId: string, key: string): Promise<string | null> {
   const row = await prisma.setting.findUnique({
@@ -1172,6 +1218,10 @@ type ToolCtx = {
   // código ANEXA isso ao fim da resposta (chatWithAgent) — a IA não escreve a
   // chave, pra nunca inventar/mascarar/errar a chave (dinheiro do cliente).
   pixOut?: { chave: string; nome: string } | null;
+  // Preenchido pelo finalizar_pedido: o TOTAL e a economia CORRETOS (calculados
+  // pela tabela). O código força esse total no texto (a IA às vezes transcreve
+  // o número errado) — dinheiro do cliente, não pode sair errado.
+  orderTotalOut?: { total: number; economia: number } | null;
   // Acumula os campos do pedido confirmados NESTE turno (via
   // atualizar_dados_pedido, preco_por_bairro ou finalizar_pedido). chatWithAgent
   // funde isso no rascunho persistido (ver OrderDraft) depois do loop.
@@ -1631,6 +1681,9 @@ async function runTool(
       // resposta (ver chatWithAgent). A IA NÃO escreve a chave — assim é
       // impossível ela inventar/mascarar/errar (é dinheiro do cliente).
       if (ctx.pixOut !== undefined) ctx.pixOut = { chave: pixKey, nome: pixNome };
+      // Total/economia CORRETOS (da tabela) pro código forçar no texto — a IA
+      // às vezes digita o total errado no resumo.
+      ctx.orderTotalOut = { total, economia: economiaTotal };
       return JSON.stringify({
         ok: true,
         bairro: zona.bairro,
@@ -1829,7 +1882,7 @@ export function isResetSignal(text: string): boolean {
 // Linha que parece uma chave/dado de pagamento escrito pela IA (CNPJ, CPF,
 // mascaramento com ***, ou rótulos "Banco:/Chave:/Favorecido:" etc.).
 const PIX_KEY_LINE =
-  /\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}|\*{3,}|^\s*(banco|ag[êe]ncia|conta|chave( pix)?|favorecido|cnpj|cpf|nome do? favorecido)\s*:/i;
+  /\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}|\d{14}|\*{3,}|^\s*(banco|ag[êe]ncia|conta|chave( pix)?|favorecido|cnpj|cpf|nome do? favorecido)\s*:/i;
 
 // Linha-PONTEIRO do PIX ("a chave PIX vem na próxima mensagem…"): o código anexa
 // UMA sozinho. Se a IA (ou uma correção ensinada pelo dono) também escrever uma,
@@ -1843,17 +1896,30 @@ const PIX_POINTER_LINE =
 export function shieldPix(
   reply: string,
   pixInfo: { chave: string; nome: string } | null,
+  knownKey?: string | null,
 ): string {
+  // Dígitos da chave REAL (configurada/do fechamento) — pra remover a chave
+  // mesmo CRUA (ex.: "20994543000189") ou formatada, que os padrões genéricos
+  // podem não pegar. É dinheiro do cliente: a chave nunca sai escrita pela IA.
+  const keyDigits = (knownKey ?? pixInfo?.chave ?? "").replace(/\D/g, "");
+  const linhaTemChave = (l: string) =>
+    keyDigits.length >= 8 && l.replace(/\D/g, "").includes(keyDigits);
   const temRepetida = (() => {
     const ls = reply.split("\n").map((l) => l.trim());
     return ls.some((l, i) => l && l === ls[i - 1]);
   })();
-  if (!pixInfo && !PIX_KEY_LINE.test(reply) && !PIX_POINTER_LINE.test(reply) && !temRepetida) {
+  if (
+    !pixInfo &&
+    !PIX_KEY_LINE.test(reply) &&
+    !PIX_POINTER_LINE.test(reply) &&
+    !temRepetida &&
+    !(keyDigits.length >= 8 && reply.replace(/\D/g, "").includes(keyDigits))
+  ) {
     return reply;
   }
   const filtradas = reply
     .split("\n")
-    .filter((l) => !PIX_KEY_LINE.test(l) && !PIX_POINTER_LINE.test(l));
+    .filter((l) => !PIX_KEY_LINE.test(l) && !PIX_POINTER_LINE.test(l) && !linhaTemChave(l));
   const limpo = filtradas
     // Colapsa linhas IGUAIS coladas (a IA às vezes repete o fechamento/pergunta).
     .filter((l, i) => {
@@ -1971,7 +2037,12 @@ export async function chatWithAgent(
   const rawNameOpen = opts.identifiedCustomer?.name?.trim();
   const isFirstContact = !history.some((m) => m.role === "assistant");
   const hasRealName = !!rawNameOpen && !PLACEHOLDER_NAME.test(rawNameOpen);
-  if (isFirstContact && !hasRealName) {
+  // EXCEÇÃO: se a 1ª mensagem já é o PEDIDO COMPLETO do site (informação em
+  // massa), NÃO dá a saudação padrão pedindo o nome — o cliente já mandou tudo
+  // (inclusive o nome). Deixa o LLM processar o pedido inteiro de uma vez.
+  const lastUserMsgOpen = [...history].reverse().find((m) => m.role === "user")?.content;
+  const isBulkSiteOrder = looksLikeSiteOrder(lastUserMsgOpen);
+  if (isFirstContact && !hasRealName && !isBulkSiteOrder) {
     const opener =
       "Oi! Eu sou o Chopinho, da SS-Chopp 🍺 Pra começar, com quem eu falo? Me diz seu nome completo (ou o nome de quem vai receber a entrega).";
     await prisma.agentMessage.create({
@@ -2055,7 +2126,12 @@ export async function chatWithAgent(
     // ela vai numa MENSAGEM SEPARADA, só o número, pra o cliente copiar e colar
     // no banco sem pegar texto junto (o webhook envia `pix.chave` sozinha). Aqui
     // fica só um ponteiro curto.
-    reply = shieldPix(reply, null);
+    reply = shieldPix(reply, null, pixInfo?.chave);
+    // Total do cliente é dinheiro: quando o pedido fechou, o CÓDIGO garante o
+    // total correto (da tabela) no texto — a IA não decide o número.
+    if (result.orderClosed && result.total) {
+      reply = enforceOrderTotal(reply, result.total.total);
+    }
     if (pixInfo) {
       pixOut = pixInfo;
       reply = `${reply}\n\n💳 A chave PIX (favorecido ${pixInfo.nome}) vem na próxima mensagem — é só copiar e colar no seu banco 👇`;
@@ -2146,6 +2222,7 @@ async function runGeminiLoop(
   priceTable: string;
   priceImages: { url: string; label: string }[];
   pix: { chave: string; nome: string } | null;
+  total?: { total: number; economia: number } | null;
   draftPatch: OrderDraft;
   orderClosed: boolean;
 }> {
@@ -2229,7 +2306,7 @@ async function runGeminiLoop(
             }
           }
         }
-        return { reply: text, toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: ctx.pixOut ?? null, draftPatch, orderClosed: ctx.orderClosed ?? false };
+        return { reply: text, toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: ctx.pixOut ?? null, total: ctx.orderTotalOut ?? null, draftPatch, orderClosed: ctx.orderClosed ?? false };
       }
       if (text && looksLikeReasoningLeak(text)) {
         Sentry.captureMessage("Gemini vazou raciocínio na resposta ao cliente", {

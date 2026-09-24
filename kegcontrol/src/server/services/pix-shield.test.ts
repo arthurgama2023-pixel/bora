@@ -35,6 +35,23 @@ describe("shieldPix — blindagem da chave PIX", () => {
     expect(shieldPix(original, null)).toBe(original);
   });
 
+  it("remove a chave CRUA (sem formatação) que a IA escreveu no meio de uma frase", () => {
+    // regressão: a chave real 20994543000189 (14 dígitos crus) vazava porque os
+    // padrões só pegavam CNPJ formatado. Agora o dígito-a-dígito da chave é limpo.
+    const r = shieldPix(
+      "Pronto! ✅ Pedido registrado.\nA equipe aguarda o comprovante do Pix! 20994543000189 (SS CHOPP EXPRESSO)",
+      null,
+      "20994543000189",
+    );
+    expect(r.replace(/\D/g, "")).not.toContain("20994543000189");
+    expect(r).toContain("Pedido registrado");
+  });
+
+  it("remove a chave crua mesmo se a IA formatar com pontos/barra", () => {
+    const r = shieldPix("Chave: 20.994.543/0001-89 é só copiar", null, "20994543000189");
+    expect(r.replace(/\D/g, "")).not.toContain("20994543000189");
+  });
+
   it("não duplica: se a IA já escreveu a chave certa, sobra só uma", () => {
     const r = shieldPix("Total R$550.\nChave PIX: 12.345.678/0001-95\nFavorecido: SS-CHOPP DISTRIBUIDORA", PIX);
     expect((r.match(/12\.345\.678\/0001-95/g) || []).length).toBe(1);
