@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { AgenteClientesTabs } from "@/components/agente-clientes-tabs";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui";
+import { holidayLabel, type HolidayKind } from "@/lib/holiday";
 
 type Item = { id?: string; name: string; quantity: number; unitPrice: number };
 type Proof = { id: string; createdAt: string; caption: string | null };
@@ -47,6 +48,7 @@ type Pedido = {
   createdAt: string;
   proof: Proof | null;
   paymentMethod: PaymentMethod | null;
+  holiday: HolidayKind | null;
 };
 
 const PAGAMENTO: Record<PaymentMethod, { label: string; Icon: typeof CreditCard }> = {
@@ -261,6 +263,9 @@ export function PedidosAgente() {
                           )}
                         </button>
                       </div>
+                      {p.holiday && (
+                        <Badge tone="brand" className="w-fit">{holidayLabel(p.holiday)}</Badge>
+                      )}
                       {p.proof ? (
                         <>
                           <Badge tone="success" className="w-fit">
