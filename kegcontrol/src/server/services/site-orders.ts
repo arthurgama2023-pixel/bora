@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { phoneMatchKey } from "@/lib/phone";
+import { holidayKind } from "@/lib/holiday";
 
 // Pedido vindo do SITE (ss-chopp). Entra como PENDING; a SS-Chopp confirma no
 // painel (aí vira Movement manual). Nao toca no estoque.
@@ -214,6 +215,8 @@ export async function listAgentOrders(companyId: string) {
       ...o,
       proof: proofByOrderId.get(o.id) ?? null,
       paymentMethod: detectPaymentMethod(o.notes),
+      // Selo Natal/Ano Novo pro time bater o olho na aba (só marcação visual).
+      holiday: holidayKind(o.eventDate),
     }))
     // Regra: só mostra quem chegou ao pagamento (tem forma de pagamento).
     .filter((o) => o.paymentMethod !== null);
