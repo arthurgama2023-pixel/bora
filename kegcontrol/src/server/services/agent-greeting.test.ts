@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { stripReintro } from "./agent";
+import { stripReintro, FIRST_CONTACT_OPENER } from "./agent";
+
+describe("FIRST_CONTACT_OPENER — abertura única e compartilhada", () => {
+  it("cumprimenta UMA vez e já pede o nome", () => {
+    // Uma só apresentação "Eu sou o Chopinho" no texto (reset e 1º contato usam
+    // esta MESMA constante, então nunca há duas saudações diferentes).
+    const matches = FIRST_CONTACT_OPENER.match(/eu sou o chopinho/gi) ?? [];
+    expect(matches).toHaveLength(1);
+    expect(FIRST_CONTACT_OPENER.toLowerCase()).toContain("com quem eu falo");
+  });
+});
 
 describe("stripReintro — cumprimenta só uma vez", () => {
   it("remove a reapresentação no início (vários formatos)", () => {

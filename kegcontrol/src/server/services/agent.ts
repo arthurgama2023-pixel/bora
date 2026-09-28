@@ -1897,6 +1897,13 @@ export function isResetSignal(text: string): boolean {
   return RESET_PHRASES.has(n);
 }
 
+// Abertura determinística (cumprimenta + pede o nome) para o PRIMEIRO contato de
+// quem ainda não tem nome real. Constante compartilhada: o "recomeçar" reusa este
+// MESMO texto quando o cliente é desconhecido — assim, depois de um reset, a
+// saudação é UMA só e idêntica à do primeiro contato (nunca duas).
+export const FIRST_CONTACT_OPENER =
+  "Oi! Eu sou o Chopinho, da SS-Chopp 🍺 Pra começar, com quem eu falo? Me diz seu nome completo (ou o nome de quem vai receber a entrega).";
+
 // Linha que parece uma chave/dado de pagamento escrito pela IA (CNPJ, CPF,
 // mascaramento com ***, ou rótulos "Banco:/Chave:/Favorecido:" etc.).
 const PIX_KEY_LINE =
@@ -2000,8 +2007,21 @@ export async function chatWithAgent(
         console.error("[agent] wipeAgentLearnedProfile falhou:", e);
       });
     }
-    const greeting =
-      config.greeting?.trim() || "Oi! 🍺 Aqui é o atendimento da SS-Chopp. Como posso ajudar?";
+    // Cliente SEM nome real (desconhecido, ou treinador que acabou de ter o
+    // perfil apagado): reusa o MESMO opener do primeiro contato — cumprimenta e
+    // já pede o nome. Cliente conhecido: saudação personalizada do dono.
+    const rawNameReset = opts.identifiedCustomer?.name?.trim();
+    const hasRealNameReset = !!rawNameReset && !PLACEHOLDER_NAME.test(rawNameReset);
+    const greeting = hasRealNameReset
+      ? config.greeting?.trim() || "Oi! 🍺 Aqui é o atendimento da SS-Chopp. Como posso ajudar?"
+      : FIRST_CONTACT_OPENER;
+    // GRAVA a saudação como mensagem do assistente. Sem isto, o histórico fica
+    // sem nenhuma resposta e o opener determinístico, no próximo turno, acha que
+    // ainda é o PRIMEIRO contato e cumprimenta DE NOVO — era a causa do
+    // "cumprimenta 2 vezes" logo depois de um recomeçar.
+    await prisma.agentMessage.create({
+      data: { companyId, sessionId, role: "assistant", content: greeting, customerId, channel },
+    });
     return { reply: greeting, toolsUsed: [], simulated: false, photos: [], priceImages: [], priceTableText: "", pix: null };
   }
 
@@ -2061,8 +2081,7 @@ export async function chatWithAgent(
   const lastUserMsgOpen = [...history].reverse().find((m) => m.role === "user")?.content;
   const isBulkSiteOrder = looksLikeSiteOrder(lastUserMsgOpen);
   if (isFirstContact && !hasRealName && !isBulkSiteOrder) {
-    const opener =
-      "Oi! Eu sou o Chopinho, da SS-Chopp 🍺 Pra começar, com quem eu falo? Me diz seu nome completo (ou o nome de quem vai receber a entrega).";
+    const opener = FIRST_CONTACT_OPENER;
     await prisma.agentMessage.create({
       data: { companyId, sessionId, role: "assistant", content: opener, customerId, channel },
     });
