@@ -1184,6 +1184,20 @@ export function enforceOrderTotal(reply: string, total: number): string {
   return replaced ? res : `${res.trimEnd()}\n\n✅ Total do pedido: ${totalTxt} (frete grátis).`;
 }
 
+// Remove uma REAPRESENTAÇÃO no início da resposta ("Oi! Eu sou o Chopinho, da
+// SS-Chopp 🍺 ..."). A apresentação acontece UMA vez (na abertura); se o agente
+// já falou antes na conversa, o LLM às vezes se apresenta de novo — aqui o código
+// corta isso pra ele nunca cumprimentar duas vezes. Mantém o resto da mensagem e
+// preserva saudação a cliente conhecido (ex.: "Oi João!"), que não cita "Chopinho".
+export function stripReintro(reply: string): string {
+  return reply
+    .replace(
+      /^\s*(oi|ol[áa]|opa|e a[íi])[^\p{L}\n]*(?:eu\s+)?(?:sou|aqui é)\s+o\s+chopinho\b(?:[,\s]+da\s+ss-?chopp)?[^\p{L}\p{N}\n]*/iu,
+      "",
+    )
+    .replace(/^\s+/, "");
+}
+
 // Lê uma configuração da empresa (model Setting). Retorna null se não existir.
 async function getSetting(companyId: string, key: string): Promise<string | null> {
   const row = await prisma.setting.findUnique({
@@ -2121,6 +2135,12 @@ export async function chatWithAgent(
     // fallback disparava o PIX sempre que o texto citava "sinal de 50%", o que
     // fazia a chave aparecer no meio da conversa.)
     const pixInfo = result.pix;
+    // Cumprimenta UMA vez só: se o agente já falou antes nesta conversa (já existe
+    // uma resposta dele no histórico), remove qualquer reapresentação "Oi! Eu sou o
+    // Chopinho…" que o LLM tenha repetido. A saudação vem da abertura, não se repete.
+    if (history.some((m) => m.role === "assistant")) {
+      reply = stripReintro(reply);
+    }
     // Primeiro LIMPA qualquer chave/dado de pagamento que a IA tenha escrito
     // (nunca deixa sair chave inventada/mascarada). NÃO embute a chave no texto:
     // ela vai numa MENSAGEM SEPARADA, só o número, pra o cliente copiar e colar
