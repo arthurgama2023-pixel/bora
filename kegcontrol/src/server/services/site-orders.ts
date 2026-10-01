@@ -259,6 +259,8 @@ export async function createAgentSiteOrder(
     city?: string | null;
     street?: string | null;
     eventDate?: string | null; // dia combinado da entrega/retirada (se o cliente definiu)
+    eventTime?: string | null; // horário combinado da entrega
+    venueType?: "casa" | "salao" | null; // local do evento: casa ou salão
     document?: string | null; // CPF/CNPJ pra nota
     chopeiraType?: "eletrica" | "gelo" | null; // chopeira escolhida
     hasStairs?: "sim" | "nao" | null; // acesso: tem escada ou é térreo
@@ -289,6 +291,8 @@ export async function createAgentSiteOrder(
           city: data.city ?? match.city,
           street: data.street ?? match.street,
           eventDate: data.eventDate ?? match.eventDate,
+          eventTime: data.eventTime ?? match.eventTime,
+          venueType: data.venueType ?? match.venueType,
           document: data.document ?? match.document,
           chopeiraType: data.chopeiraType ?? match.chopeiraType,
           hasStairs: data.hasStairs ?? match.hasStairs,
@@ -311,6 +315,8 @@ export async function createAgentSiteOrder(
       city: data.city ?? null,
       street: data.street ?? null,
       eventDate: data.eventDate ?? null,
+      eventTime: data.eventTime ?? null,
+      venueType: data.venueType ?? null,
       document: data.document ?? null,
       chopeiraType: data.chopeiraType ?? null,
       hasStairs: data.hasStairs ?? null,
