@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import {
   chatWithAgent,
   handleTrainerMessage,
+  isAgentActive,
   isTrainerNumber,
   ORDER_PHOTO_FOLLOWUP,
   type ChatTurn,
@@ -85,6 +86,14 @@ export async function POST(req: NextRequest) {
 
   // Ignoramos tudo que não for texto, áudio (voz) ou imagem de um usuário.
   if (!incoming || (!incoming.text && !incoming.audio && !incoming.image)) {
+    return NextResponse.json({ ok: true });
+  }
+
+  // CHAVE-MESTRA GLOBAL: se o dono DESLIGOU o agente (AgentConfig.active=false),
+  // ele fica MUDO pra todo mundo — não responde texto/áudio, não dá ACK de
+  // imagem, nem atende treinador. A conexão segue de pé (reconcile acima roda
+  // normal); religar no painel devolve tudo na hora, sem perder nada.
+  if (!(await isAgentActive(companyId))) {
     return NextResponse.json({ ok: true });
   }
 
