@@ -280,6 +280,21 @@ export async function upsertCustomerFromAgent(
   return { id: customer.id, created: true, name };
 }
 
+// Liga/desliga o agente IA para TODOS os clientes da empresa de uma vez (ação em
+// massa da aba Clientes — "Liberar todos"). Só mexe em quem está no estado
+// oposto, então o retorno é exatamente quantos mudaram. Não cria contatos nem
+// toca em nada além do agentEnabled.
+export async function setAllCustomersAgentEnabled(
+  companyId: string,
+  enabled: boolean,
+): Promise<{ changed: number }> {
+  const res = await prisma.customer.updateMany({
+    where: { companyId, agentEnabled: !enabled },
+    data: { agentEnabled: enabled },
+  });
+  return { changed: res.count };
+}
+
 // Limpeza PROFUNDA de teste (usada pelo "começe novamente" só de números
 // TREINADORES): esquece tudo que o agente aprendeu sobre este contato — nome
 // (volta a placeholder), endereço, bairro, cidade, CPF e as notas (pedido de

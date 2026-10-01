@@ -23,6 +23,7 @@ import { getAutoEnableNew } from "@/server/services/agent-access";
 import { AgenteClientesTabs } from "@/components/agente-clientes-tabs";
 import { AgentToggle } from "./agent-toggle";
 import { AutoEnableNewToggle } from "./auto-enable-toggle";
+import { EnableAllClients } from "./enable-all-clients";
 import { AutoRefresh } from "./auto-refresh";
 import { CustomerFilters } from "./filters";
 
@@ -81,8 +82,9 @@ export default async function CustomersPage({
       />
 
       {canEdit && (
-        <div className="mb-4">
+        <div className="mb-4 space-y-3">
           <AutoEnableNewToggle initial={autoEnableNew} />
+          <EnableAllClients />
         </div>
       )}
 

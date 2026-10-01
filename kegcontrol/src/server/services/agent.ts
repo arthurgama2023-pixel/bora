@@ -215,6 +215,44 @@ export function normalizeEscada(v: unknown): "sim" | "nao" | null {
   return null;
 }
 
+// Casa vs salão de festas (venueType do pedido). "salão", "salao de festas",
+// "buffet", "espaço" → salao; "casa", "apê", "apartamento", "residência" → casa.
+export function normalizeVenue(v: unknown): "casa" | "salao" | null {
+  if (typeof v !== "string") return null;
+  const t = v
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+  if (/(salao|sal[oõ]es|buffet|bufe|espaco|clube|chacara|sitio)/.test(t)) return "salao";
+  if (/(casa|ape|apto|apartamento|residenc|condominio|quintal|predio|minha)/.test(t)) return "casa";
+  return null;
+}
+
+// Separa data e horário de um texto livre ("21/09 às 19:00" → {date:"21/09",
+// time:"19:00"}; "04/10" → {date:"04/10"}). Pega "às 19h", "19:00", "às 19",
+// "7 da noite". Serve de rede pra quando a IA manda data e hora juntas num campo
+// só — assim o horário não some (fica no eventTime próprio do pedido).
+export function splitDateTime(input?: string | null): { date?: string; time?: string } {
+  if (!input || !input.trim()) return {};
+  const raw = input.trim();
+  // HH:MM / HHhMM / HHh  (ex.: "19:00", "19h", "20h30")
+  let m = raw.match(/(\d{1,2})\s*[:h]\s*(\d{2})?/i);
+  // ...ou "às 19" / "as 19" (sem dois-pontos). Não usa \b (quebra com "à").
+  if (!m) m = raw.match(/(?:^|[\s,])[àa]s?\s+(\d{1,2})(?!\s*[:\dh])/i);
+  if (!m) return { date: raw };
+  const hh = String(m[1]).padStart(2, "0");
+  const mm = m[2] ? String(m[2]) : "00";
+  const time = `${hh}:${mm}`;
+  // tira o horário e um eventual "às"/"as" solto pra sobrar só a data
+  const date = raw
+    .replace(m[0], " ")
+    .replace(/(^|\s)[àa]s(?=\s|$)/gi, "$1")
+    .replace(/\s{2,}/g, " ")
+    .replace(/[\s,·\-–]+$/g, "")
+    .trim();
+  return { date: date || undefined, time };
+}
+
 // ─── Memória de pedido em CÓDIGO (reforço contra o LLM "esquecer") ─────────
 // O prompt já manda não re-perguntar o que o cliente já respondeu, mas o
 // Gemini às vezes esquece um dado confirmado há 1-2 mensagens (ex.: pergunta a
@@ -234,6 +272,9 @@ export type OrderDraft = {
   endereco?: string;
   chopeiraType?: "eletrica" | "gelo";
   hasStairs?: "sim" | "nao";
+  venueType?: "casa" | "salao"; // casa ou salão de festas
+  eventDate?: string; // data combinada da entrega (ex.: "04/10")
+  eventTime?: string; // horário combinado da entrega (ex.: "19:00")
   document?: string;
   formaPagamento?: string;
   nome?: string; // nome completo do cliente (perguntado no fluxo)
@@ -280,6 +321,9 @@ const DRAFT_LABELS: Record<keyof OrderDraft, string> = {
   endereco: "Endereço",
   chopeiraType: "Tipo de chopeira",
   hasStairs: "Tem escada",
+  venueType: "Casa ou salão",
+  eventDate: "Data da entrega",
+  eventTime: "Horário da entrega",
   document: "CPF/CNPJ",
   formaPagamento: "Forma de pagamento do restante",
 };
@@ -1072,6 +1116,9 @@ const TOOLS: FunctionDeclaration[] = [
         endereco: { type: Type.STRING, description: "Endereço confirmado nesta mensagem" },
         tipo_chopeira: { type: Type.STRING, description: "'eletrica' ou 'gelo', se confirmado" },
         escada: { type: Type.STRING, description: "'sim' (tem escada) ou 'nao' (térreo), se confirmado" },
+        casa_salao: { type: Type.STRING, description: "'casa' ou 'salao' (salão de festas), se confirmado nesta mensagem" },
+        data_entrega: { type: Type.STRING, description: "Data da entrega/festa confirmada nesta mensagem (ex.: '04/10', 'sábado')" },
+        horario: { type: Type.STRING, description: "Horário da entrega confirmado nesta mensagem (ex.: '19:00', '19h', 'à noite')" },
         cpf: { type: Type.STRING, description: "CPF/CNPJ confirmado nesta mensagem" },
         forma_pagamento: { type: Type.STRING, description: "Forma de pagamento do restante confirmada nesta mensagem" },
       },
@@ -1090,7 +1137,16 @@ const TOOLS: FunctionDeclaration[] = [
         data_entrega: {
           type: Type.STRING,
           description:
-            "Dia/data combinado para a entrega ou retirada, SE o cliente já definiu (ex.: '25/12', 'sábado', 'hoje à noite'). Opcional — deixe vazio se ainda não combinaram a data.",
+            "DATA combinada para a entrega/festa (ex.: '25/12', 'sábado', '04/10'). Só a data — o horário vai no campo 'horario'. Obrigatório pra fechar.",
+        },
+        horario: {
+          type: Type.STRING,
+          description:
+            "HORÁRIO combinado da entrega (ex.: '19:00', '19h', 'à noite'). Obrigatório pra fechar — pergunte antes de finalizar se ainda não souber.",
+        },
+        casa_salao: {
+          type: Type.STRING,
+          description: "Local do evento: 'casa' ou 'salao' (salão de festas), se o cliente já disse. Opcional.",
         },
         nome: {
           type: Type.STRING,
@@ -1516,6 +1572,18 @@ async function runTool(
         if (chopeira) ctx.draftPatch.chopeiraType = chopeira;
         const escada = normalizeEscada(input.escada);
         if (escada) ctx.draftPatch.hasStairs = escada;
+        const venue = normalizeVenue(input.casa_salao);
+        if (venue) ctx.draftPatch.venueType = venue;
+        // Data e horário — aceita os dois juntos num campo só (splitDateTime).
+        if (typeof input.data_entrega === "string" && input.data_entrega.trim()) {
+          const { date, time } = splitDateTime(input.data_entrega);
+          if (date) ctx.draftPatch.eventDate = date;
+          if (time) ctx.draftPatch.eventTime = time;
+        }
+        if (typeof input.horario === "string" && input.horario.trim()) {
+          const { time } = splitDateTime(input.horario);
+          ctx.draftPatch.eventTime = time ?? input.horario.trim();
+        }
         const doc = normalizeDocument(input.cpf);
         if (doc) ctx.draftPatch.document = doc;
         if (typeof input.forma_pagamento === "string" && input.forma_pagamento.trim()) {
@@ -1628,6 +1696,35 @@ async function runTool(
       const cpf = cpfNoFechamento || null;
       const chopeiraType = normalizeChopeira(input.tipo_chopeira) ?? draftSoFar.chopeiraType ?? null;
       const hasStairs = normalizeEscada(input.escada) ?? draftSoFar.hasStairs ?? null;
+      const venueType = normalizeVenue(input.casa_salao) ?? draftSoFar.venueType ?? null;
+      // DATA e HORÁRIO: aceita os dois juntos (splitDateTime separa "04/10 às 19h"),
+      // com o horário também vindo do campo próprio; completa pelo rascunho.
+      const dtFromData = splitDateTime(input.data_entrega ? String(input.data_entrega) : null);
+      const dtFromHora = splitDateTime(input.horario ? String(input.horario) : null);
+      const eventDate = dtFromData.date ?? draftSoFar.eventDate ?? null;
+      const eventTime =
+        dtFromData.time ??
+        dtFromHora.time ??
+        (typeof input.horario === "string" && input.horario.trim() ? input.horario.trim() : null) ??
+        draftSoFar.eventTime ??
+        null;
+      // CHECKLIST TRAVADA: não fecha sem DATA e HORÁRIO da entrega — a equipe
+      // precisa saber quando entregar. (Datas de Natal/Ano Novo já foram barradas
+      // lá em cima; aqui é entrega normal, que exige dia e hora.)
+      if (!eventDate || !eventTime) {
+        const falta = !eventDate && !eventTime ? "a DATA e o HORÁRIO" : !eventDate ? "a DATA" : "o HORÁRIO";
+        return JSON.stringify({
+          ok: false,
+          motivo: `Ainda falta ${falta} da entrega — não feche o pedido nem envie o PIX. Pergunte o dia e a hora combinados e só então finalize.`,
+        });
+      }
+      // Persiste no rascunho o que foi confirmado agora (igual ao nome), pra não
+      // se perder se o fechamento precisar de outro turno.
+      if (ctx.draftPatch) {
+        ctx.draftPatch.eventDate = eventDate;
+        ctx.draftPatch.eventTime = eventTime;
+        if (venueType) ctx.draftPatch.venueType = venueType;
+      }
       const formaPagamento =
         typeof input.forma_pagamento === "string" && input.forma_pagamento.trim()
           ? input.forma_pagamento.trim()
@@ -1648,7 +1745,9 @@ async function runTool(
           neighborhood: zona.bairro,
           city: zona.city,
           street: input.endereco ? String(input.endereco) : null,
-          eventDate: input.data_entrega ? String(input.data_entrega) : null,
+          eventDate,
+          eventTime,
+          venueType,
           document: cpf,
           chopeiraType,
           hasStairs,
