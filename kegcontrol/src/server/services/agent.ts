@@ -378,6 +378,18 @@ export function mergeOrderDraft(draft: OrderDraft, patch: OrderDraft): OrderDraf
   return merged;
 }
 
+// Chave-mestra GLOBAL do agente (AgentConfig.active). Desligada, o agente fica
+// MUDO pra todo mundo no WhatsApp — um "botão de pânico" reversível que NÃO
+// mexe na liberação por cliente (agentEnabled), então religar devolve tudo
+// exatamente como estava. Sem config ainda = ativo (padrão).
+export async function isAgentActive(companyId: string): Promise<boolean> {
+  const c = await prisma.agentConfig.findUnique({
+    where: { companyId },
+    select: { active: true },
+  });
+  return c?.active ?? true;
+}
+
 export async function getAgentConfig(companyId: string) {
   const existing = await prisma.agentConfig.findUnique({ where: { companyId } });
   if (existing) return existing;

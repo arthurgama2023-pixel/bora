@@ -20,8 +20,10 @@ import {
 import { formatCpfCnpj } from "@/lib/utils";
 import { countCustomersBySource, listCustomers } from "@/server/services/customers";
 import { getAutoEnableNew } from "@/server/services/agent-access";
+import { isAgentActive } from "@/server/services/agent";
 import { AgenteClientesTabs } from "@/components/agente-clientes-tabs";
 import { AgentToggle } from "./agent-toggle";
+import { AgentMasterToggle } from "./agent-master-toggle";
 import { AutoEnableNewToggle } from "./auto-enable-toggle";
 import { EnableAllClients } from "./enable-all-clients";
 import { AutoRefresh } from "./auto-refresh";
@@ -56,10 +58,11 @@ export default async function CustomersPage({
   const { q, status, type, reg } = await searchParams;
   const naoRegistrados = reg === "nao";
   const source = naoRegistrados ? "AGENTE" : "MANUAL";
-  const [customers, counts, autoEnableNew] = await Promise.all([
+  const [customers, counts, autoEnableNew, agentActive] = await Promise.all([
     listCustomers(session.companyId, { q, status, type, source }),
     countCustomersBySource(session.companyId),
     getAutoEnableNew(session.companyId),
+    isAgentActive(session.companyId),
   ]);
   const canEdit = session.role === "ADMIN" || session.role === "MANAGER";
 
@@ -83,6 +86,7 @@ export default async function CustomersPage({
 
       {canEdit && (
         <div className="mb-4 space-y-3">
+          <AgentMasterToggle initial={agentActive} />
           <AutoEnableNewToggle initial={autoEnableNew} />
           <EnableAllClients />
         </div>
