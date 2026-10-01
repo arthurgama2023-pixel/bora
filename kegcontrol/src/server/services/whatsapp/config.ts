@@ -19,7 +19,18 @@ const KEYS = {
   instance: "whatsapp.instance",
   token: "whatsapp.webhookToken",
   allowed: "whatsapp.allowedNumbers", // números que o agente atende (vírgula); vazio = todos
+  // Instâncias ADICIONAIS (além da primária) — JSON [{name,label}]. Todas na
+  // MESMA empresa, servidor e token: o webhook acha a empresa pelo token e
+  // responde pela instância que recebeu (payload.instance). Assim o mesmo agente
+  // atende em mais de um número de WhatsApp.
+  instancesExtra: "whatsapp.instancesExtra",
 } as const;
+
+export interface WhatsAppInstance {
+  name: string; // nome técnico no Evolution (instanceName)
+  label: string; // rótulo amigável mostrado no painel
+  primary: boolean; // a instância original da empresa (não pode ser removida)
+}
 
 async function readSetting(companyId: string, key: string): Promise<string | null> {
   const row = await prisma.setting.findUnique({
@@ -41,15 +52,28 @@ function defaultInstance(companyId: string): string {
   return `kegcontrol-${companyId.slice(0, 8)}`;
 }
 
-/** Config efetiva (banco > env). Retorna null se faltar URL ou apiKey. */
-export async function getWhatsAppConfig(companyId: string): Promise<WhatsAppConfig | null> {
+/** Nome da instância PRIMÁRIA da empresa (banco > env > padrão). */
+export async function getPrimaryInstanceName(companyId: string): Promise<string> {
+  return (
+    (await readSetting(companyId, KEYS.instance)) ??
+    process.env.EVOLUTION_INSTANCE ??
+    defaultInstance(companyId)
+  );
+}
+
+/**
+ * Config efetiva (banco > env). Retorna null se faltar URL ou apiKey.
+ * `instanceName` opcional: opera numa instância ESPECÍFICA (2º número etc.),
+ * reusando o mesmo servidor e token da empresa. Sem ela, usa a primária.
+ */
+export async function getWhatsAppConfig(
+  companyId: string,
+  instanceName?: string,
+): Promise<WhatsAppConfig | null> {
   const apiUrl = (await readSetting(companyId, KEYS.url)) ?? process.env.EVOLUTION_API_URL ?? "";
   const encKey = await readSetting(companyId, KEYS.key);
   const apiKey = encKey ? decrypt(encKey) : (process.env.EVOLUTION_API_KEY ?? "");
-  const instance =
-    (await readSetting(companyId, KEYS.instance)) ??
-    process.env.EVOLUTION_INSTANCE ??
-    defaultInstance(companyId);
+  const instance = instanceName?.trim() || (await getPrimaryInstanceName(companyId));
   let webhookToken = (await readSetting(companyId, KEYS.token)) ?? "";
 
   if (!apiUrl || !apiKey) return null;
@@ -60,6 +84,68 @@ export async function getWhatsAppConfig(companyId: string): Promise<WhatsAppConf
     await writeSetting(companyId, KEYS.token, webhookToken);
   }
   return { apiUrl: apiUrl.replace(/\/$/, ""), apiKey, instance, webhookToken };
+}
+
+// ─── Múltiplas instâncias (números) por empresa ──────────────────────────────
+
+async function readExtraInstances(companyId: string): Promise<{ name: string; label: string }[]> {
+  const raw = await readSetting(companyId, KEYS.instancesExtra);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((x) => x && typeof x.name === "string")
+      .map((x) => ({ name: String(x.name), label: String(x.label ?? x.name) }));
+  } catch {
+    return [];
+  }
+}
+
+async function writeExtraInstances(
+  companyId: string,
+  list: { name: string; label: string }[],
+): Promise<void> {
+  await writeSetting(companyId, KEYS.instancesExtra, JSON.stringify(list));
+}
+
+/** Todas as instâncias da empresa: a primária primeiro, depois as adicionais. */
+export async function listInstances(companyId: string): Promise<WhatsAppInstance[]> {
+  const primary = await getPrimaryInstanceName(companyId);
+  const extras = await readExtraInstances(companyId);
+  return [
+    { name: primary, label: "Número principal", primary: true },
+    ...extras.map((e) => ({ name: e.name, label: e.label, primary: false })),
+  ];
+}
+
+/** Cria uma instância ADICIONAL (2º número…) com um nome técnico único. */
+export async function addInstance(companyId: string, label?: string): Promise<WhatsAppInstance> {
+  const primary = await getPrimaryInstanceName(companyId);
+  const extras = await readExtraInstances(companyId);
+  const taken = new Set([primary, ...extras.map((e) => e.name)]);
+  // Nome técnico derivado da primária: kegcontrol-xxxx-2, -3, … (nunca colide).
+  let n = extras.length + 2;
+  let name = `${primary}-${n}`;
+  while (taken.has(name)) name = `${primary}-${++n}`;
+  const entry = { name, label: label?.trim() || `Número ${n}` };
+  await writeExtraInstances(companyId, [...extras, entry]);
+  return { ...entry, primary: false };
+}
+
+/** Remove uma instância adicional da lista (a primária nunca é removida). */
+export async function removeInstanceFromList(companyId: string, name: string): Promise<void> {
+  const extras = await readExtraInstances(companyId);
+  await writeExtraInstances(companyId, extras.filter((e) => e.name !== name));
+}
+
+/** Renomeia o rótulo de uma instância adicional. */
+export async function renameInstance(companyId: string, name: string, label: string): Promise<void> {
+  const extras = await readExtraInstances(companyId);
+  await writeExtraInstances(
+    companyId,
+    extras.map((e) => (e.name === name ? { ...e, label: label.trim() || e.label } : e)),
+  );
 }
 
 /** Salva os dados do servidor Evolution informados na aba Conectar. */
