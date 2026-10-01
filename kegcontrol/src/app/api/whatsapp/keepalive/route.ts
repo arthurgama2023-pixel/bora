@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getWhatsAppChannel } from "@/server/services/whatsapp/channel";
-import { listWhatsAppCompanyIds } from "@/server/services/whatsapp/config";
+import { listInstances, listWhatsAppCompanyIds } from "@/server/services/whatsapp/config";
 
 export const dynamic = "force-dynamic";
 
@@ -26,16 +26,22 @@ export async function GET(req: Request) {
 
   const channel = getWhatsAppChannel();
   const companyIds = await listWhatsAppCompanyIds();
+  // Reconcilia TODAS as instâncias (números) de cada empresa — não só a primária.
   const results = await Promise.all(
-    companyIds.map(async (companyId) => {
-      try {
-        const r = await channel.reconcile(companyId, appUrl());
-        return { companyId, ...r };
-      } catch (err) {
-        return { companyId, state: "error", error: String(err) };
-      }
+    companyIds.flatMap(async (companyId) => {
+      const instances = await listInstances(companyId);
+      return Promise.all(
+        instances.map(async (inst) => {
+          try {
+            const r = await channel.reconcile(companyId, appUrl(), inst.primary ? undefined : inst.name);
+            return { companyId, instance: inst.name, ...r };
+          } catch (err) {
+            return { companyId, instance: inst.name, state: "error", error: String(err) };
+          }
+        }),
+      );
     }),
-  );
+  ).then((groups) => groups.flat());
 
   return NextResponse.json({ ok: true, at: new Date().toISOString(), results });
 }

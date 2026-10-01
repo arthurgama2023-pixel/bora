@@ -203,8 +203,9 @@ export class WhatsAppEvolutionChannel {
   async transcribeAudio(
     companyId: string,
     audio: NonNullable<IncomingMessage["audio"]>,
+    instanceName?: string,
   ): Promise<string | null> {
-    const cfg = await getWhatsAppConfig(companyId);
+    const cfg = await getWhatsAppConfig(companyId, instanceName);
     if (!cfg) return null;
     const media = await this.fetchMediaBase64(cfg, audio.key, audio.base64, audio.mimetype);
     if (!media) return null;
@@ -218,8 +219,9 @@ export class WhatsAppEvolutionChannel {
   async downloadImage(
     companyId: string,
     image: NonNullable<IncomingMessage["image"]>,
+    instanceName?: string,
   ): Promise<{ base64: string; mimetype: string } | null> {
-    const cfg = await getWhatsAppConfig(companyId);
+    const cfg = await getWhatsAppConfig(companyId, instanceName);
     if (!cfg) return null;
     const media = await this.fetchMediaBase64(cfg, image.key, image.base64, image.mimetype);
     if (!media) return null;
@@ -229,13 +231,18 @@ export class WhatsAppEvolutionChannel {
 
   // Retorna true se o Evolution aceitou o envio, false caso contrário — o
   // chamador (webhook) usa isso pra rastrear, ex.: a 2ª mensagem do PIX.
-  async sendMessage(companyId: string, externalId: string, text: string): Promise<boolean> {
+  async sendMessage(
+    companyId: string,
+    externalId: string,
+    text: string,
+    instanceName?: string,
+  ): Promise<boolean> {
     // O núcleo gera **negrito** (markdown do chat web); o WhatsApp usa *negrito*.
     const whatsappText = text.replace(/\*\*(.+?)\*\*/g, "*$1*");
     // Marca como "enviado pelo agente" ANTES de enviar — quando o eco (fromMe)
     // voltar pelo webhook, é reconhecido e NÃO conta como humano na conversa.
     rememberAgentSend(externalId, whatsappText);
-    const cfg = await getWhatsAppConfig(companyId);
+    const cfg = await getWhatsAppConfig(companyId, instanceName);
     if (!cfg) {
       console.warn("[whatsapp] Evolution não configurada — mensagem não enviada:", whatsappText);
       return false;
@@ -266,9 +273,9 @@ export class WhatsAppEvolutionChannel {
     externalId: string,
     mediaUrl: string,
     caption?: string,
-    opts?: { mimetype?: string; fileName?: string },
+    opts?: { mimetype?: string; fileName?: string; instanceName?: string },
   ): Promise<boolean> {
-    const cfg = await getWhatsAppConfig(companyId);
+    const cfg = await getWhatsAppConfig(companyId, opts?.instanceName);
     if (!cfg) {
       console.warn("[whatsapp] Evolution não configurada — mídia não enviada:", mediaUrl);
       return false;
@@ -333,8 +340,8 @@ export class WhatsAppEvolutionChannel {
   }
 
   /** Estado + QR + número. Não cria nada — só lê. */
-  async status(companyId: string, appUrl: string): Promise<WhatsAppStatus> {
-    const cfg = await getWhatsAppConfig(companyId);
+  async status(companyId: string, appUrl: string, instanceName?: string): Promise<WhatsAppStatus> {
+    const cfg = await getWhatsAppConfig(companyId, instanceName);
     if (!cfg) return { configured: false, state: "unknown" };
 
     const base: WhatsAppStatus = {
@@ -409,15 +416,20 @@ export class WhatsAppEvolutionChannel {
    * Para o pareamento ser válido, a instância precisa ser recriada do zero com o número
    * e estar pronta ANTES de pedir o código — daí as esperas entre delete e create.
    */
-  async connect(companyId: string, appUrl: string, number?: string): Promise<WhatsAppStatus> {
-    const cfg = await getWhatsAppConfig(companyId);
+  async connect(
+    companyId: string,
+    appUrl: string,
+    number?: string,
+    instanceName?: string,
+  ): Promise<WhatsAppStatus> {
+    const cfg = await getWhatsAppConfig(companyId, instanceName);
     if (!cfg) return { configured: false, state: "unknown" };
 
     const webhookUrl = this.webhookUrl(cfg, appUrl);
     const publicUrlWarning = /localhost|127\.0\.0\.1/.test(appUrl);
     const num = number ? normalizeBrPhone(number) : null;
 
-    if ((await this.readState(cfg)) === "open") return this.status(companyId, appUrl);
+    if ((await this.readState(cfg)) === "open") return this.status(companyId, appUrl, instanceName);
 
     if (num) {
       // Recria a instância do zero com o número (fluxo de pairing code).
@@ -476,7 +488,7 @@ export class WhatsAppEvolutionChannel {
       await wait(1500);
     }
 
-    const status = await this.status(companyId, appUrl);
+    const status = await this.status(companyId, appUrl, instanceName);
     if (status.state === "open") return status;
     return {
       ...status,
@@ -486,8 +498,8 @@ export class WhatsAppEvolutionChannel {
   }
 
   /** Desconecta o WhatsApp (logout da instância). */
-  async disconnect(companyId: string): Promise<void> {
-    const cfg = await getWhatsAppConfig(companyId);
+  async disconnect(companyId: string, instanceName?: string): Promise<void> {
+    const cfg = await getWhatsAppConfig(companyId, instanceName);
     if (!cfg) return;
     await this.api(cfg, "DELETE", `/instance/logout/${cfg.instance}`);
   }
@@ -499,8 +511,8 @@ export class WhatsAppEvolutionChannel {
    * existir no servidor — o próximo "Conectar" cria uma nova do zero e gera um
    * código/QR novo. Idempotente e limitado no tempo (não trava).
    */
-  async reset(companyId: string): Promise<{ ok: boolean; state: string }> {
-    const cfg = await getWhatsAppConfig(companyId);
+  async reset(companyId: string, instanceName?: string): Promise<{ ok: boolean; state: string }> {
+    const cfg = await getWhatsAppConfig(companyId, instanceName);
     if (!cfg) return { ok: false, state: "unconfigured" };
     // logout primeiro (encerra a sessão pareada), depois delete (remove a
     // instância inteira). Timeouts próprios: mesmo se um passo engasgar, retorna.
@@ -521,8 +533,9 @@ export class WhatsAppEvolutionChannel {
   async reconcile(
     companyId: string,
     appUrl: string,
+    instanceName?: string,
   ): Promise<{ state: string; rewired: boolean; reconnected: boolean }> {
-    const cfg = await getWhatsAppConfig(companyId);
+    const cfg = await getWhatsAppConfig(companyId, instanceName);
     if (!cfg) return { state: "unconfigured", rewired: false, reconnected: false };
 
     const state = await this.readState(cfg);

@@ -43,6 +43,12 @@ export async function POST(req: NextRequest) {
   const channel = getWhatsAppChannel();
   const raw = await req.json().catch(() => null);
 
+  // Qual INSTÂNCIA (número) recebeu esta mensagem. A empresa pode ter mais de um
+  // número ligado ao MESMO agente; o token acha a empresa e o payload.instance
+  // diz por qual número responder. Vazio = instância primária (comportamento
+  // antigo), então nada muda para quem só tem um número.
+  const instanceName = (raw as { instance?: string } | null)?.instance || undefined;
+
   // Evento de conexão: só reconcilia quando a conexão CAIU de fato ("close"),
   // usando as credenciais já pareadas (sem novo QR). Em "connecting" NÃO mexe —
   // esse estado também acontece durante o pareamento (QR/código), e reconciliar
@@ -51,7 +57,7 @@ export async function POST(req: NextRequest) {
   if (event === "connection.update" || event === "CONNECTION_UPDATE") {
     const state = (raw as { data?: { state?: string } })?.data?.state;
     if (state === "close") {
-      channel.reconcile(companyId, process.env.APP_URL ?? "").catch((e) => {
+      channel.reconcile(companyId, process.env.APP_URL ?? "", instanceName).catch((e) => {
         console.error("[whatsapp] reconcile falhou:", e);
         Sentry.captureException(e, { tags: { companyId, whatsapp: "reconcile" } });
       });
@@ -120,7 +126,7 @@ export async function POST(req: NextRequest) {
           .deleteMany({ where: { companyId, sessionId: `wa-${incoming.externalId}` } })
           .catch(() => {});
       }
-      await channel.sendMessage(companyId, incoming.externalId, handled.reply);
+      await channel.sendMessage(companyId, incoming.externalId, handled.reply, instanceName);
       return NextResponse.json({ ok: true });
     }
   }
@@ -143,7 +149,7 @@ export async function POST(req: NextRequest) {
   // guarda pra revisão humana (aba Verificação) e confirma o recebimento.
   // Tratado à parte, antes da lógica de texto/áudio, e sempre retorna aqui.
   if (incoming.image) {
-    const downloaded = await channel.downloadImage(companyId, incoming.image);
+    const downloaded = await channel.downloadImage(companyId, incoming.image, instanceName);
     if (downloaded) {
       await savePaymentProof(companyId, {
         phone: incoming.externalId,
@@ -157,7 +163,7 @@ export async function POST(req: NextRequest) {
       });
       // Se o humano assumiu, não manda o ACK (ele responde direto ao cliente).
       if (!pausedByHuman) {
-        await channel.sendMessage(companyId, incoming.externalId, IMAGE_RECEIVED_ACK);
+        await channel.sendMessage(companyId, incoming.externalId, IMAGE_RECEIVED_ACK, instanceName);
       }
     } else {
       console.error("[whatsapp] falha ao baixar imagem do Evolution — comprovante não salvo");
@@ -173,12 +179,13 @@ export async function POST(req: NextRequest) {
   // Resolve o texto: mensagem de texto OU transcrição do áudio de voz.
   let text = incoming.text;
   if (!text && incoming.audio) {
-    text = (await channel.transcribeAudio(companyId, incoming.audio)) ?? undefined;
+    text = (await channel.transcribeAudio(companyId, incoming.audio, instanceName)) ?? undefined;
     if (!text) {
       await channel.sendMessage(
         companyId,
         incoming.externalId,
         "Não consegui entender seu áudio 😅 pode repetir ou mandar por texto?",
+        instanceName,
       );
       return NextResponse.json({ ok: true });
     }
@@ -231,12 +238,12 @@ export async function POST(req: NextRequest) {
       console.log(
         `[pix-trace] phone=${phone} | pix=${pix ? "SIM(" + pix.chave + ")" : "NAO"} | replyPrometeChave=${replyPrometePix}`,
       );
-      await channel.sendMessage(companyId, phone, reply);
+      await channel.sendMessage(companyId, phone, reply, instanceName);
       // Chave PIX numa mensagem SÓ com o número (logo após o resumo, seguindo o
       // ponteiro "a chave vem na próxima mensagem 👇"): o cliente copia e cola
       // limpo no banco, sem pegar texto junto.
       if (pix) {
-        const okPix = await channel.sendMessage(companyId, phone, pix.chave);
+        const okPix = await channel.sendMessage(companyId, phone, pix.chave, instanceName);
         console.log(`[pix-trace] 2a mensagem (chave ${pix.chave}) enviada=${okPix} para ${phone}`);
         if (!okPix) {
           Sentry.captureMessage("Falha ao enviar a 2a mensagem do PIX (a chave)", {
@@ -262,12 +269,13 @@ export async function POST(req: NextRequest) {
         const ok = await channel.sendMedia(companyId, phone, img.url, img.label, {
           mimetype: "image/png",
           fileName: "tabela-precos.png",
+          instanceName,
         });
         if (!ok) priceImageFailed = true;
       }
       // Rede de segurança: se a imagem não foi entregue, manda os preços em TEXTO.
       if (priceImageFailed && priceTableText) {
-        await channel.sendMessage(companyId, phone, priceTableText);
+        await channel.sendMessage(companyId, phone, priceTableText, instanceName);
         Sentry.captureMessage("Falha ao enviar a imagem da tabela — usei o fallback em texto", {
           level: "warning",
           tags: { companyId, whatsapp: "price-image" },
@@ -276,10 +284,10 @@ export async function POST(req: NextRequest) {
       // Pedido fechado (finalizar_pedido): manda a foto do(s) barril(is) e, na
       // sequência, um empurrãozinho pra confirmar o PIX.
       for (const photo of photos) {
-        await channel.sendMedia(companyId, phone, photo.url, photo.label);
+        await channel.sendMedia(companyId, phone, photo.url, photo.label, { instanceName });
       }
       if (photos.length > 0) {
-        await channel.sendMessage(companyId, phone, ORDER_PHOTO_FOLLOWUP);
+        await channel.sendMessage(companyId, phone, ORDER_PHOTO_FOLLOWUP, instanceName);
       }
     } catch (err) {
       // Envolve a conversa INTEIRA (Gemini + ferramentas + resposta). Sem
@@ -287,7 +295,7 @@ export async function POST(req: NextRequest) {
       console.error("[whatsapp]", err);
       Sentry.captureException(err, { tags: { companyId, whatsapp: "chat" } });
       await channel
-        .sendMessage(companyId, phone, "Tive um problema ao processar sua mensagem. Pode tentar de novo?")
+        .sendMessage(companyId, phone, "Tive um problema ao processar sua mensagem. Pode tentar de novo?", instanceName)
         .catch(() => {});
     }
   });

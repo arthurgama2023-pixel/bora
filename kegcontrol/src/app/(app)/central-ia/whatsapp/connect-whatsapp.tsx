@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Loader2, Lock, Plus, RotateCcw, Smartphone, X } from "lucide-react";
+import { CheckCircle2, Loader2, Lock, Plus, RotateCcw, Smartphone, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Field, Input } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -15,20 +15,26 @@ interface Status {
   publicUrlWarning?: boolean;
 }
 
+interface InstanceInfo {
+  name: string;
+  label: string;
+  primary: boolean;
+}
+
 async function apiGet(url: string) {
   const res = await fetch(url);
   const json = await res.json().catch(() => null);
   return json?.ok ? json.data : null;
 }
 
-async function apiPost(url: string, body?: unknown, timeoutMs?: number) {
+async function apiReq(method: string, url: string, body?: unknown, timeoutMs?: number) {
   // timeoutMs: aborta a requisição se o servidor demorar demais — assim o painel
   // nunca fica preso esperando uma resposta que não vem (ex.: Evolution travado).
   const ctrl = timeoutMs ? new AbortController() : undefined;
   const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : undefined;
   try {
     const res = await fetch(url, {
-      method: "POST",
+      method,
       headers: { "Content-Type": "application/json" },
       body: body ? JSON.stringify(body) : undefined,
       signal: ctrl?.signal,
@@ -37,6 +43,340 @@ async function apiPost(url: string, body?: unknown, timeoutMs?: number) {
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+const apiPost = (url: string, body?: unknown, timeoutMs?: number) => apiReq("POST", url, body, timeoutMs);
+
+// ─── Card de UM número (instância) ───────────────────────────────────────────
+// Replica, por número, todo o fluxo de conexão (status + QR/código + desconectar
+// + zerar). As chamadas carregam a instância, então cada card mexe só no SEU
+// número — todos ligados ao MESMO agente.
+function ConnectionCard({
+  instance,
+  onRemoved,
+}: {
+  instance: InstanceInfo;
+  onRemoved?: () => void;
+}) {
+  const [status, setStatus] = useState<Status | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [phone, setPhone] = useState("");
+  // QR por padrão: o código de pareamento (Baileys) costuma ser rejeitado pelo
+  // WhatsApp (erro 401) e derruba a instância. O QR é o caminho confiável.
+  const [mode, setMode] = useState<"code" | "qr">("qr");
+
+  const qs = `?instance=${encodeURIComponent(instance.name)}`;
+
+  const refresh = useCallback(async () => {
+    const data = (await apiGet(`/api/v1/whatsapp/status${qs}`)) as Status | null;
+    if (!data) return null;
+    setStatus((prev) => ({ ...prev, ...data })); // preserva qr/pairingCode entre polls
+    return data;
+  }, [qs]);
+
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 5000);
+    return () => clearInterval(id);
+  }, [refresh]);
+
+  async function connect() {
+    if (mode === "code" && phone.replace(/\D/g, "").length < 10) return;
+    setConnecting(true);
+    setConnectError(null);
+    setStatus((s) => ({ ...(s as Status), pairingCode: undefined, qrBase64: undefined }));
+    try {
+      const json = await apiPost(
+        "/api/v1/whatsapp/connect",
+        { instance: instance.name, ...(mode === "code" ? { number: phone } : {}) },
+        60000,
+      );
+      if (json?.ok) {
+        setStatus(json.data as Status);
+        if (!json.data?.pairingCode && !json.data?.qrBase64 && json.data?.state !== "open") {
+          setConnectError(
+            "O servidor não gerou o código a tempo. Tente de novo — se persistir, confira se o servidor Evolution está no ar.",
+          );
+        }
+      } else {
+        setConnectError(json?.error ?? "Não foi possível conectar agora. Tente novamente.");
+      }
+    } catch {
+      setConnectError(
+        "O servidor demorou demais para responder. Tente de novo em instantes (o servidor Evolution pode estar sobrecarregado).",
+      );
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function resetInstance() {
+    if (
+      !window.confirm(
+        "Zerar a instância apaga a conexão atual no servidor e recomeça do zero. " +
+          "Você vai precisar parear o número de novo (código/QR). Continuar?",
+      )
+    )
+      return;
+    setResetting(true);
+    setConnectError(null);
+    try {
+      const json = await apiPost("/api/v1/whatsapp/reset", { instance: instance.name }, 30000);
+      setStatus((s) => ({
+        ...(s as Status),
+        state: "close",
+        number: undefined,
+        pairingCode: undefined,
+        qrBase64: undefined,
+      }));
+      if (!json?.ok) {
+        setConnectError(
+          "Tentei zerar, mas o servidor não confirmou. Aguarde alguns segundos e tente conectar — se persistir, o servidor Evolution pode estar fora do ar.",
+        );
+      }
+      await refresh();
+    } catch {
+      setConnectError("O servidor demorou demais para zerar a instância. Tente de novo em instantes.");
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  async function disconnect() {
+    await apiPost("/api/v1/whatsapp/disconnect", { instance: instance.name });
+    setStatus((s) => ({
+      ...(s as Status),
+      state: "close",
+      number: undefined,
+      pairingCode: undefined,
+      qrBase64: undefined,
+    }));
+    await refresh();
+  }
+
+  async function removeNumber() {
+    if (
+      !window.confirm(
+        `Remover o número "${instance.label}"? Ele vai parar de atender e será desconectado do servidor. ` +
+          "A conversa dos clientes continua guardada; só este número sai do ar.",
+      )
+    )
+      return;
+    setRemoving(true);
+    try {
+      await apiReq("DELETE", "/api/v1/whatsapp/instances", { name: instance.name }, 30000);
+      onRemoved?.();
+    } finally {
+      setRemoving(false);
+    }
+  }
+
+  const connected = status?.state === "open";
+  const stateInfo =
+    status?.state === "open"
+      ? { label: "Conectado", cls: "text-success", dot: "bg-success" }
+      : status?.state === "connecting"
+        ? { label: "Conectando / reconectando…", cls: "text-warning", dot: "bg-warning animate-pulse" }
+        : status?.state === "close"
+          ? { label: "Desconectado", cls: "text-danger", dot: "bg-danger" }
+          : { label: "Verificando…", cls: "text-muted-foreground", dot: "bg-muted-foreground" };
+  const stepDot = (
+    <span
+      className={cn(
+        "flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold",
+        connected ? "bg-success/15 text-success" : "bg-brand text-brand-foreground",
+      )}
+    >
+      {connected ? "✓" : <Smartphone className="h-3.5 w-3.5" />}
+    </span>
+  );
+
+  return (
+    <Card className="p-5">
+      <div className="mb-3 flex items-center gap-2">
+        {stepDot}
+        <h2 className="text-sm font-semibold">
+          {instance.primary ? "Número principal do agente" : instance.label}
+        </h2>
+        {!instance.primary && (
+          <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-medium text-brand-strong">
+            número extra
+          </span>
+        )}
+        <span className="ml-auto flex items-center gap-1.5 text-xs">
+          <span className={cn("h-2 w-2 rounded-full", stateInfo.dot)} />
+          <span className={cn("font-medium", stateInfo.cls)}>{stateInfo.label}</span>
+        </span>
+      </div>
+
+      {!connected && status?.state === "connecting" && !status?.pairingCode && !status?.qrBase64 && (
+        <p className="mb-3 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
+          ⚠️ A conexão caiu e não voltou sozinha. Gere um novo código/QR abaixo e pareie de novo no
+          celular do agente para o WhatsApp voltar a responder.
+        </p>
+      )}
+
+      {connected ? (
+        <div className="rounded-xl bg-success/10 p-4 text-center">
+          <CheckCircle2 className="mx-auto h-8 w-8 text-success" />
+          <p className="mt-2 text-sm font-medium text-success">
+            WhatsApp conectado{status?.number ? ` — +${status.number}` : ""}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            O agente já responde e consulta barris, estoque e clientes nesse número.
+          </p>
+          <Button variant="outline" size="sm" onClick={disconnect} className="mt-3">
+            Desconectar
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {status?.pairingCode ? (
+            <div className="rounded-xl border border-brand/40 bg-brand/5 p-4 text-center">
+              <p className="text-xs font-medium uppercase tracking-wide text-brand-strong">
+                Código de confirmação
+              </p>
+              <p className="mt-1 font-mono text-3xl font-bold tracking-widest text-foreground">
+                {status.pairingCode}
+              </p>
+              <div className="mt-3 text-left text-xs text-muted-foreground">
+                No celular do número <strong className="text-foreground">{phone}</strong>:
+                <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+                  <li>
+                    WhatsApp → <strong>Aparelhos conectados</strong>
+                  </li>
+                  <li>
+                    <strong>Conectar um aparelho</strong> → <strong>Conectar com número de telefone</strong>
+                  </li>
+                  <li>Digite o código acima</li>
+                </ol>
+              </div>
+              <p className="mt-2 flex items-center justify-center gap-1 text-[11px] text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" /> Aguardando confirmação… (atualiza sozinho)
+              </p>
+            </div>
+          ) : status?.qrBase64 ? (
+            <div className="flex flex-col items-center gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={status.qrBase64}
+                alt="QR code do WhatsApp"
+                className="h-56 w-56 rounded-lg border border-border bg-white p-1"
+              />
+              {mode === "code" && (
+                <p className="max-w-xs rounded-lg bg-warning/10 px-3 py-2 text-center text-[11px] text-warning">
+                  Este servidor não gerou o código de confirmação para esse número — use o QR: escaneie com o
+                  WhatsApp do número que será o agente{phone ? ` (${phone})` : ""}.
+                </p>
+              )}
+              <p className="text-center text-xs text-muted-foreground">
+                WhatsApp → <span className="font-medium">Aparelhos conectados</span> →{" "}
+                <span className="font-medium">Conectar um aparelho</span> → escaneie.
+              </p>
+              <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" /> Aguardando leitura…
+              </p>
+            </div>
+          ) : (
+            mode === "code" && (
+              <Field label="Número do WhatsApp do agente (com DDD)">
+                <Input
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="(11) 99999-8888"
+                  inputMode="tel"
+                  autoComplete="off"
+                  name="whatsapp-agente-numero"
+                />
+                <span className="mt-1 block text-[11px] text-muted-foreground">
+                  É o número que será o assistente — os clientes mandam mensagem para ele.
+                </span>
+              </Field>
+            )
+          )}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              onClick={connect}
+              disabled={connecting || (mode === "code" && phone.replace(/\D/g, "").length < 10)}
+            >
+              {connecting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Gerando…
+                </>
+              ) : status?.pairingCode || status?.qrBase64 ? (
+                "Gerar novo"
+              ) : (
+                <>
+                  <Smartphone className="h-4 w-4" />
+                  {mode === "code" ? "Conectar WhatsApp" : "Gerar QR code"}
+                </>
+              )}
+            </Button>
+            <button
+              onClick={() => {
+                setMode(mode === "code" ? "qr" : "code");
+                setStatus((s) => ({ ...(s as Status), pairingCode: undefined, qrBase64: undefined }));
+              }}
+              className="text-xs font-medium text-brand-strong hover:underline"
+            >
+              {mode === "code" ? "prefiro escanear QR code" : "prefiro código de confirmação"}
+            </button>
+          </div>
+
+          {connectError && (
+            <p className="rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{connectError}</p>
+          )}
+
+          {status?.publicUrlWarning && (
+            <p className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
+              ⚠️ O app está em <span className="font-mono">localhost</span>. A conexão funciona, mas para o
+              agente <strong>receber</strong> mensagens o servidor precisa alcançar uma URL pública — use um
+              túnel (ngrok/cloudflared) ou faça o deploy.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Rodapé: zerar instância + (se for extra) remover número */}
+      <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
+        <button
+          onClick={resetInstance}
+          disabled={resetting}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted disabled:opacity-60"
+        >
+          {resetting ? (
+            <>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Zerando…
+            </>
+          ) : (
+            <>
+              <RotateCcw className="h-3.5 w-3.5" /> Zerar instância
+            </>
+          )}
+        </button>
+        {!instance.primary && (
+          <button
+            onClick={removeNumber}
+            disabled={removing}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger/10 disabled:opacity-60"
+          >
+            {removing ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Removendo…
+              </>
+            ) : (
+              <>
+                <Trash2 className="h-3.5 w-3.5" /> Remover número
+              </>
+            )}
+          </button>
+        )}
+      </div>
+    </Card>
+  );
 }
 
 export function ConnectWhatsApp({
@@ -48,28 +388,30 @@ export function ConnectWhatsApp({
 }) {
   const [configured, setConfigured] = useState(serverConfigured);
   const [editingServer, setEditingServer] = useState(!serverConfigured);
-  const [status, setStatus] = useState<Status | null>(null);
-  const [connecting, setConnecting] = useState(false);
-  const [connectError, setConnectError] = useState<string | null>(null);
-  const [resetting, setResetting] = useState(false);
   const [savingServer, setSavingServer] = useState(false);
-  const [phone, setPhone] = useState("");
-  // QR por padrão: o código de pareamento (Baileys) costuma ser rejeitado pelo
-  // WhatsApp (erro 401) e derruba a instância. O QR é o caminho confiável.
-  const [mode, setMode] = useState<"code" | "qr">("qr");
 
   const [apiUrl, setApiUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [instance, setInstance] = useState(instanceName);
 
-  // Cada número em sua própria caixinha. Guardamos como lista; o backend recebe
-  // uma string separada por vírgula (compatível com o que já existia).
+  // Lista de números (instâncias) ligados ao agente.
+  const [instances, setInstances] = useState<InstanceInfo[]>([]);
+  const [addingNumber, setAddingNumber] = useState(false);
+
+  // Allowlist (quem o agente atende) — compartilhada pela empresa (todos os números).
   const [allowedList, setAllowedList] = useState<string[]>([""]);
   const [savingAllowed, setSavingAllowed] = useState(false);
   const [allowedSaved, setAllowedSaved] = useState(false);
   const [serveAll, setServeAll] = useState(false);
 
+  const loadInstances = useCallback(async () => {
+    const d = await apiGet("/api/v1/whatsapp/instances");
+    if (d?.instances) setInstances(d.instances as InstanceInfo[]);
+  }, []);
+
   useEffect(() => {
+    if (!configured) return;
+    loadInstances();
     apiGet("/api/v1/whatsapp/allowed").then((d) => {
       if (!d) return;
       const list = String(d.allowedNumbers ?? "")
@@ -79,38 +421,20 @@ export function ConnectWhatsApp({
       setAllowedList(list.length ? list : [""]);
       setServeAll(list.length === 0);
     });
-  }, []);
+  }, [configured, loadInstances]);
 
   function updateNumber(idx: number, value: string) {
     setAllowedList((prev) => prev.map((n, i) => (i === idx ? value : n)));
   }
-  function addNumber() {
+  function addAllowed() {
     setAllowedList((prev) => [...prev, ""]);
   }
-  function removeNumber(idx: number) {
+  function removeAllowed(idx: number) {
     setAllowedList((prev) => {
       const next = prev.filter((_, i) => i !== idx);
       return next.length ? next : [""];
     });
   }
-
-  const refresh = useCallback(async () => {
-    const data = (await apiGet("/api/v1/whatsapp/status")) as Status | null;
-    if (!data) return null;
-    setStatus((prev) => ({ ...prev, ...data })); // preserva qr/pairingCode entre polls
-    setConfigured(data.configured);
-    return data;
-  }, []);
-
-  // Acompanha o estado real da instância continuamente — o painel mostra na hora
-  // quando conecta, quando cai e quando está reconectando (sem ficar preso num
-  // "conectado" desatualizado).
-  useEffect(() => {
-    if (!configured) return;
-    refresh();
-    const id = setInterval(refresh, 5000);
-    return () => clearInterval(id);
-  }, [configured, refresh]);
 
   async function saveServer(e: React.FormEvent) {
     e.preventDefault();
@@ -121,10 +445,20 @@ export function ConnectWhatsApp({
         setConfigured(true);
         setEditingServer(false);
         setApiKey("");
-        await refresh();
+        await loadInstances();
       }
     } finally {
       setSavingServer(false);
+    }
+  }
+
+  async function addNumber() {
+    setAddingNumber(true);
+    try {
+      await apiPost("/api/v1/whatsapp/instances", {});
+      await loadInstances();
+    } finally {
+      setAddingNumber(false);
     }
   }
 
@@ -148,7 +482,6 @@ export function ConnectWhatsApp({
     }
   }
 
-  // Libera o agente para responder a QUALQUER número (allowlist vazia).
   async function liberarTodos() {
     setSavingAllowed(true);
     setAllowedSaved(false);
@@ -165,92 +498,7 @@ export function ConnectWhatsApp({
     }
   }
 
-  async function connect() {
-    if (mode === "code" && phone.replace(/\D/g, "").length < 10) return;
-    setConnecting(true);
-    setConnectError(null);
-    setStatus((s) => ({ ...(s as Status), pairingCode: undefined, qrBase64: undefined }));
-    try {
-      // 60s de teto no cliente (o backend já se limita a ~45s). Se estourar ou
-      // falhar, mostra erro e libera o botão — nunca fica preso em "Gerando…".
-      const json = await apiPost(
-        "/api/v1/whatsapp/connect",
-        mode === "code" ? { number: phone } : {},
-        60000,
-      );
-      if (json?.ok) {
-        setStatus(json.data as Status);
-        if (!json.data?.pairingCode && !json.data?.qrBase64 && json.data?.state !== "open") {
-          setConnectError(
-            "O servidor não gerou o código a tempo. Tente de novo — se persistir, confira se o servidor Evolution está no ar.",
-          );
-        }
-      } else {
-        setConnectError(json?.error ?? "Não foi possível conectar agora. Tente novamente.");
-      }
-    } catch {
-      setConnectError(
-        "O servidor demorou demais para responder. Tente de novo em instantes (o servidor Evolution pode estar sobrecarregado).",
-      );
-    } finally {
-      setConnecting(false);
-    }
-  }
-
-  // Zera a instância no servidor (logout + delete). Reset de fábrica para quando
-  // a instância trava e nem reconectar resolve — depois é só conectar de novo.
-  async function resetInstance() {
-    if (!window.confirm(
-      "Zerar a instância apaga a conexão atual no servidor e recomeça do zero. " +
-        "Você vai precisar parear o número de novo (código/QR). Continuar?",
-    )) return;
-    setResetting(true);
-    setConnectError(null);
-    try {
-      const json = await apiPost("/api/v1/whatsapp/reset", undefined, 30000);
-      // Limpa o estado local — instância não existe mais até reconectar.
-      setStatus((s) => ({
-        ...(s as Status),
-        state: "close",
-        number: undefined,
-        pairingCode: undefined,
-        qrBase64: undefined,
-      }));
-      if (!json?.ok) {
-        setConnectError(
-          "Tentei zerar, mas o servidor não confirmou. Aguarde alguns segundos e tente conectar — se persistir, o servidor Evolution pode estar fora do ar.",
-        );
-      }
-      await refresh();
-    } catch {
-      setConnectError("O servidor demorou demais para zerar a instância. Tente de novo em instantes.");
-    } finally {
-      setResetting(false);
-    }
-  }
-
-  async function disconnect() {
-    await apiPost("/api/v1/whatsapp/disconnect");
-    setStatus((s) => ({
-      ...(s as Status),
-      state: "close",
-      number: undefined,
-      pairingCode: undefined,
-      qrBase64: undefined,
-    }));
-    await refresh();
-  }
-
-  const connected = status?.state === "open";
-  // Indicador honesto do estado atual da instância (atualizado a cada 5s).
-  const stateInfo =
-    status?.state === "open"
-      ? { label: "Conectado", cls: "text-success", dot: "bg-success" }
-      : status?.state === "connecting"
-        ? { label: "Conectando / reconectando…", cls: "text-warning", dot: "bg-warning animate-pulse" }
-        : status?.state === "close"
-          ? { label: "Desconectado", cls: "text-danger", dot: "bg-danger" }
-          : { label: "Verificando…", cls: "text-muted-foreground", dot: "bg-muted-foreground" };
+  const step1Done = configured && !editingServer;
   const step = (done: boolean, n: number) => (
     <span
       className={cn(
@@ -264,21 +512,17 @@ export function ConnectWhatsApp({
 
   return (
     <div className="max-w-2xl space-y-4">
-      {/* Passo 1 — servidor Evolution */}
+      {/* Passo 1 — servidor Evolution (compartilhado por todos os números) */}
       <Card className="p-5">
         <div className="mb-3 flex items-center gap-2">
-          {step(configured && !editingServer, 1)}
+          {step(step1Done, 1)}
           <h2 className="text-sm font-semibold">Servidor Evolution API</h2>
         </div>
 
-        {configured && !editingServer ? (
+        {step1Done ? (
           <p className="text-sm text-muted-foreground">
-            Servidor conectado. Instância:{" "}
-            <span className="font-medium text-foreground">{instanceName}</span>.{" "}
-            <button
-              onClick={() => setEditingServer(true)}
-              className="text-brand-strong hover:underline"
-            >
+            Servidor conectado — vale para todos os números.{" "}
+            <button onClick={() => setEditingServer(true)} className="text-brand-strong hover:underline">
               trocar
             </button>
           </p>
@@ -301,7 +545,7 @@ export function ConnectWhatsApp({
                 required
               />
             </Field>
-            <Field label="Nome da instância">
+            <Field label="Nome da instância principal">
               <Input
                 value={instance}
                 onChange={(e) => setInstance(e.target.value)}
@@ -315,176 +559,36 @@ export function ConnectWhatsApp({
         )}
       </Card>
 
-      {/* Passo 2 — conectar o número do agente */}
+      {/* Passo 2 — números do agente (1 card por instância) */}
       {configured && (
-        <Card className="p-5">
-          <div className="mb-3 flex items-center gap-2">
-            {step(connected, 2)}
-            <h2 className="text-sm font-semibold">Conectar o número do agente</h2>
-            <span className="ml-auto flex items-center gap-1.5 text-xs">
-              <span className={cn("h-2 w-2 rounded-full", stateInfo.dot)} />
-              <span className={cn("font-medium", stateInfo.cls)}>{stateInfo.label}</span>
-            </span>
-          </div>
+        <>
+          {instances.map((inst) => (
+            <ConnectionCard key={inst.name} instance={inst} onRemoved={loadInstances} />
+          ))}
 
-          {!connected && status?.state === "connecting" && !status?.pairingCode && !status?.qrBase64 && (
-            <p className="mb-3 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
-              ⚠️ A conexão caiu e não voltou sozinha. Gere um novo código/QR abaixo e pareie de novo no
-              celular do agente para o WhatsApp voltar a responder.
-            </p>
-          )}
-
-          {connected ? (
-            <div className="rounded-xl bg-success/10 p-4 text-center">
-              <CheckCircle2 className="mx-auto h-8 w-8 text-success" />
-              <p className="mt-2 text-sm font-medium text-success">
-                WhatsApp conectado{status?.number ? ` — +${status.number}` : ""}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                O agente já responde e consulta barris, estoque e clientes nesse número.
-              </p>
-              <Button variant="outline" size="sm" onClick={disconnect} className="mt-3">
-                Desconectar
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {status?.pairingCode ? (
-                <div className="rounded-xl border border-brand/40 bg-brand/5 p-4 text-center">
-                  <p className="text-xs font-medium uppercase tracking-wide text-brand-strong">
-                    Código de confirmação
-                  </p>
-                  <p className="mt-1 font-mono text-3xl font-bold tracking-widest text-foreground">
-                    {status.pairingCode}
-                  </p>
-                  <div className="mt-3 text-left text-xs text-muted-foreground">
-                    No celular do número <strong className="text-foreground">{phone}</strong>:
-                    <ol className="mt-1 list-decimal space-y-0.5 pl-4">
-                      <li>
-                        WhatsApp → <strong>Aparelhos conectados</strong>
-                      </li>
-                      <li>
-                        <strong>Conectar um aparelho</strong> →{" "}
-                        <strong>Conectar com número de telefone</strong>
-                      </li>
-                      <li>Digite o código acima</li>
-                    </ol>
-                  </div>
-                  <p className="mt-2 flex items-center justify-center gap-1 text-[11px] text-muted-foreground">
-                    <Loader2 className="h-3 w-3 animate-spin" /> Aguardando confirmação… (atualiza sozinho)
-                  </p>
-                </div>
-              ) : status?.qrBase64 ? (
-                <div className="flex flex-col items-center gap-2">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={status.qrBase64}
-                    alt="QR code do WhatsApp"
-                    className="h-56 w-56 rounded-lg border border-border bg-white p-1"
-                  />
-                  {mode === "code" && (
-                    <p className="max-w-xs rounded-lg bg-warning/10 px-3 py-2 text-center text-[11px] text-warning">
-                      Este servidor não gerou o código de confirmação para esse número — use o QR:
-                      escaneie com o WhatsApp do número que será o agente
-                      {phone ? ` (${phone})` : ""}.
-                    </p>
-                  )}
-                  <p className="text-center text-xs text-muted-foreground">
-                    WhatsApp → <span className="font-medium">Aparelhos conectados</span> →{" "}
-                    <span className="font-medium">Conectar um aparelho</span> → escaneie.
-                  </p>
-                  <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                    <Loader2 className="h-3 w-3 animate-spin" /> Aguardando leitura…
-                  </p>
-                </div>
-              ) : (
-                mode === "code" && (
-                  <Field label="Número do WhatsApp do agente (com DDD)">
-                    <Input
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="(11) 99999-8888"
-                      inputMode="tel"
-                      autoComplete="off"
-                      name="whatsapp-agente-numero"
-                    />
-                    <span className="mt-1 block text-[11px] text-muted-foreground">
-                      É o número que será o assistente — os clientes mandam mensagem para ele.
-                    </span>
-                  </Field>
-                )
-              )}
-
-              <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  onClick={connect}
-                  disabled={connecting || (mode === "code" && phone.replace(/\D/g, "").length < 10)}
-                >
-                  {connecting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" /> Gerando…
-                    </>
-                  ) : status?.pairingCode || status?.qrBase64 ? (
-                    "Gerar novo"
-                  ) : (
-                    <>
-                      <Smartphone className="h-4 w-4" />
-                      {mode === "code" ? "Conectar WhatsApp" : "Gerar QR code"}
-                    </>
-                  )}
-                </Button>
-                <button
-                  onClick={() => {
-                    setMode(mode === "code" ? "qr" : "code");
-                    setStatus((s) => ({ ...(s as Status), pairingCode: undefined, qrBase64: undefined }));
-                  }}
-                  className="text-xs font-medium text-brand-strong hover:underline"
-                >
-                  {mode === "code" ? "prefiro escanear QR code" : "prefiro código de confirmação"}
-                </button>
-              </div>
-
-              {connectError && (
-                <p className="rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{connectError}</p>
-              )}
-
-              {status?.publicUrlWarning && (
-                <p className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
-                  ⚠️ O app está em <span className="font-mono">localhost</span>. A conexão funciona, mas
-                  para o agente <strong>receber</strong> mensagens o servidor precisa alcançar uma URL
-                  pública — use um túnel (ngrok/cloudflared) ou faça o deploy.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Reset de fábrica — destrava a instância quando nada mais resolve. */}
-          <div className="mt-4 border-t border-border pt-3">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[11px] text-muted-foreground">
-                Travou e não conecta de jeito nenhum? Zere a instância e comece do zero.
-              </p>
-              <button
-                onClick={resetInstance}
-                disabled={resetting}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger/10 disabled:opacity-60"
-              >
-                {resetting ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Zerando…
-                  </>
-                ) : (
-                  <>
-                    <RotateCcw className="h-3.5 w-3.5" /> Zerar instância
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </Card>
+          <button
+            onClick={addNumber}
+            disabled={addingNumber}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-brand/50 bg-brand/5 px-4 py-3 text-sm font-medium text-brand-strong transition-colors hover:bg-brand/10 disabled:opacity-60"
+          >
+            {addingNumber ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> Adicionando…
+              </>
+            ) : (
+              <>
+                <Plus className="h-4 w-4" /> Adicionar outro número ao agente
+              </>
+            )}
+          </button>
+          <p className="-mt-2 px-1 text-[11px] text-muted-foreground">
+            Todos os números ligados aqui atendem com o <strong>mesmo</strong> agente, estoque e clientes. O
+            agente responde cada cliente pelo número que ele usou.
+          </p>
+        </>
       )}
 
-      {/* Quem o agente atende (allowlist) */}
+      {/* Quem o agente atende (allowlist) — vale para todos os números */}
       {configured && (
         <Card className="p-5">
           <div className="mb-3 flex items-center gap-2">
@@ -497,16 +601,11 @@ export function ConnectWhatsApp({
               <div className="flex items-start gap-2 rounded-xl bg-success/10 p-3">
                 <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
                 <p className="text-sm text-foreground">
-                  Liberado para <strong>todos</strong> — o agente responde a qualquer número que
-                  mandar mensagem.
+                  Liberado para <strong>todos</strong> — o agente responde a qualquer número que mandar
+                  mensagem.
                 </p>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setServeAll(false)}
-                disabled={savingAllowed}
-              >
+              <Button variant="outline" size="sm" onClick={() => setServeAll(false)} disabled={savingAllowed}>
                 Limitar a números específicos
               </Button>
               {allowedSaved && <span className="ml-2 text-xs font-medium text-success">✓ Salvo</span>}
@@ -526,7 +625,7 @@ export function ConnectWhatsApp({
                     {(allowedList.length > 1 || num.trim() !== "") && (
                       <button
                         type="button"
-                        onClick={() => removeNumber(idx)}
+                        onClick={() => removeAllowed(idx)}
                         title="Remover número"
                         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-danger"
                       >
@@ -539,7 +638,7 @@ export function ConnectWhatsApp({
 
               <button
                 type="button"
-                onClick={addNumber}
+                onClick={addAllowed}
                 className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-strong hover:underline"
               >
                 <Plus className="h-3.5 w-3.5" /> Outro número
@@ -553,13 +652,7 @@ export function ConnectWhatsApp({
                 <Button type="submit" size="sm" disabled={savingAllowed}>
                   {savingAllowed ? "Salvando…" : "Salvar"}
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={liberarTodos}
-                  disabled={savingAllowed}
-                >
+                <Button type="button" variant="outline" size="sm" onClick={liberarTodos} disabled={savingAllowed}>
                   Liberar para todos
                 </Button>
                 {allowedSaved && <span className="text-xs font-medium text-success">✓ Salvo</span>}
