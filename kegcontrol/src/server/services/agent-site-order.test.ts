@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { looksLikeSiteOrder, enforceOrderTotal } from "./agent";
+import { looksLikeSiteOrder, looksLikeOrderIntent, enforceOrderTotal } from "./agent";
 
 // formatCurrency (pt-BR) usa espaço NÃO-QUEBRÁVEL entre "R$" e o número — normaliza
 // pra o teste comparar com espaço normal.
@@ -29,6 +29,24 @@ describe("looksLikeSiteOrder", () => {
     expect(looksLikeSiteOrder("quero 2 barris, meu cpf é 111")).toBe(false);
     expect(looksLikeSiteOrder("")).toBe(false);
     expect(looksLikeSiteOrder(null)).toBe(false);
+  });
+});
+
+describe("looksLikeOrderIntent — intenção de começar pedido (manda o link)", () => {
+  it("reconhece intenção clara de pedido", () => {
+    expect(looksLikeOrderIntent("oi, quero chopp pra uma festa sábado")).toBe(true);
+    expect(looksLikeOrderIntent("queria fazer um pedido")).toBe(true);
+    expect(looksLikeOrderIntent("preciso de 2 barris")).toBe(true);
+    expect(looksLikeOrderIntent("é pra um aniversário")).toBe(true);
+    expect(looksLikeOrderIntent("quero comprar chopp")).toBe(true);
+    expect(looksLikeOrderIntent("me passa um orçamento")).toBe(true);
+  });
+  it("NÃO dispara em saudação ou dúvida de preço pura", () => {
+    expect(looksLikeOrderIntent("oi, bom dia")).toBe(false);
+    expect(looksLikeOrderIntent("quanto custa o belco 50?")).toBe(false);
+    expect(looksLikeOrderIntent("vocês entregam em xerém?")).toBe(false);
+    expect(looksLikeOrderIntent("")).toBe(false);
+    expect(looksLikeOrderIntent(null)).toBe(false);
   });
 });
 

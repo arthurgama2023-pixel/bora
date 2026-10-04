@@ -1,4 +1,4 @@
-import { ArrowRight, Bot, MessageSquare, Palette, Send, Smartphone, Users } from "lucide-react";
+import { ArrowRight, Bot, GitBranch, MessageSquare, Palette, Send, Smartphone, Users } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Card, PageHeader, StatCard } from "@/components/ui";
@@ -62,6 +62,12 @@ export default async function CentralIaPage() {
           icon={<Bot className="h-8 w-8 text-brand-strong" />}
           title="Agente IA"
           description="Converse com o agente para treiná-lo. Ele reconhece clientes, consulta saldos, estoque e extratos em tempo real. Edite a personalidade dele aqui."
+        />
+        <ModuleCard
+          href="/central-ia/fluxo"
+          icon={<GitBranch className="h-8 w-8 text-brand-strong" />}
+          title="Fluxo do Agente"
+          description="Mapa mental visual do Chopinho: como ele atende do primeiro 'oi' ao pedido fechado — site-first, retomada do carrinho, preços, fechamento e regras."
         />
         <ModuleCard
           href="/central-ia/crm"

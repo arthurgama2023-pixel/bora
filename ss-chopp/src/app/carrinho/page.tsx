@@ -6,7 +6,7 @@ import { getProductById } from "@/data/products";
 import { useCart, formatPrice } from "@/lib/cart-context";
 import { useLocation } from "@/lib/location-context";
 import { getCaxiasSavings } from "@/data/caxias-pricing";
-import { PEDIDOS_URL, VISITAS_URL } from "@/lib/tabela";
+import { PEDIDOS_URL, VISITAS_URL, SITE_CART_URL } from "@/lib/tabela";
 
 // Número de WhatsApp agora vem do painel (KegControl → Preços do Site), via
 // useLocation().whatsappNumber — com fallback embutido no contexto.
@@ -96,6 +96,7 @@ const A_COMBINAR = "A combinar";
 export default function CarrinhoPage() {
   const {
     items,
+    addItem,
     updateQuantity,
     removeItem,
     subtotal,
@@ -218,6 +219,71 @@ export default function CarrinhoPage() {
       // best-effort — nunca atrapalha o checkout
     }
   }
+
+  // RETOMADA PELO CÓDIGO (?p=CODE): o cliente voltou pelo link que o agente
+  // mandou no WhatsApp — recarrega o carrinho dele (itens + formulário) de onde
+  // parou, em vez de começar vazio. Roda uma vez, best-effort.
+  const resumedRef = useRef(false);
+  useEffect(() => {
+    if (resumedRef.current) return;
+    resumedRef.current = true;
+    let code = "";
+    try {
+      code = new URLSearchParams(window.location.search).get("p")?.trim() ?? "";
+    } catch {
+      code = "";
+    }
+    if (code.length < 4) return;
+    fetch(`${SITE_CART_URL}?code=${encodeURIComponent(code)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        const c = data?.cart;
+        if (!c) return;
+        // Casa a MESMA visita (continuidade do funil): o progresso daqui pra
+        // frente atualiza o mesmo registro, não cria um novo.
+        if (typeof c.sessionId === "string" && c.sessionId) {
+          try {
+            localStorage.setItem("ss-visit-id", c.sessionId);
+          } catch {
+            // sem localStorage — segue com o id em memória
+          }
+          visitIdRef.current = c.sessionId;
+        }
+        // Remonta o carrinho.
+        clearCart();
+        if (Array.isArray(c.items)) {
+          for (const it of c.items) {
+            if (it?.id && it?.quantity > 0) addItem(it.id, it.quantity);
+          }
+        }
+        if (c.chopeiraType) setChopeiraType(c.chopeiraType);
+        if (c.deliveryMethod === "retirada" || c.deliveryMethod === "entrega") {
+          setDeliveryMethod(c.deliveryMethod);
+        }
+        if (c.phone) {
+          setTelefone(c.phone);
+          setPhone(c.phone);
+        }
+        setAddress((a) => ({
+          ...a,
+          nome: c.customerName ?? a.nome,
+          email: c.email ?? a.email,
+          rua: c.street ?? a.rua,
+          numero: c.number ?? a.numero,
+          bairro: c.neighborhood ?? a.bairro,
+          complemento: c.complement ?? a.complemento,
+          cpfCnpj: c.document ?? a.cpfCnpj,
+          dataEvento: c.eventDate ?? a.dataEvento,
+          horarioEvento: c.eventTime ?? a.horarioEvento,
+          temEscada: c.hasStairs === "sim" || c.hasStairs === "nao" ? c.hasStairs : a.temEscada,
+          tipoLocal: c.venueType === "casa" || c.venueType === "salao" ? c.venueType : a.tipoLocal,
+        }));
+      })
+      .catch(() => {
+        // best-effort — se falhar, o cliente só começa com o carrinho vazio
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // "Começou o formulário" = tocou em QUALQUER campo que ele mesmo preenche.
   // NÃO conta o bairro (já vem do modal de localização, sem ação no formulário).
@@ -466,6 +532,20 @@ export default function CarrinhoPage() {
     window.open(url, "_blank");
     setSent(true);
     clearCart();
+  }
+
+  // "Tirar dúvida no WhatsApp" — NÃO finaliza. Garante que o carrinho está salvo
+  // (pro agente achar pelo código) e abre o WhatsApp já com o CÓDIGO do pedido —
+  // assim o agente reconhece e continua de onde o cliente parou, mesmo que ele
+  // mande de outro número.
+  function handleAskOnWhatsApp() {
+    sendVisit("PREENCHENDO"); // best-effort: salva o estado atual antes de sair
+    const code = (visitIdRef.current.split("_").pop() ?? "").toLowerCase();
+    const primeiro = (address.nome || "").trim().split(/\s+/)[0] || "";
+    const saud = primeiro ? `Oi! Aqui é ${primeiro}. ` : "Oi! ";
+    const text = `${saud}Tô montando meu pedido no site e queria tirar uma dúvida 🍺 (pedido #${code})`;
+    const url = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(text)}`;
+    window.open(url, "_blank");
   }
 
   return (
@@ -794,6 +874,16 @@ export default function CarrinhoPage() {
       >
         Finalizar pedido via WhatsApp
       </button>
+
+      {items.length > 0 && (
+        <button
+          type="button"
+          onClick={handleAskOnWhatsApp}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-full border-2 border-green-600 px-6 py-3 text-center font-bold text-green-700 transition hover:bg-green-50"
+        >
+          💬 Tirar dúvida no WhatsApp
+        </button>
+      )}
     </div>
   );
 }

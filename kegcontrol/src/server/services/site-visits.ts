@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/errors";
+import { phoneMatchKey } from "@/lib/phone";
 import { findCustomerByPhone } from "./customers";
 import { getWhatsAppChannel } from "./whatsapp/channel";
 
@@ -192,6 +193,202 @@ export async function promoteVisitToOrder(
   });
   await prisma.siteVisit.deleteMany({ where: { id: visitId, companyId } });
   return order;
+}
+
+// Carrinho do SITE que o cliente começou mas NÃO finalizou — buscado pelo
+// TELEFONE (casado por chave canônica). Usado pelo agente no WhatsApp pra
+// "continuar dali": ele mostra o que o cliente já preencheu e oferece terminar.
+// Só visitas abertas e não finalizadas (INICIOU/PREENCHENDO), a mais recente.
+export type IncompleteCart = {
+  code: string; // código curto do pedido (cauda do sessionId) — pros links de retomada
+  customerName: string | null;
+  neighborhood: string | null;
+  city: string | null;
+  deliveryMethod: string | null;
+  items: { name?: string; quantity?: number }[];
+  total: number;
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  hasStairs: string | null;
+  venueType: string | null;
+  eventDate: string | null;
+  eventTime: string | null;
+  chopeiraType: string | null;
+  updatedAt: Date;
+};
+
+// Código curto e estável de um carrinho = cauda aleatória do sessionId do site
+// (ex.: "v_abc_7h3k9x2p" → "7h3k9x2p"). É o que vai nos links de retomada
+// (wa.me e site) e o que o agente usa pra reencontrar a visita SEM depender do
+// telefone (casa mesmo que o cliente mande de outro número).
+export function visitCode(sessionId: string): string {
+  return (sessionId.split("_").pop() ?? sessionId).trim().toLowerCase();
+}
+
+type SiteVisitRecord = {
+  sessionId: string;
+  customerName: string | null;
+  neighborhood: string | null;
+  city: string | null;
+  deliveryMethod: string | null;
+  total: number;
+  details: string | null;
+  updatedAt: Date;
+};
+
+// Converte uma linha de visita no "carrinho pra continuar" (parse do details).
+// Retorna null se não tiver NADA aproveitável preenchido.
+function visitToCart(v: SiteVisitRecord): IncompleteCart | null {
+  let d: Record<string, unknown> = {};
+  try {
+    d = v.details ? (JSON.parse(v.details) as Record<string, unknown>) : {};
+  } catch {
+    d = {};
+  }
+  const s = (k: string): string | null => {
+    const val = d[k];
+    return typeof val === "string" && val.trim() ? val.trim() : null;
+  };
+  const items = Array.isArray(d.items)
+    ? (d.items as Array<{ name?: string; quantity?: number }>).map((it) => ({
+        name: typeof it?.name === "string" ? it.name : undefined,
+        quantity: typeof it?.quantity === "number" ? it.quantity : undefined,
+      }))
+    : [];
+  // Só vale como "carrinho pra continuar" se tem ALGUMA coisa preenchida.
+  const hasSomething = items.length > 0 || v.neighborhood || s("street") || s("eventDate");
+  if (!hasSomething) return null;
+  return {
+    code: visitCode(v.sessionId),
+    customerName: v.customerName?.trim() || null,
+    neighborhood: v.neighborhood,
+    city: v.city,
+    deliveryMethod: v.deliveryMethod,
+    items,
+    total: v.total ?? 0,
+    street: s("street"),
+    number: s("number"),
+    complement: s("complement"),
+    hasStairs: s("hasStairs"),
+    venueType: s("venueType"),
+    eventDate: s("eventDate"),
+    eventTime: s("eventTime"),
+    chopeiraType: s("chopeiraType"),
+    updatedAt: v.updatedAt,
+  };
+}
+
+export async function getIncompleteCartByPhone(
+  companyId: string,
+  phone: string,
+): Promise<IncompleteCart | null> {
+  const key = phoneMatchKey(phone);
+  if (!key) return null;
+  // Candidatas recentes com telefone preenchido e ainda não finalizadas.
+  const visits = await prisma.siteVisit.findMany({
+    where: { companyId, stage: { not: "FINALIZOU" }, status: "OPEN", phone: { not: null } },
+    orderBy: { updatedAt: "desc" },
+    take: 50,
+  });
+  const v = visits.find((x) => phoneMatchKey(x.phone) === key);
+  if (!v) return null;
+  return visitToCart(v);
+}
+
+// Reencontra as visitas pelo CÓDIGO (cauda do sessionId). As mais recentes não
+// finalizadas da empresa, cujo sessionId contém o código. Match exato primeiro.
+async function findVisitsByCode(companyId: string, code: string) {
+  const c = code.trim().toLowerCase();
+  if (c.length < 4) return null;
+  const visits = await prisma.siteVisit.findMany({
+    where: {
+      companyId,
+      stage: { not: "FINALIZOU" },
+      status: "OPEN",
+      sessionId: { contains: c, mode: "insensitive" },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 5,
+  });
+  if (visits.length === 0) return null;
+  return visits.find((x) => visitCode(x.sessionId) === c) ?? visits[0];
+}
+
+// Carrinho do site reencontrado pelo CÓDIGO — usado quando o cliente chega pelo
+// link "continuar no WhatsApp #CODE". Não depende do telefone.
+export async function getCartByCode(
+  companyId: string,
+  code: string,
+): Promise<IncompleteCart | null> {
+  const v = await findVisitsByCode(companyId, code);
+  if (!v) return null;
+  return visitToCart(v);
+}
+
+// Dados CRUS do carrinho pelo código — pro SITE recarregar o carrinho do cliente
+// quando ele volta por sschopp.com/carrinho?p=CODE. Inclui os IDs dos produtos
+// (pra remontar o carrinho) e os campos do formulário já preenchidos.
+export type SiteCartResume = {
+  sessionId: string;
+  customerName: string | null;
+  phone: string | null;
+  neighborhood: string | null;
+  city: string | null;
+  deliveryMethod: string | null;
+  items: { id: string; quantity: number }[];
+  email: string | null;
+  document: string | null;
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  hasStairs: string | null;
+  venueType: string | null;
+  eventDate: string | null;
+  eventTime: string | null;
+  chopeiraType: string | null;
+};
+
+export async function getSiteCartResumeByCode(
+  companyId: string,
+  code: string,
+): Promise<SiteCartResume | null> {
+  const v = await findVisitsByCode(companyId, code);
+  if (!v) return null;
+  let d: Record<string, unknown> = {};
+  try {
+    d = v.details ? (JSON.parse(v.details) as Record<string, unknown>) : {};
+  } catch {
+    d = {};
+  }
+  const s = (k: string): string | null => {
+    const val = d[k];
+    return typeof val === "string" && val.trim() ? val.trim() : null;
+  };
+  const items = Array.isArray(d.items)
+    ? (d.items as Array<{ id?: string; quantity?: number }>)
+        .filter((it) => typeof it?.id === "string" && typeof it?.quantity === "number" && (it.quantity ?? 0) > 0)
+        .map((it) => ({ id: it.id as string, quantity: it.quantity as number }))
+    : [];
+  return {
+    sessionId: v.sessionId,
+    customerName: v.customerName,
+    phone: v.phone,
+    neighborhood: v.neighborhood,
+    city: v.city,
+    deliveryMethod: v.deliveryMethod,
+    items,
+    email: s("email"),
+    document: s("document"),
+    street: s("street"),
+    number: s("number"),
+    complement: s("complement"),
+    hasStairs: s("hasStairs"),
+    venueType: s("venueType"),
+    eventDate: s("eventDate"),
+    eventTime: s("eventTime"),
+    chopeiraType: s("chopeiraType"),
+  };
 }
 
 // Mensagem de recuperação de carrinho — TEMPLATE editável no painel (por empresa,

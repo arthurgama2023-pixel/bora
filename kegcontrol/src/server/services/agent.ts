@@ -27,6 +27,7 @@ import {
   resolveProductByText,
 } from "./site-pricing";
 import { createAgentSiteOrder } from "./site-orders";
+import { getCartByCode, getIncompleteCartByPhone, type IncompleteCart } from "./site-visits";
 import {
   CLEAN_SECTIONS,
   SECTION_META,
@@ -138,6 +139,9 @@ Você tem uma AJUDA de memória travada em código: se aparecer um bloco "JÁ CO
 - Os pilares que você vai montando aos poucos: nome do cliente, endereço, e o que ele costuma pedir (ex.: "Belco 50L, Heineken"). Salve cada um assim que souber.
 - Nunca fique "perdido" por falta de informação: se faltar algo, pergunte com naturalidade uma coisa por vez e continue.
 
+# Site primeiro — você é o SUPORTE
+- A regra de oferecer o site no início do pedido está no bloco "ATENDIMENTO SITE-FIRST" (mais acima, prioritário). Siga-a. Aqui só o reforço: depois de oferecer o site uma vez, você é o SUPORTE — tira dúvidas com as ferramentas e FECHA pelo chat se o cliente preferir ("faz pra mim", já passando os dados, não quer o site). Nunca se recuse a atender.
+
 # Preço — sempre pelo site, por localidade (regra inviolável)
 - O preço vem SEMPRE da ferramenta preco_por_bairro (preços do site, por bairro) — e do finalizar_pedido pra fechar. Com o bairro em mãos, DIGA o preço na hora.
 - NUNCA diga que "a equipe comercial vai passar o preço" / "o comercial confirma" quando o bairro é coberto. Isso só vale se preco_por_bairro disser que o bairro está FORA da área de entrega.
@@ -181,6 +185,18 @@ NUNCA use o caractere barra "/" no texto que envia ao cliente — nem entre pala
 - rótulos de resumo: "Data e horário", "Forma de pagamento" (nunca "Data/Horário");
 - datas: "dia 25 de dezembro" (nunca "25/12").
 Faça UMA pergunta por mensagem — nunca ofereça várias escolhas separadas por barra nem junte perguntas.`;
+
+// Bloco PRIORITÁRIO (entra ANTES do fluxo de perguntas no prompt) — garante que
+// o "site primeiro" vença o roteiro salvo, que senão manda ir direto pro
+// nome/bairro. O agente oferece o site no início do pedido e fica de suporte.
+const SITE_FIRST_DIRECTIVE = `# ATENDIMENTO SITE-FIRST (PRIORIDADE MÁXIMA — vem ANTES do roteiro/fluxo de perguntas)
+Quando o cliente demonstrar que QUER FAZER UM PEDIDO (ex.: "quero chopp", "vou querer", "preciso de barril", "é pra uma festa", ou pergunta preço pra comprar), a SUA PRIMEIRA resposta deve OFERECER O SITE — e NÃO começar o roteiro (nome, bairro, produto...). Mande o link https://sschopp.com dizendo que lá ele monta o pedido sozinho em 1 minuto (escolhe o chopp, vê o preço com frete grátis, preenche a entrega) e que você fica à disposição pra ajudar. Exemplo: "Boa! 🍺 Pra ficar rápido, é só montar seu pedido aqui ó: https://sschopp.com — você escolhe tudo e já vê o preço. Qualquer dúvida me chama que eu te ajudo!".
+REGRAS:
+- Ofereça o site UMA vez por conversa. Não repita o link nas mensagens seguintes.
+- Depois disso, seja o SUPORTE: responda dúvidas (preço, produto, bairro) com as ferramentas de sempre.
+- FECHE PELO CHAT se o cliente preferir: se ele disser "faz pra mim", "fecha aí", não quiser/puder usar o site, ou já começar a te passar os dados do pedido, conduza o fluxo normal e finalize com finalizar_pedido. Nunca se recuse a atender nem fique só empurrando o site.
+- Se existir o bloco "CARRINHO NO SITE", NÃO ofereça o site do zero — siga aquele bloco (continue de onde o cliente parou).
+- Dúvida simples, saudação ou assunto que não é pedido: responda normal, sem forçar o link.`;
 
 // ─── Normalização dos dados de qualificação (mesmos campos do form do site) ──
 // O agente coleta em linguagem natural; aqui a gente padroniza pro formato que
@@ -987,6 +1003,11 @@ export async function handleTrainerMessage(
   }
 }
 
+// Site público de vendas (onde o cliente monta o pedido sozinho). É o link que o
+// agente manda pra pessoa "se guiar pelo site" — o agente fica de suporte e
+// fecha no chat se precisar.
+export const PUBLIC_SITE_URL = "https://sschopp.com";
+
 // ─── Foto do produto (a mesma do site, publicada no Netlify) ──────────────
 // Enviada pelo WhatsApp junto com a confirmação do pedido (ver finalizar_pedido).
 
@@ -1233,6 +1254,24 @@ export function looksLikeSiteOrder(text?: string | null): boolean {
     /total:/.test(s),
   ].filter(Boolean).length;
   return marcadores >= 3; // vários marcadores juntos = é o resumo do site
+}
+
+// Detecta INTENÇÃO de começar um pedido logo na 1ª mensagem ("quero chopp", "é
+// pra uma festa", "fazer um pedido"...). Usado pra, no primeiro contato, PULAR a
+// abertura que pede o nome e deixar o SITE-FIRST agir já de cara — mandando o
+// link do site na hora. É proposital que pergunta SÓ de preço (sem intenção de
+// comprar) NÃO entre aqui: essa cai na abertura normal.
+export function looksLikeOrderIntent(text?: string | null): boolean {
+  if (!text) return false;
+  const s = text.toLowerCase();
+  const padroes: RegExp[] = [
+    /\b(quero|queria|vou querer|preciso|gostaria|to querendo|tô querendo)\b[^.!?]*\b(chopp|chope|barril|barris|pedido|comprar|encomendar|chopeira)\b/,
+    /\bfazer\s+(um\s+)?pedido\b/,
+    /\b(comprar|encomendar|alugar)\b[^.!?]*\b(chopp|chope|barril|barris|chopeira)\b/,
+    /\b(pra|para|é pra|e pra)\b[^.!?]*\b(festa|evento|anivers|churrasco|confraterniza|casamento|formatura|resenha)\b/,
+    /\bor[çc]amento\b/,
+  ];
+  return padroes.some((re) => re.test(s));
 }
 
 // Garante o TOTAL CORRETO (da tabela) no texto do fechamento — a IA às vezes
@@ -1969,6 +2008,67 @@ function buildUnknownContext(_phone: string, pushName?: string): string {
   ].join("\n");
 }
 
+// Bloco injetado quando o cliente TEM um carrinho começado no SITE e não
+// finalizou — o agente mostra o que ele já preencheu e oferece CONTINUAR dali
+// (terminar no site ou fechar no chat), em vez de recomeçar do zero.
+export function renderSiteCartBlock(cart: IncompleteCart): string {
+  const itens = cart.items
+    .filter((i) => i.name)
+    .map((i) => `${i.quantity ?? 1}× ${i.name}`)
+    .join(", ");
+  const endereco = [cart.street, cart.number, cart.complement].filter(Boolean).join(", ");
+  const linhas = [
+    cart.customerName ? `- Nome: ${cart.customerName}` : "",
+    itens ? `- Itens: ${itens}` : "",
+    cart.neighborhood ? `- Bairro/cidade: ${cart.neighborhood}${cart.city ? " / " + cart.city : ""}` : "",
+    endereco ? `- Endereço: ${endereco}` : "",
+    cart.chopeiraType ? `- Chopeira: ${cart.chopeiraType}` : "",
+    cart.hasStairs ? `- Escada: ${cart.hasStairs}` : "",
+    cart.venueType ? `- Local: ${cart.venueType}` : "",
+    cart.eventDate ? `- Data: ${cart.eventDate}` : "",
+    cart.eventTime ? `- Horário: ${cart.eventTime}` : "",
+    cart.total > 0 ? `- Total parcial: R$ ${cart.total.toFixed(2).replace(".", ",")}` : "",
+  ].filter(Boolean);
+
+  const primeiroNome = cart.customerName ? cart.customerName.split(" ")[0] : "";
+  // Link que leva o cliente de volta AO CARRINHO dele (já preenchido) no site.
+  const linkRetomar = `${PUBLIC_SITE_URL}/carrinho?p=${cart.code}`;
+
+  // "Completo" = tem o essencial que o SITE captura (itens, bairro, endereço de
+  // entrega quando for entrega, data e horário). Falta, no máximo, o que o site
+  // NÃO coleta antes de finalizar: CPF e forma de pagamento.
+  const temEndereco = cart.deliveryMethod === "retirada" || !!cart.street;
+  const completo =
+    cart.items.length > 0 && !!cart.neighborhood && temEndereco && !!cart.eventDate && !!cart.eventTime;
+
+  const fecho = completo
+    ? `ESTE CARRINHO JÁ ESTÁ QUASE FECHADO. Se o cliente escolher fechar AQUI, NÃO reabra o que já está acima: peça SÓ o que ainda falta pra registrar — o CPF/CNPJ e a forma de pagamento (uma coisa por vez) — e então chame finalizar_pedido com TODOS os dados do carrinho + esses dois. Se escolher o site, mande o link acima e fique de suporte.`
+    : `Se o cliente escolher fechar AQUI, pergunte SÓ o que ainda falta (uma coisa por vez, nunca o que já está acima) até ter tudo e então finalize com finalizar_pedido. Se escolher o site, mande o link acima e fique de suporte.`;
+
+  return [
+    "⚠️ CARRINHO NO SITE — FONTE DE VERDADE (este cliente JÁ começou um pedido no site e não finalizou). É PROIBIDO recomeçar do zero ou perguntar o que já está aqui embaixo:",
+    ...linhas,
+    `- Link pra ele retomar no site (carrinho já preenchido): ${linkRetomar}`,
+    `NA SUA PRÓXIMA MENSAGEM: cumprimente${primeiroNome ? " o(a) " + primeiroNome : ""} reconhecendo que viu o pedido que ele começou no site e MANDE DE VOLTA um resumo curto do que ele já montou (os itens${endereco ? " e o endereço" : ""}${cart.eventDate ? ", data e horário" : ""}). Em seguida PERGUNTE como ele prefere: "quer que a gente termine por aqui comigo mesmo ou prefere finalizar lá no site?" — oferecendo o link acima pra opção do site.`,
+    fecho,
+    "NÃO comece o fluxo do zero, NÃO peça o nome se ele já está acima, NÃO repita o link do site se ele escolher fechar com você.",
+  ].join("\n");
+}
+
+// Extrai o CÓDIGO do pedido (#A7K2) que o cliente trouxe do link de retomada do
+// site (wa.me). Vem na 1ª mensagem (do link), mas pode não se repetir — então
+// varre todo o histórico do cliente. Exige token alfanumérico de 5+ chars (um
+// "#" solto ou "#2 barris" não conta).
+function extractOrderCode(history: ChatTurn[]): string | null {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const t = history[i];
+    if (t.role !== "user") continue;
+    const m = t.content.match(/#\s*([a-z0-9]{5,})/i);
+    if (m) return m[1].toLowerCase();
+  }
+  return null;
+}
+
 // ─── Loop do agente (Gemini + tools) ───────────────────────────────────────
 
 export type ChatTurn = { role: "user" | "assistant"; content: string };
@@ -2138,10 +2238,31 @@ export async function chatWithAgent(
 
   // Contexto de identidade (só quando veio de um canal com número, ex.: WhatsApp).
   let contextBlock = "";
+  // Cliente tem um carrinho do site pra RETOMAR (achado por código ou telefone)?
+  // Se sim, a abertura determinística ("oi, qual seu nome") é PULADA — já sabemos
+  // quem é e o que ele montou; o LLM retoma de onde parou.
+  let hasSiteCart = false;
   if (opts.phone) {
     contextBlock = opts.identifiedCustomer
       ? await buildIdentityContext(companyId, opts.identifiedCustomer, opts.phone, opts.pushName)
       : buildUnknownContext(opts.phone, opts.pushName);
+    // Carrinho começado no SITE (não finalizado): injeta pra o agente continuar
+    // dali em vez de recomeçar. Procura primeiro pelo CÓDIGO do pedido que o
+    // cliente trouxe do link de retomada (#A7K2 — vale mesmo de outro número); se
+    // não houver código, casa pelo TELEFONE. Best-effort — nunca derruba o
+    // atendimento se a consulta falhar.
+    try {
+      const code = extractOrderCode(history);
+      const cart =
+        (code && (await getCartByCode(companyId, code))) ||
+        (await getIncompleteCartByPhone(companyId, opts.phone));
+      if (cart) {
+        contextBlock = [contextBlock, renderSiteCartBlock(cart)].filter(Boolean).join("\n\n");
+        hasSiteCart = true;
+      }
+    } catch (e) {
+      console.error("[agent] carrinho do site falhou:", e);
+    }
   }
   // Rascunho do pedido em código (ver OrderDraft): carregado ANTES de chamar o
   // Gemini, então reflete só o que foi confirmado em turnos ANTERIORES — o
@@ -2159,7 +2280,7 @@ export async function chatWithAgent(
   const styleExamples = await getStyleExamples(companyId);
   const examplesBlock = styleExamples.length ? renderStyleExamples(styleExamples) : "";
   const escadaGate = renderEscadaGate(orderDraftBefore);
-  const systemInstruction = [config.personality, flowBlock, examplesBlock, NATURAL_CUSTOMER_RULES, orderDraftBlock, escadaGate, contextBlock]
+  const systemInstruction = [config.personality, SITE_FIRST_DIRECTIVE, flowBlock, examplesBlock, NATURAL_CUSTOMER_RULES, orderDraftBlock, escadaGate, contextBlock]
     .filter(Boolean)
     .join("\n\n---\n");
 
@@ -2191,7 +2312,10 @@ export async function chatWithAgent(
   // (inclusive o nome). Deixa o LLM processar o pedido inteiro de uma vez.
   const lastUserMsgOpen = [...history].reverse().find((m) => m.role === "user")?.content;
   const isBulkSiteOrder = looksLikeSiteOrder(lastUserMsgOpen);
-  if (isFirstContact && !hasRealName && !isBulkSiteOrder) {
+  // Intenção de pedido logo de cara → não dá o "oi, qual seu nome": deixa o
+  // SITE-FIRST agir e mandar o link do site já nesta primeira resposta.
+  const isOrderIntent = looksLikeOrderIntent(lastUserMsgOpen);
+  if (isFirstContact && !hasRealName && !isBulkSiteOrder && !hasSiteCart && !isOrderIntent) {
     const opener = FIRST_CONTACT_OPENER;
     await prisma.agentMessage.create({
       data: { companyId, sessionId, role: "assistant", content: opener, customerId, channel },
