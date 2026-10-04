@@ -20,6 +20,9 @@ export const PRICING_URL =
 const KEGCONTROL_BASE = PRICING_URL.replace(/\/api\/public\/site-pricing$/, "");
 export const PEDIDOS_URL = `${KEGCONTROL_BASE}/api/public/pedidos`;
 export const VISITAS_URL = `${KEGCONTROL_BASE}/api/public/visitas`;
+// Recarrega o carrinho do cliente pelo código (?p=CODE) quando ele volta pelo
+// link que o agente mandou no WhatsApp.
+export const SITE_CART_URL = `${KEGCONTROL_BASE}/api/public/site-cart`;
 
 export interface RemoteProd {
   id: string;
