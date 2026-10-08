@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stripReintro, FIRST_CONTACT_OPENER } from "./agent";
+import { stripReintro, FIRST_CONTACT_OPENER, FIRST_ORDER_SITE_OPENER } from "./agent";
 
 describe("FIRST_CONTACT_OPENER — abertura única e compartilhada", () => {
   it("cumprimenta UMA vez e já pede o nome", () => {
@@ -8,6 +8,13 @@ describe("FIRST_CONTACT_OPENER — abertura única e compartilhada", () => {
     const matches = FIRST_CONTACT_OPENER.match(/eu sou o chopinho/gi) ?? [];
     expect(matches).toHaveLength(1);
     expect(FIRST_CONTACT_OPENER.toLowerCase()).toContain("com quem eu falo");
+  });
+});
+
+describe("FIRST_ORDER_SITE_OPENER — pedido no 1º contato manda o link", () => {
+  it("contém o link do site e NÃO pede o nome", () => {
+    expect(FIRST_ORDER_SITE_OPENER).toContain("sschopp.com");
+    expect(FIRST_ORDER_SITE_OPENER.toLowerCase()).not.toContain("com quem eu falo");
   });
 });
 

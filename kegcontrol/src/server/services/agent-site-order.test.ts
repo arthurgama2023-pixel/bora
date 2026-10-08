@@ -41,6 +41,14 @@ describe("looksLikeOrderIntent — intenção de começar pedido (manda o link)"
     expect(looksLikeOrderIntent("quero comprar chopp")).toBe(true);
     expect(looksLikeOrderIntent("me passa um orçamento")).toBe(true);
   });
+  it("reconhece frases reais que antes escapavam (produto, marca, unidade, disponibilidade)", () => {
+    expect(looksLikeOrderIntent("me vê 2 barris de belco")).toBe(true);
+    expect(looksLikeOrderIntent("tem chopp?")).toBe(true);
+    expect(looksLikeOrderIntent("quero 50 litros")).toBe(true);
+    expect(looksLikeOrderIntent("vcs tem heineken 50?")).toBe(true);
+    expect(looksLikeOrderIntent("quanto fica 3 belco 50?")).toBe(true);
+    expect(looksLikeOrderIntent("me manda um chopp aí")).toBe(true);
+  });
   it("NÃO dispara em saudação ou dúvida de preço pura", () => {
     expect(looksLikeOrderIntent("oi, bom dia")).toBe(false);
     expect(looksLikeOrderIntent("quanto custa o belco 50?")).toBe(false);

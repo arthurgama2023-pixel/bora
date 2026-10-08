@@ -121,6 +121,7 @@ Regras:
 // Governam o cadastro espontâneo e natural do cliente.
 const NATURAL_CUSTOMER_RULES = `# REGRA MÁXIMA — nunca fale preço, produto ou marca de memória
 Existem só 5 marcas no catálogo: Belco, Brahma, Heineken, Amstel e Chopp de Vinho — nada além disso existe (não existe "Brahma Duplo Malte", "Belco Pilsen", "Black Princes", nem litragem 20L de nada). Se o assunto for preço, produto, marca ou tabela, e a ferramenta preco_por_bairro AINDA NÃO foi chamada NESTA resposta, chame-a AGORA antes de responder — nunca responda com números ou nomes que você "lembra" de mensagens anteriores ou do seu próprio conhecimento geral sobre chope/cerveja. Isso vale mesmo se o cliente pedir "a tabela toda" ou parecer uma pergunta simples: SEMPRE a ferramenta primeiro, texto depois. Informar um produto ou preço inventado é o pior erro possível neste atendimento — é dinheiro real do cliente. Isso vale TAMBÉM para dizer se um produto ou LITRAGEM existe: NUNCA afirme "só tem em 30L", "não temos 50L", "esse não existe" ou parecido sem chamar preco_por_bairro ANTES — a ferramenta lista TODOS os produtos e litragens disponíveis da região; se está na lista, existe (ex.: Chopp de Vinho tem 30L E 50L). Nunca negue uma litragem de memória.
+LITRAGEM POR MARCA (fato fixo do catálogo — vale pra NÃO oferecer o que não existe): a **Brahma só existe em 50L** — NUNCA ofereça "Brahma 30L", NUNCA use "Brahma 30L" como exemplo, e se o cliente escolher Brahma ofereça só a de 50L (não pergunte "30L ou 50L"). As outras quatro — Belco, Heineken, Amstel e Chopp de Vinho — têm 30L e 50L. Ao listar as marcas, NÃO diga genericamente "todas em 30L ou 50L" (isso dá a entender que a Brahma tem 30L); liste as marcas e deixe a litragem pra quando o cliente escolher a marca. Se der um exemplo de litragem, use uma marca que TEM aquela litragem (ex.: "Belco 30L", nunca "Brahma 30L").
 
 # Memória da conversa — NUNCA re-pergunte o que já sabe (regra crítica)
 Antes de CADA resposta, releia a conversa inteira e reconstrua TUDO que o cliente JÁ informou: marca, litragem, quantidade, bairro, endereço, CPF, tipo de chopeira (elétrica ou de gelo), se o local tem escada e a forma de pagamento. É PROIBIDO perguntar de novo qualquer coisa que ele já respondeu — nem com outras palavras, nem "só pra confirmar". Isso vale também para o que já estiver na FICHA DO CLIENTE (cadastro): se o CPF/CNPJ já veio no cadastro, USE e não pergunte. **EXCEÇÃO — LOCAL DE ENTREGA:** bairro, cidade e endereço de entrega você SEMPRE pergunta a cada pedido; NUNCA reutilize o do cadastro nem o de um pedido anterior (o mesmo cliente pede chopp pra lugares diferentes). Dentro DESTA conversa, claro, se ele já disse o bairro agora, não repita a pergunta. Se você já tem a informação, vá direto pra a PRÓXIMA que falta. Uma resposta curta se refere à ÚLTIMA pergunta que você fez (ele respondeu "50" depois de você perguntar a litragem? então litragem = 50L, preenchido; respondeu "elétrica" depois de você perguntar o tipo de chopeira? então chopeira = elétrica). Se ele mandou vários dados de uma vez, aproveite todos e pule as perguntas correspondentes. Nunca volte a uma etapa anterior já resolvida.
@@ -1264,11 +1265,22 @@ export function looksLikeSiteOrder(text?: string | null): boolean {
 export function looksLikeOrderIntent(text?: string | null): boolean {
   if (!text) return false;
   const s = text.toLowerCase();
+  // Sinais de chopp/produto (inclui marcas como o cliente costuma digitar).
+  const PROD =
+    "(chopp|chope|barril|barris|litro|litros|chopeira|belco|brahma|bramma|heineken|heiniken|amstel|stella|budweiser|eisenbahn|vinho)";
   const padroes: RegExp[] = [
-    /\b(quero|queria|vou querer|preciso|gostaria|to querendo|tô querendo)\b[^.!?]*\b(chopp|chope|barril|barris|pedido|comprar|encomendar|chopeira)\b/,
+    // querer / pedir / trazer / comprar + produto ("quero chopp", "me vê 2 barris", "me manda um chopp")
+    new RegExp(
+      `\\b(quero|queria|vou querer|preciso|gostaria|to querendo|t[oô] querendo|me v[eê]|me manda|manda|comprar|encomendar|alugar)\\b[^.!?\\n]*${PROD}`,
+    ),
+    // "fazer um pedido"
     /\bfazer\s+(um\s+)?pedido\b/,
-    /\b(comprar|encomendar|alugar)\b[^.!?]*\b(chopp|chope|barril|barris|chopeira)\b/,
-    /\b(pra|para|é pra|e pra)\b[^.!?]*\b(festa|evento|anivers|churrasco|confraterniza|casamento|formatura|resenha)\b/,
+    // disponibilidade: tem / vocês tem / vcs tem + produto ("tem chopp?", "vcs tem heineken?")
+    new RegExp(`\\b(voc[eê]s?\\s+|vcs\\s+)?tem\\b[^.!?\\n]*${PROD}`),
+    // quantidade + produto/unidade ("2 barris", "50 litros", "3 belco")
+    new RegExp(`\\b\\d+\\s*(un(idades?)?\\s+)?${PROD}`),
+    // evento ("pra uma festa", "é pra um aniversário")
+    /\b(pra|para|é pra|e pra|numa|num)\b[^.!?\n]*\b(festa|evento|anivers|churrasco|confraterniza|casamento|formatura|resenha|reuni[aã]o)\b/,
     /\bor[çc]amento\b/,
   ];
   return padroes.some((re) => re.test(s));
@@ -2115,6 +2127,12 @@ export function isResetSignal(text: string): boolean {
 export const FIRST_CONTACT_OPENER =
   "Oi! Eu sou o Chopinho, da SS-Chopp 🍺 Pra começar, com quem eu falo? Me diz seu nome completo (ou o nome de quem vai receber a entrega).";
 
+// Abertura FIXA quando a 1ª mensagem já é claramente um PEDIDO (looksLikeOrderIntent):
+// em vez de pedir o nome, manda o link do site na hora (site-first garantido, sem
+// depender do LLM). O cliente monta no site e o agente fica de suporte.
+export const FIRST_ORDER_SITE_OPENER =
+  `Boa! 🍺 Pra ficar rápido, é só montar seu pedido aqui ó: ${PUBLIC_SITE_URL} — você escolhe o chopp, vê o preço com frete grátis e já preenche a entrega. Qualquer dúvida é só me chamar que eu te ajudo! 😉`;
+
 // Linha que parece uma chave/dado de pagamento escrito pela IA (CNPJ, CPF,
 // mascaramento com ***, ou rótulos "Banco:/Chave:/Favorecido:" etc.).
 const PIX_KEY_LINE =
@@ -2312,11 +2330,12 @@ export async function chatWithAgent(
   // (inclusive o nome). Deixa o LLM processar o pedido inteiro de uma vez.
   const lastUserMsgOpen = [...history].reverse().find((m) => m.role === "user")?.content;
   const isBulkSiteOrder = looksLikeSiteOrder(lastUserMsgOpen);
-  // Intenção de pedido logo de cara → não dá o "oi, qual seu nome": deixa o
-  // SITE-FIRST agir e mandar o link do site já nesta primeira resposta.
+  // Intenção de pedido logo de cara → em vez do "oi, qual seu nome", manda o
+  // LINK do site na hora (determinístico, não depende do LLM obedecer o
+  // SITE-FIRST). Só no 1º contato de quem ainda não tem nome e não tem carrinho.
   const isOrderIntent = looksLikeOrderIntent(lastUserMsgOpen);
-  if (isFirstContact && !hasRealName && !isBulkSiteOrder && !hasSiteCart && !isOrderIntent) {
-    const opener = FIRST_CONTACT_OPENER;
+  if (isFirstContact && !hasRealName && !isBulkSiteOrder && !hasSiteCart) {
+    const opener = isOrderIntent ? FIRST_ORDER_SITE_OPENER : FIRST_CONTACT_OPENER;
     await prisma.agentMessage.create({
       data: { companyId, sessionId, role: "assistant", content: opener, customerId, channel },
     });
