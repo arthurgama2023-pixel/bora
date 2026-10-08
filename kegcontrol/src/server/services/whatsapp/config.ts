@@ -19,6 +19,7 @@ const KEYS = {
   instance: "whatsapp.instance",
   token: "whatsapp.webhookToken",
   allowed: "whatsapp.allowedNumbers", // números que o agente atende (vírgula); vazio = todos
+  blocked: "whatsapp.blockedNumbers", // números que o agente IGNORA sempre (vírgula); vazio = nenhum
   // Instâncias ADICIONAIS (além da primária) — JSON [{name,label}]. Todas na
   // MESMA empresa, servidor e token: o webhook acha a empresa pelo token e
   // responde pela instância que recebeu (payload.instance). Assim o mesmo agente
@@ -168,6 +169,17 @@ export async function getAllowedNumbersRaw(companyId: string): Promise<string> {
 /** Salva a allowlist definida no painel (string vazia = atende todos). */
 export async function saveAllowedNumbers(companyId: string, value: string): Promise<void> {
   await writeSetting(companyId, KEYS.allowed, value.trim());
+}
+
+/** Números que o agente IGNORA sempre (blocklist). String crua, separada por vírgula. */
+export async function getBlockedNumbersRaw(companyId: string): Promise<string> {
+  const fromDb = await readSetting(companyId, KEYS.blocked);
+  return fromDb ?? "";
+}
+
+/** Salva a blocklist definida no painel (string vazia = não ignora ninguém). */
+export async function saveBlockedNumbers(companyId: string, value: string): Promise<void> {
+  await writeSetting(companyId, KEYS.blocked, value.trim());
 }
 
 /** Descobre a empresa dona de um webhookToken (usado pelo webhook de entrada). */
