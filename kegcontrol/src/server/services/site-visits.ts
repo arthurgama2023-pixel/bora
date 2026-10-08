@@ -517,7 +517,16 @@ const phoneKey = (p?: string | null) => {
 // pausou; os leads continuam aparecendo no funil, só sem contato automático.
 const AUTO_DISPATCH_KEY = "site_dispatch.auto_enabled";
 
+// TRAVA-MESTRA DE CÓDIGO (kill switch). Com isto LIGADO, o disparo de recuperação
+// de carrinho fica DESLIGADO DE VEZ — ignora o interruptor do painel. NENHUMA
+// mensagem de recuperação sai: nem a varredura automática (cron), nem o botão
+// manual do card, MESMO que alguém ligue o toggle em Disparos/Clientes (o valor
+// do Setting é simplesmente ignorado). Decisão do dono (08/10/2026). Para
+// reativar o recurso um dia: trocar para false e subir um deploy.
+export const DISPATCH_HARD_DISABLED = true;
+
 export async function getAutoDispatchEnabled(companyId: string): Promise<boolean> {
+  if (DISPATCH_HARD_DISABLED) return false; // trava de código vence o painel
   const row = await prisma.setting.findUnique({
     where: { companyId_key: { companyId, key: AUTO_DISPATCH_KEY } },
     select: { value: true },
