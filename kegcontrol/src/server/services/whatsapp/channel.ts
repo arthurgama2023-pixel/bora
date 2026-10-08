@@ -578,3 +578,17 @@ export async function isWhatsAppNumberAllowed(companyId: string, externalId: str
     .map(normalizeBrPhone);
   return allowed.length === 0 || allowed.includes(normalizeBrPhone(externalId));
 }
+
+/** Blocklist: números que o agente IGNORA sempre (vence allowlist, cliente e
+ * treinador). Vazia = não ignora ninguém. */
+export async function isWhatsAppNumberBlocked(companyId: string, externalId: string): Promise<boolean> {
+  const { getBlockedNumbersRaw } = await import("./config");
+  const raw = (await getBlockedNumbersRaw(companyId)).trim();
+  if (!raw) return false;
+  const blocked = raw
+    .split(",")
+    .map((n) => n.trim())
+    .filter(Boolean)
+    .map(normalizeBrPhone);
+  return blocked.includes(normalizeBrPhone(externalId));
+}

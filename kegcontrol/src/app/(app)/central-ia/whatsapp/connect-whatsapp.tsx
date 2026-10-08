@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Loader2, Lock, Plus, RotateCcw, Smartphone, Trash2, X } from "lucide-react";
+import { Ban, CheckCircle2, Loader2, Lock, Plus, RotateCcw, Smartphone, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Field, Input } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -404,6 +404,11 @@ export function ConnectWhatsApp({
   const [allowedSaved, setAllowedSaved] = useState(false);
   const [serveAll, setServeAll] = useState(false);
 
+  // Blocklist (números que o agente IGNORA sempre) — vence allowlist e cliente.
+  const [blockedList, setBlockedList] = useState<string[]>([""]);
+  const [savingBlocked, setSavingBlocked] = useState(false);
+  const [blockedSaved, setBlockedSaved] = useState(false);
+
   const loadInstances = useCallback(async () => {
     const d = await apiGet("/api/v1/whatsapp/instances");
     if (d?.instances) setInstances(d.instances as InstanceInfo[]);
@@ -420,6 +425,14 @@ export function ConnectWhatsApp({
         .filter(Boolean);
       setAllowedList(list.length ? list : [""]);
       setServeAll(list.length === 0);
+    });
+    apiGet("/api/v1/whatsapp/blocked").then((d) => {
+      if (!d) return;
+      const list = String(d.blockedNumbers ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      setBlockedList(list.length ? list : [""]);
     });
   }, [configured, loadInstances]);
 
@@ -495,6 +508,37 @@ export function ConnectWhatsApp({
       }
     } finally {
       setSavingAllowed(false);
+    }
+  }
+
+  function updateBlocked(idx: number, value: string) {
+    setBlockedList((prev) => prev.map((n, i) => (i === idx ? value : n)));
+  }
+  function addBlocked() {
+    setBlockedList((prev) => [...prev, ""]);
+  }
+  function removeBlocked(idx: number) {
+    setBlockedList((prev) => {
+      const next = prev.filter((_, i) => i !== idx);
+      return next.length ? next : [""];
+    });
+  }
+  async function saveBlocked(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingBlocked(true);
+    setBlockedSaved(false);
+    try {
+      const blockedNumbers = blockedList
+        .map((n) => n.trim())
+        .filter(Boolean)
+        .join(",");
+      const json = await apiPost("/api/v1/whatsapp/blocked", { blockedNumbers });
+      if (json?.ok) {
+        setBlockedSaved(true);
+        setTimeout(() => setBlockedSaved(false), 2500);
+      }
+    } finally {
+      setSavingBlocked(false);
     }
   }
 
@@ -659,6 +703,68 @@ export function ConnectWhatsApp({
               </div>
             </form>
           )}
+        </Card>
+      )}
+
+      {/* Números ignorados (blocklist) — o agente NUNCA responde a estes, mesmo
+          que estejam liberados ou sejam treinadores. É o "ignorar". */}
+      {configured && (
+        <Card className="p-5">
+          <div className="mb-1 flex items-center gap-2">
+            <Ban className="h-4 w-4 text-danger" />
+            <h2 className="text-sm font-semibold">Números ignorados</h2>
+          </div>
+          <p className="mb-3 text-xs text-muted-foreground">
+            O agente <strong>nunca responde</strong> a estes números — mesmo que estejam liberados
+            como cliente. Útil pra ignorar o seu próprio número de teste. Deixe vazio para não
+            ignorar ninguém.
+          </p>
+
+          <form onSubmit={saveBlocked} className="space-y-3">
+            <div className="space-y-2">
+              {blockedList.map((num, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <Input
+                    value={num}
+                    onChange={(e) => updateBlocked(idx, e.target.value)}
+                    placeholder="21980828309"
+                    inputMode="tel"
+                    className="max-w-xs"
+                  />
+                  {(blockedList.length > 1 || num.trim() !== "") && (
+                    <button
+                      type="button"
+                      onClick={() => removeBlocked(idx)}
+                      title="Voltar a responder este número"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-success"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={addBlocked}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-danger hover:underline"
+            >
+              <Plus className="h-3.5 w-3.5" /> Ignorar outro número
+            </button>
+
+            <p className="text-[11px] text-muted-foreground">
+              Com ou sem o 55 na frente — tanto faz. Remover o número (✕) faz o agente voltar a
+              responder.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="submit" size="sm" disabled={savingBlocked}>
+                {savingBlocked ? "Salvando…" : "Salvar"}
+              </Button>
+              {blockedSaved && <span className="text-xs font-medium text-success">✓ Salvo</span>}
+            </div>
+          </form>
         </Card>
       )}
     </div>

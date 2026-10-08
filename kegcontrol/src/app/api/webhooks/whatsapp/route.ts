@@ -20,6 +20,7 @@ import { savePaymentProof } from "@/server/services/payment-proofs";
 import {
   getWhatsAppChannel,
   isWhatsAppNumberAllowed,
+  isWhatsAppNumberBlocked,
   wasRecentlySentByAgent,
 } from "@/server/services/whatsapp/channel";
 import { enqueueBurst } from "@/server/services/whatsapp/burst-buffer";
@@ -94,6 +95,13 @@ export async function POST(req: NextRequest) {
   // imagem, nem atende treinador. A conexão segue de pé (reconcile acima roda
   // normal); religar no painel devolve tudo na hora, sem perder nada.
   if (!(await isAgentActive(companyId))) {
+    return NextResponse.json({ ok: true });
+  }
+
+  // BLOCKLIST (aba Conectar WhatsApp → "Números ignorados"): números que o dono
+  // marcou pra IGNORAR. Vence TUDO — allowlist, cliente liberado e até treinador.
+  // Fica totalmente mudo pra esse número (nem salva comprovante). É o "ignorar".
+  if (await isWhatsAppNumberBlocked(companyId, incoming.externalId)) {
     return NextResponse.json({ ok: true });
   }
 
