@@ -32,26 +32,50 @@ export async function findCustomerByPhone(companyId: string, rawPhone: string) {
   );
 }
 
+// Busca da aba Clientes: nome, empresa, cidade e nome do WhatsApp (sem
+// diferenciar maiúsculas) + documento pelos dígitos. O TELEFONE é comparado só
+// pelos dígitos (ver listCustomers), então tanto faz digitar com 55, DDD, 9 ou
+// máscara — antes não dava pra achar um contato pelo número pra desativar o agente.
+export function customerSearchOr(q: string, idsPorTelefone: string[] = []) {
+  const termo = q.trim();
+  const digitos = termo.replace(/\D/g, "");
+  const ci = { contains: termo, mode: "insensitive" as const };
+  return [
+    { name: ci },
+    { companyName: ci },
+    { city: ci },
+    { pushName: ci },
+    ...(digitos ? [{ document: { contains: digitos } }] : []),
+    ...(idsPorTelefone.length ? [{ id: { in: idsPorTelefone } }] : []),
+  ];
+}
+
+// Telefone casa pelos dígitos (ignora máscara/55/espaço): com 8+ dígitos usa os
+// últimos 8 (o número em si); com 4 a 7, procura o trecho. Poucos clientes por
+// empresa, então filtra em memória — o banco tem telefones com e sem máscara.
+export function phoneMatchesQuery(whatsapp: string | null, q: string): boolean {
+  const alvo = q.replace(/\D/g, "");
+  if (alvo.length < 4) return false;
+  const tel = (whatsapp ?? "").replace(/\D/g, "");
+  return tel.includes(alvo.length >= 8 ? alvo.slice(-8) : alvo);
+}
+
 export async function listCustomers(
   companyId: string,
   opts: { q?: string; status?: string; type?: string; source?: string } = {},
 ) {
+  let idsPorTelefone: string[] = [];
+  if (opts.q && opts.q.replace(/\D/g, "").length >= 4) {
+    const todos = await prisma.customer.findMany({ where: { companyId }, select: { id: true, whatsapp: true } });
+    idsPorTelefone = todos.filter((c) => phoneMatchesQuery(c.whatsapp, opts.q!)).map((c) => c.id);
+  }
   return prisma.customer.findMany({
     where: {
       companyId,
       ...(opts.status ? { status: opts.status } : {}),
       ...(opts.type ? { type: opts.type } : {}),
       ...(opts.source ? { source: opts.source } : {}),
-      ...(opts.q
-        ? {
-            OR: [
-              { name: { contains: opts.q } },
-              { companyName: { contains: opts.q } },
-              { document: { contains: opts.q.replace(/\D/g, "") || opts.q } },
-              { city: { contains: opts.q } },
-            ],
-          }
-        : {}),
+      ...(opts.q ? { OR: customerSearchOr(opts.q, idsPorTelefone) } : {}),
     },
     orderBy: { name: "asc" },
   });

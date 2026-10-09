@@ -24,7 +24,7 @@ export function CustomerFilters() {
   return (
     <div className="no-print mb-4 flex flex-wrap gap-2">
       <Input
-        placeholder="Buscar por nome, empresa, documento, cidade…"
+        placeholder="Buscar por nome, telefone, empresa, documento, cidade…"
         defaultValue={sp.get("q") ?? ""}
         onChange={(e) => setParam("q", e.target.value)}
         className="max-w-sm"
