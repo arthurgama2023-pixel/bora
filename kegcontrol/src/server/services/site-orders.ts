@@ -194,9 +194,21 @@ export function matchProofsToOrders(
   return result;
 }
 
+// Etiqueta gravada em `notes` quando o AGENTE fecha o pedido. Quando o cliente
+// tinha começado no site, o agente fecha EM CIMA do pedido do site (origin SITE,
+// ver createAgentSiteOrder) — sem a etiqueta, esses pedidos sumiam da aba
+// "Pedidos do Agente". Não precisa de coluna nova no banco.
+export const AGENT_CLOSED_TAG = "[Fechado pelo agente IA no WhatsApp]";
+
 export async function listAgentOrders(companyId: string) {
   const orders = await prisma.siteOrder.findMany({
-    where: { companyId, origin: "AGENTE", status: { not: "CANCELLED" } },
+    where: {
+      companyId,
+      status: { not: "CANCELLED" },
+      // Os fechados pelo agente: criados por ele (AGENTE) OU pedidos do site que
+      // ele fechou em cima (etiqueta em notes).
+      OR: [{ origin: "AGENTE" }, { origin: "SITE", notes: { contains: AGENT_CLOSED_TAG } }],
+    },
     orderBy: { createdAt: "desc" },
     take: 200,
   });
