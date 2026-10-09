@@ -1340,6 +1340,24 @@ export function looksLikeSiteOrder(text?: string | null): boolean {
 // abertura que pede o nome e deixar o SITE-FIRST agir já de cara — mandando o
 // link do site na hora. É proposital que pergunta SÓ de preço (sem intenção de
 // comprar) NÃO entre aqui: essa cai na abertura normal.
+// Detecta a mensagem típica de quem chega pelo ANÚNCIO (Facebook/Instagram):
+// "Olá! Tenho interesse no chopp e queria mais informações". Antes ela caía na
+// abertura que só pede o nome; agora recebe FIRST_AD_SITE_OPENER (link do site +
+// opção de seguir por aqui). Só vale na 1ª mensagem (ver chatWithAgent).
+export function looksLikeAdInquiry(text?: string | null): boolean {
+  if (!text) return false;
+  const s = text.toLowerCase();
+  const padroes: RegExp[] = [
+    /\b(tenho|tô com|to com|estou com)\s+interesse\b/,
+    /\binteressad[oa]s?\b/,
+    /\b(queria|quero|gostaria|preciso)\s+(de\s+)?(mais\s+)?informa[çc]/,
+    /\bmais\s+informa[çc]/,
+    /\bsaber\s+mais\b/,
+    /\b(vi|veio do|vim (pelo|do)|pelo)\s+(o\s+|seu\s+|um\s+)?an[uú]ncio\b/,
+  ];
+  return padroes.some((re) => re.test(s));
+}
+
 export function looksLikeOrderIntent(text?: string | null): boolean {
   if (!text) return false;
   const s = text.toLowerCase();
@@ -2292,6 +2310,13 @@ export const FIRST_CONTACT_OPENER =
 // Abertura FIXA quando a 1ª mensagem já é claramente um PEDIDO (looksLikeOrderIntent):
 // em vez de pedir o nome, manda o link do site na hora (site-first garantido, sem
 // depender do LLM). O cliente monta no site e o agente fica de suporte.
+// Abertura FIXA pra quem chega pelo ANÚNCIO pedindo informação (looksLikeAdInquiry):
+// acolhe, manda o link do site e deixa a porta aberta pra seguir por aqui.
+export const FIRST_AD_SITE_OPENER =
+  `Oi! Que bom que você se interessou 🍺 Aqui é o Chopinho, da SS-Chopp.
+Pra ficar rápido, você monta seu pedido aqui e já vê o preço com frete grátis: ${PUBLIC_SITE_URL}
+Se preferir, me diz seu nome e o bairro da entrega que eu te ajudo por aqui mesmo 😉`;
+
 export const FIRST_ORDER_SITE_OPENER =
   `Boa! 🍺 Pra ficar rápido, é só montar seu pedido aqui ó: ${PUBLIC_SITE_URL} — você escolhe o chopp, vê o preço com frete grátis e já preenche a entrega. Qualquer dúvida é só me chamar que eu te ajudo! 😉`;
 
@@ -2499,8 +2524,14 @@ export async function chatWithAgent(
   // LINK do site na hora (determinístico, não depende do LLM obedecer o
   // SITE-FIRST). Só no 1º contato de quem ainda não tem nome e não tem carrinho.
   const isOrderIntent = looksLikeOrderIntent(lastUserMsgOpen);
+  // Mensagem típica do ANÚNCIO ("tenho interesse… queria mais informações").
+  const isAdInquiry = looksLikeAdInquiry(lastUserMsgOpen);
   if (isFirstContact && !hasRealName && !isBulkSiteOrder && !hasSiteCart) {
-    const opener = isOrderIntent ? FIRST_ORDER_SITE_OPENER : FIRST_CONTACT_OPENER;
+    const opener = isAdInquiry
+      ? FIRST_AD_SITE_OPENER
+      : isOrderIntent
+        ? FIRST_ORDER_SITE_OPENER
+        : FIRST_CONTACT_OPENER;
     await prisma.agentMessage.create({
       data: { companyId, sessionId, role: "assistant", content: opener, customerId, channel },
     });
