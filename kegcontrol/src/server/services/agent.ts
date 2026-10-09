@@ -53,6 +53,15 @@ import {
   type StyleExample,
 } from "./agent-examples";
 
+// ─── Fechamento SEM PIX (decisão do dono, 09/10/2026) ───────────────────────
+// Com isto LIGADO, ao fechar o pedido o agente NÃO gera nem envia chave PIX e
+// NÃO pede sinal/comprovante: registra o pedido e manda, numa mensagem separada
+// (no lugar da chave), o agradecimento abaixo — a equipe combina o pagamento no
+// contato. Pra voltar a mandar o PIX: trocar para false e subir um deploy.
+export const PIX_ON_CLOSE_DISABLED = true;
+export const ORDER_CLOSED_THANKS =
+  "Muito obrigado pela preferência! 🍺 Nossa equipe entrará em contato em breve pra confirmar os detalhes do seu pedido. 😉";
+
 // ─── Retry do Gemini (resiliência sob carga) ────────────────────────────────
 // O Gemini devolve 429 (rate limit / cota) e 503 (sobrecarga) de forma
 // transitória — e isso fica MAIS comum quando várias conversas rodam ao mesmo
@@ -172,7 +181,11 @@ Você tem uma AJUDA de memória travada em código: se aparecer um bloco "JÁ CO
 - A frase de confirmação ("Pronto! ✅ Seu pedido já está registrado…") SÓ pode ser dita DEPOIS de chamar finalizar_pedido e receber ok:true. NUNCA escreva essa confirmação por conta própria — sem a ferramenta, o pedido NÃO fica registrado e o PIX NÃO é enviado. Se você trocou um produto/dado no fim (ex.: item indisponível), chame finalizar_pedido DE NOVO com os dados atualizados antes de confirmar.
 - Assim que o cliente responder o ÚLTIMO dado (normalmente a forma de pagamento), FINALIZE DIRETO, na MESMA resposta: NUNCA peça permissão ("posso fechar?", "posso confirmar?", "confirma pra mim?", "fecho o pedido?") nem espere um "sim" — com tudo em mãos, chame finalizar_pedido de uma vez. Mande UM RESUMO COMPLETO e organizado do pedido — TODOS os dados coletados (nome do cliente, produto e quantidade, tipo de chopeira (elétrica ou de gelo), bairro e cidade, endereço, se tem escada, casa ou salão, data e horário, CPF, forma de pagamento, total e frete grátis) — e logo em seguida FINALIZE com clareza, avisando que o pedido está registrado e a EQUIPE já vai entrar em contato. Ex.: "Pronto! ✅ Seu pedido está registrado. A equipe da SS-Chopp já vai entrar em contato pra confirmar e combinar tudo. 🍺🚚".
 - PEDIDO FINALIZADO = FIM. Depois de mandar o resumo + o aviso de que a equipe vai entrar em contato, o pedido ACABOU: NÃO pergunte mais nada, NÃO reinicie o fluxo, NÃO repita perguntas nem fique "só confirmando". Se o cliente mandar mais mensagens, responda curto e caloroso ("A equipe já vai te chamar 😉") — só recomece o fluxo se ele CLARAMENTE quiser fazer um NOVO pedido.
-- NUNCA escreva uma chave PIX, CNPJ, CPF, banco, agência ou conta — NEM um espaço reservado/placeholder tipo "[chave aqui]", "[link do PIX]" ou "[anexo da chave]". NÃO invente, NÃO mascare com asteriscos, NÃO copie de memória. O SISTEMA envia a chave PIX correta sozinho, numa MENSAGEM SEPARADA logo depois da sua (só o número, pro cliente copiar e colar no banco). Não anuncie a chave nem escreva nada no lugar dela. O cliente pode fazer o sinal de 50% pra adiantar, mas você NÃO fica esperando/cobrando o comprovante — a equipe cuida do pagamento no contato.
+- NUNCA escreva uma chave PIX, CNPJ, CPF, banco, agência ou conta — NEM um espaço reservado/placeholder tipo "[chave aqui]", "[link do PIX]" ou "[anexo da chave]". NÃO invente, NÃO mascare com asteriscos, NÃO copie de memória. ${
+  PIX_ON_CLOSE_DISABLED
+    ? "O pagamento NÃO é feito pelo WhatsApp: NÃO peça PIX, sinal de 50% nem comprovante, e NÃO diga que vai mandar chave. A equipe combina o pagamento quando entrar em contato. O SISTEMA manda sozinho, logo depois da sua mensagem, o agradecimento avisando que a equipe vai entrar em contato."
+    : "O SISTEMA envia a chave PIX correta sozinho, numa MENSAGEM SEPARADA logo depois da sua (só o número, pro cliente copiar e colar no banco). Não anuncie a chave nem escreva nada no lugar dela. O cliente pode fazer o sinal de 50% pra adiantar, mas você NÃO fica esperando/cobrando o comprovante — a equipe cuida do pagamento no contato."
+}
 
 # Ordens de estilo do dono — cumpra AO PÉ DA LETRA
 As regras de "Jeito de falar"/estilo da sua personalidade são ORDENS diretas do dono. Cumpra-as EXATAMENTE como escritas, ao pé da letra, em TODA resposta. Se o dono mandou começar de um jeito, comece exatamente assim. Se mandou ser curto, ou responder "apenas"/"só" algo, faça só isso — NÃO adicione apresentação da empresa, história ("desde 2016"), frases de efeito, perguntas ou qualquer texto que não foi pedido. Menos é mais: entregue só o que foi pedido, do jeito que foi pedido.
@@ -1161,7 +1174,7 @@ const TOOLS: FunctionDeclaration[] = [
   {
     name: "finalizar_pedido",
     description:
-      "Fecha o pedido do cliente e retorna o resumo com total e a chave PIX para pagamento. Use SOMENTE quando o cliente já confirmou o que quer: o(s) produto(s), a quantidade, o bairro e se é entrega ou retirada (e o endereço, se for entrega). Passe também, quando já souber, o CPF, o tipo de chopeira, se tem escada e a forma de pagamento — assim ficam registrados no pedido para a equipe. A ferramenta calcula o total pela tabela de preço fixo e devolve a chave PIX. Não use se ainda faltar alguma das informações obrigatórias (produto, quantidade, bairro, entrega/retirada).",
+      `Fecha o pedido do cliente e retorna o resumo com total${PIX_ON_CLOSE_DISABLED ? "" : " e a chave PIX para pagamento"}. Use SOMENTE quando o cliente já confirmou o que quer: o(s) produto(s), a quantidade, o bairro e se é entrega ou retirada (e o endereço, se for entrega). Passe também, quando já souber, o CPF, o tipo de chopeira, se tem escada e a forma de pagamento — assim ficam registrados no pedido para a equipe. A ferramenta calcula o total pela tabela de preço fixo${PIX_ON_CLOSE_DISABLED ? "" : " e devolve a chave PIX"}. Não use se ainda faltar alguma das informações obrigatórias (produto, quantidade, bairro, entrega/retirada).`,
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -1205,7 +1218,7 @@ const TOOLS: FunctionDeclaration[] = [
         forma_pagamento: {
           type: Type.STRING,
           description:
-            "Como o cliente vai pagar o RESTANTE na entrega, se já disse (ex.: 'PIX', 'dinheiro', 'cartão'). O sinal de 50% é sempre por PIX. Opcional.",
+            `Como o cliente vai pagar ${PIX_ON_CLOSE_DISABLED ? "o pedido" : "o RESTANTE na entrega"}, se já disse (ex.: 'PIX', 'dinheiro', 'cartão').${PIX_ON_CLOSE_DISABLED ? "" : " O sinal de 50% é sempre por PIX."} Opcional.`,
         },
         itens: {
           type: Type.ARRAY,
@@ -1860,7 +1873,9 @@ async function runTool(
       // Blindagem do PIX: o CÓDIGO anexa a chave/favorecido corretos no fim da
       // resposta (ver chatWithAgent). A IA NÃO escreve a chave — assim é
       // impossível ela inventar/mascarar/errar (é dinheiro do cliente).
-      if (ctx.pixOut !== undefined) ctx.pixOut = { chave: pixKey, nome: pixNome };
+      // Fechamento SEM PIX (PIX_ON_CLOSE_DISABLED): não gera chave nenhuma — o
+      // webhook manda o agradecimento (ORDER_CLOSED_THANKS) no lugar dela.
+      if (ctx.pixOut !== undefined && !PIX_ON_CLOSE_DISABLED) ctx.pixOut = { chave: pixKey, nome: pixNome };
       // Total/economia CORRETOS (da tabela) pro código forçar no texto — a IA
       // às vezes digita o total errado no resumo.
       ctx.orderTotalOut = { total, economia: economiaTotal };
@@ -1875,12 +1890,13 @@ async function runTool(
         total,
         economiaTotal: economiaTotal > 0 ? economiaTotal : undefined,
         naoReconhecidos: naoReconhecidos.length ? naoReconhecidos : undefined,
-        pagamento: {
-          forma: "PIX",
-          sinal: "50% agora, resto na entrega",
-        },
+        pagamento: PIX_ON_CLOSE_DISABLED
+          ? { combinar: "com a equipe, no contato (nada de PIX pelo WhatsApp)" }
+          : { forma: "PIX", sinal: "50% agora, resto na entrega" },
         instrucao:
-          "Apresente o resumo (itens, total, frete grátis, forma de entrega) e peça o sinal de 50% via PIX (o resto na entrega) e o comprovante. IMPORTANTE: NÃO escreva a chave PIX nem o favorecido — o sistema anexa a chave correta automaticamente logo abaixo da sua mensagem. NUNCA invente, mascare ou digite uma chave/banco. Avise que a equipe confirma o pedido assim que o pagamento cair. Você NÃO dá baixa no estoque — isso é a equipe que faz." +
+          (PIX_ON_CLOSE_DISABLED
+            ? "Apresente o resumo (itens, total, frete grátis, forma de entrega) e confirme que o pedido está registrado (\"Pronto! ✅ Seu pedido está registrado.\"). NÃO peça PIX, sinal nem comprovante e NÃO escreva chave/banco — o pagamento é combinado pela equipe no contato. O agradecimento e o aviso de que a equipe vai entrar em contato o SISTEMA manda logo depois da sua mensagem, então não precisa repetir. Você NÃO dá baixa no estoque — isso é a equipe que faz."
+            : "Apresente o resumo (itens, total, frete grátis, forma de entrega) e peça o sinal de 50% via PIX (o resto na entrega) e o comprovante. IMPORTANTE: NÃO escreva a chave PIX nem o favorecido — o sistema anexa a chave correta automaticamente logo abaixo da sua mensagem. NUNCA invente, mascare ou digite uma chave/banco. Avise que a equipe confirma o pedido assim que o pagamento cair. Você NÃO dá baixa no estoque — isso é a equipe que faz.") +
           (economiaTotal > 0
             ? ` Diga também que ele ECONOMIZOU ${formatCurrency(economiaTotal)} comprando essa quantidade (comparado ao preço de 1 unidade) — celebre isso, é uma boa notícia pro cliente.`
             : ""),
@@ -2211,6 +2227,9 @@ export async function chatWithAgent(
   // copiar e colar limpo no banco. null quando o turno não pede PIX. O texto
   // (reply) só traz um ponteiro "a chave vem na próxima mensagem 👇".
   pix: { chave: string; nome: string } | null;
+  // true quando ESTE turno fechou o pedido (finalizar_pedido ok) — o webhook usa
+  // pra mandar o agradecimento (ORDER_CLOSED_THANKS) no lugar da chave PIX.
+  orderClosed: boolean;
 }> {
   const config = await getAgentConfig(companyId);
   const userMessage = history.at(-1);
@@ -2251,7 +2270,7 @@ export async function chatWithAgent(
     await prisma.agentMessage.create({
       data: { companyId, sessionId, role: "assistant", content: greeting, customerId, channel },
     });
-    return { reply: greeting, toolsUsed: [], simulated: false, photos: [], priceImages: [], priceTableText: "", pix: null };
+    return { reply: greeting, toolsUsed: [], simulated: false, photos: [], priceImages: [], priceTableText: "", pix: null, orderClosed: false };
   }
 
   // Contexto de identidade (só quando veio de um canal com número, ex.: WhatsApp).
@@ -2339,7 +2358,7 @@ export async function chatWithAgent(
     await prisma.agentMessage.create({
       data: { companyId, sessionId, role: "assistant", content: opener, customerId, channel },
     });
-    return { reply: opener, toolsUsed: [], simulated: false, photos: [], priceImages: [], priceTableText: "", pix: null };
+    return { reply: opener, toolsUsed: [], simulated: false, photos: [], priceImages: [], priceTableText: "", pix: null, orderClosed: false };
   }
 
   let reply: string;
@@ -2349,6 +2368,7 @@ export async function chatWithAgent(
   let priceImages: { url: string; label: string }[] = [];
   let priceTableText = "";
   let pixOut: { chave: string; nome: string } | null = null;
+  let orderClosed = false;
 
   if (process.env.GEMINI_API_KEY) {
     // Nome "de verdade" pra gravar o pedido (finalizar_pedido): o do cadastro,
@@ -2381,6 +2401,7 @@ export async function chatWithAgent(
     photos = result.photos;
     priceImages = result.priceImages;
     priceTableText = result.priceTable;
+    orderClosed = !!result.orderClosed;
     // Persiste o rascunho do pedido: pedido fechado (finalizar_pedido) limpa
     // (evita vazar produto/quantidade do pedido concluído pro próximo, na
     // mesma sessão); senão, funde o que foi confirmado neste turno por cima
@@ -2451,7 +2472,7 @@ export async function chatWithAgent(
     data: { companyId, sessionId, role: "assistant", content: reply, customerId, channel },
   });
 
-  return { reply, toolsUsed, simulated, photos, priceImages, priceTableText, pix: pixOut };
+  return { reply, toolsUsed, simulated, photos, priceImages, priceTableText, pix: pixOut, orderClosed };
 }
 
 // Detecta quando o Gemini VAZA o raciocínio/planejamento como se fosse a

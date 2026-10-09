@@ -6,7 +6,9 @@ import {
   handleTrainerMessage,
   isAgentActive,
   isTrainerNumber,
+  ORDER_CLOSED_THANKS,
   ORDER_PHOTO_FOLLOWUP,
+  PIX_ON_CLOSE_DISABLED,
   type ChatTurn,
 } from "@/server/services/agent";
 import { getAutoEnableNew } from "@/server/services/agent-access";
@@ -242,7 +244,7 @@ export async function POST(req: NextRequest) {
         ...previous.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
         { role: "user", content: combined },
       ];
-      const { reply, photos, priceImages, priceTableText, pix } = await chatWithAgent(
+      const { reply, photos, priceImages, priceTableText, pix, orderClosed } = await chatWithAgent(
         companyId,
         sessionId,
         history,
@@ -299,11 +301,16 @@ export async function POST(req: NextRequest) {
         });
       }
       // Pedido fechado (finalizar_pedido): manda a foto do(s) barril(is) e, na
-      // sequência, um empurrãozinho pra confirmar o PIX.
+      // sequência, a mensagem final. Com PIX_ON_CLOSE_DISABLED (fechamento sem
+      // PIX), é o AGRADECIMENTO ("nossa equipe entrará em contato") no lugar da
+      // chave — sai SEMPRE que o pedido fecha, com ou sem foto. Senão, o antigo
+      // empurrãozinho pra confirmar o PIX.
       for (const photo of photos) {
         await channel.sendMedia(companyId, phone, photo.url, photo.label, { instanceName });
       }
-      if (photos.length > 0) {
+      if (PIX_ON_CLOSE_DISABLED) {
+        if (orderClosed) await channel.sendMessage(companyId, phone, ORDER_CLOSED_THANKS, instanceName);
+      } else if (photos.length > 0) {
         await channel.sendMessage(companyId, phone, ORDER_PHOTO_FOLLOWUP, instanceName);
       }
     } catch (err) {
