@@ -26,7 +26,7 @@ import {
   fullPriceTableText,
   resolveProductByText,
 } from "./site-pricing";
-import { createAgentSiteOrder } from "./site-orders";
+import { AGENT_CLOSED_TAG, createAgentSiteOrder } from "./site-orders";
 import { getCartByCode, getIncompleteCartByPhone, type IncompleteCart } from "./site-visits";
 import {
   CLEAN_SECTIONS,
@@ -61,6 +61,71 @@ import {
 export const PIX_ON_CLOSE_DISABLED = true;
 export const ORDER_CLOSED_THANKS =
   "Muito obrigado pela preferência! 🍺 Nossa equipe entrará em contato em breve pra confirmar os detalhes do seu pedido. 😉";
+
+// ─── Resumo do fechamento montado pelo SISTEMA ──────────────────────────────
+// Antes o resumo final era texto livre do modelo: às vezes lista completa, às
+// vezes um parágrafo que esquecia nome, CPF, horário ou escada (e o nome saía
+// "Cliente"). Agora, quando o pedido fecha, a resposta é ESTE resumo, montado a
+// partir do que foi gravado — sempre igual e completo. Sem "/" (regra de estilo):
+// datas por extenso. O aviso "a equipe vai entrar em contato" vem na mensagem
+// seguinte (ORDER_CLOSED_THANKS), então não se repete aqui.
+export type OrderSummary = {
+  nome: string;
+  itens: { produto: string; quantidade: number }[];
+  chopeira: "eletrica" | "gelo" | null;
+  entrega: "entrega" | "retirada";
+  bairro: string | null;
+  cidade: string | null;
+  endereco: string | null;
+  escada: "sim" | "nao" | null;
+  local: "casa" | "salao" | null;
+  data: string | null;
+  horario: string | null;
+  cpf: string | null;
+  pagamento: string | null;
+  total: number;
+  economia: number;
+};
+
+const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+
+// "19/10" ou "19/10/2026" → "dia 19 de outubro". Outros formatos ("sábado") passam como vieram.
+export function dataPorExtenso(d: string): string {
+  const m = d.trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/\d{2,4})?$/);
+  if (!m) return d.trim();
+  const dia = Number(m[1]);
+  const mes = Number(m[2]);
+  if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return d.trim();
+  return `dia ${dia} de ${MESES[mes - 1]}`;
+}
+
+function cpfFormatado(c: string): string {
+  const x = c.replace(/\D/g, "");
+  return x.length === 11 ? `${x.slice(0, 3)}.${x.slice(3, 6)}.${x.slice(6, 9)}-${x.slice(9)}` : c.trim();
+}
+
+export function renderOrderSummary(s: OrderSummary): string {
+  const pedido = s.itens.map((i) => `${i.quantidade}× ${i.produto}`).join(" e ");
+  const quando = [s.data ? dataPorExtenso(s.data) : "", s.horario ? `às ${s.horario}` : ""].filter(Boolean).join(" ");
+  const linhas = [
+    "Pronto! ✅ Seu pedido está registrado. Confere o resumo:",
+    "",
+    `👤 Nome: ${s.nome}`,
+    `🍺 Pedido: ${pedido}`,
+    s.chopeira ? `🚰 Chopeira: ${s.chopeira === "eletrica" ? "elétrica" : "de gelo"}` : null,
+    s.entrega === "retirada"
+      ? "🏪 Retirada na loja"
+      : `📍 Entrega: ${[s.endereco, s.bairro].filter(Boolean).join(", ")}${s.cidade ? ` (${s.cidade})` : ""}`,
+    s.entrega !== "retirada" && s.escada ? `🪜 Escada no local: ${s.escada === "sim" ? "sim" : "não, é térreo"}` : null,
+    s.local ? `🏠 Local do evento: ${s.local === "salao" ? "salão de festas" : "casa"}` : null,
+    quando ? `📅 Data e horário: ${quando}` : null,
+    s.cpf ? `🪪 CPF: ${cpfFormatado(s.cpf)}` : null,
+    s.pagamento ? `💳 Forma de pagamento: ${s.pagamento}` : null,
+    `💰 Total: ${formatCurrency(s.total)}, com frete grátis 🎉`,
+    s.economia > 0 ? `🤑 Você economizou ${formatCurrency(s.economia)} levando essa quantidade!` : null,
+  ];
+  return linhas.filter((l): l is string => l !== null).join("\n");
+}
 
 // ─── Retry do Gemini (resiliência sob carga) ────────────────────────────────
 // O Gemini devolve 429 (rate limit / cota) e 503 (sobrecarga) de forma
@@ -1372,6 +1437,9 @@ type ToolCtx = {
   // pela tabela). O código força esse total no texto (a IA às vezes transcreve
   // o número errado) — dinheiro do cliente, não pode sair errado.
   orderTotalOut?: { total: number; economia: number } | null;
+  // Preenchido pelo finalizar_pedido quando o pedido fecha (e foi gravado): os
+  // dados do resumo final, que chatWithAgent renderiza (renderOrderSummary).
+  orderSummaryOut?: OrderSummary | null;
   // Acumula os campos do pedido confirmados NESTE turno (via
   // atualizar_dados_pedido, preco_por_bairro ou finalizar_pedido). chatWithAgent
   // funde isso no rascunho persistido (ver OrderDraft) depois do loop.
@@ -1830,22 +1898,32 @@ export async function runTool(
         typeof input.forma_pagamento === "string" && input.forma_pagamento.trim()
           ? input.forma_pagamento.trim()
           : draftSoFar.formaPagamento || "";
-      const orderNotes = formaPagamento
-        ? `Pagamento do restante (na entrega): ${formaPagamento}`
-        : null;
+      // Etiqueta AGENT_CLOSED_TAG: marca o pedido como fechado pelo agente — é o
+      // que faz um pedido que começou no SITE (e que o agente fechou em cima,
+      // ver createAgentSiteOrder) aparecer também em "Pedidos do Agente".
+      const orderNotes = [
+        AGENT_CLOSED_TAG,
+        formaPagamento
+          ? PIX_ON_CLOSE_DISABLED
+            ? `Forma de pagamento: ${formaPagamento}`
+            : `Pagamento do restante (na entrega): ${formaPagamento}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
       // Grava o pedido como fonte de verdade (origin AGENTE) — é o que permite
       // ao comprovante de PIX (casado por telefone, ver payment-proofs.ts) achar
       // este pedido e aparecer pra revisão em Pedidos do Site/Verificação.
       // Só quando veio de canal com número (WhatsApp) — no Playground não há
       // telefone real, então não grava (mesmo critério de salvar_cliente).
       if (ctx.phone) {
-        await createAgentSiteOrder(companyId, {
+        const pedidoParaSalvar: Parameters<typeof createAgentSiteOrder>[1] = {
           customerName: nomeNoFechamento, // travado acima — nunca vazio nem pushName
           phone: ctx.phone,
           deliveryMethod,
           neighborhood: zona.bairro,
           city: zona.city,
-          street: input.endereco ? String(input.endereco) : null,
+          street: input.endereco ? String(input.endereco) : draftSoFar.endereco ?? null,
           eventDate,
           eventTime,
           venueType,
@@ -1855,10 +1933,36 @@ export async function runTool(
           notes: orderNotes,
           items: itens.map((i) => ({ id: i.id, name: i.produto, quantity: i.quantidade, unitPrice: i.precoUnit })),
           total,
-        }).catch((e) => {
-          console.error("[agent] createAgentSiteOrder falhou:", e);
-          Sentry.captureException(e, { tags: { companyId, tool: "finalizar_pedido" } });
-        });
+        };
+        // GRAVAR É CONDIÇÃO PRA CONFIRMAR: antes um erro aqui era só logado e a
+        // ferramenta seguia ok:true — o agente dizia "registrado" sem ter salvo
+        // nada (caso real 01/10). Agora tenta 2x; se não salvar, NÃO fecha: avisa
+        // o modelo pra não confirmar e manda alerta (com os dados) pra equipe.
+        let salvo = false;
+        for (let tentativa = 1; tentativa <= 2 && !salvo; tentativa++) {
+          try {
+            await createAgentSiteOrder(companyId, pedidoParaSalvar);
+            salvo = true;
+          } catch (e) {
+            console.error(`[agent] createAgentSiteOrder falhou (tentativa ${tentativa}):`, e);
+            if (tentativa === 2) {
+              Sentry.captureException(e, {
+                level: "error",
+                tags: { companyId, tool: "finalizar_pedido", alerta: "pedido-nao-salvo" },
+                extra: { pedido: pedidoParaSalvar },
+              });
+            } else {
+              await new Promise((r) => setTimeout(r, 800));
+            }
+          }
+        }
+        if (!salvo) {
+          return JSON.stringify({
+            ok: false,
+            motivo:
+              "O pedido NÃO foi salvo por uma falha técnica momentânea. NÃO diga que está registrado/fechado e NÃO peça os dados de novo. Diga ao cliente, com calma, que você está finalizando o registro e que a equipe da SS-Chopp confirma com ele por aqui em instantes.",
+          });
+        }
         // CPF e NOME são dados de identidade estáveis: guarda no cadastro (o
         // nome só sobrescreve o placeholder "Cliente <telefone>") pra não
         // perguntar de novo em pedidos futuros. O nome vem do fechamento
@@ -1889,6 +1993,23 @@ export async function runTool(
         if (hasStairs) ctx.draftPatch.hasStairs = hasStairs;
         if (formaPagamento) ctx.draftPatch.formaPagamento = formaPagamento;
       }
+      ctx.orderSummaryOut = {
+        nome: nomeNoFechamento,
+        itens: itens.map((i) => ({ produto: i.produto, quantidade: i.quantidade })),
+        chopeira: chopeiraType,
+        entrega: deliveryMethod,
+        bairro: zona.bairro,
+        cidade: zona.city,
+        endereco: input.endereco ? String(input.endereco) : draftSoFar.endereco ?? null,
+        escada: hasStairs,
+        local: venueType,
+        data: eventDate,
+        horario: eventTime,
+        cpf,
+        pagamento: formaPagamento || null,
+        total,
+        economia: economiaTotal,
+      };
       ctx.orderClosed = true;
       // PIX real vem do Setting (pix_key/pix_nome). Enquanto não configurado,
       // usa um PIX de TESTE — seguro porque esta ferramenta só roda no
@@ -2475,6 +2596,11 @@ export async function chatWithAgent(
     if (result.orderClosed && result.total) {
       reply = enforceOrderTotal(reply, result.total.total);
     }
+    // Pedido fechado e gravado: a resposta passa a ser o RESUMO montado pelo
+    // sistema (sempre completo), no lugar do texto livre do modelo.
+    if (result.orderClosed && result.summary) {
+      reply = renderOrderSummary(result.summary);
+    }
     if (pixInfo) {
       pixOut = pixInfo;
       reply = `${reply}\n\n💳 A chave PIX (favorecido ${pixInfo.nome}) vem na próxima mensagem — é só copiar e colar no seu banco 👇`;
@@ -2566,6 +2692,7 @@ async function runGeminiLoop(
   priceImages: { url: string; label: string }[];
   pix: { chave: string; nome: string } | null;
   total?: { total: number; economia: number } | null;
+  summary?: OrderSummary | null;
   draftPatch: OrderDraft;
   orderClosed: boolean;
 }> {
@@ -2591,6 +2718,7 @@ async function runGeminiLoop(
   const draftPatch: OrderDraft = {};
   ctx.draftPatch = draftPatch;
   ctx.orderClosed = false;
+  ctx.orderSummaryOut = null;
   const contents: Content[] = history.map((t) => ({
     role: t.role === "assistant" ? "model" : "user",
     parts: [{ text: t.content }],
@@ -2637,19 +2765,22 @@ async function runGeminiLoop(
             } catch (e) {
               Sentry.captureException(e, { tags: { companyId, tool: "finalizar_pedido", via: "safety-net" } });
             }
-            if (!ctx.orderClosed) {
-              // Não deu pra fechar pelo rascunho (faltou CPF/nome, produto não
-              // reconhecido…): NÃO deixa sair uma confirmação falsa. Reporta e
-              // pede a informação que falta, sem afirmar que registrou.
-              Sentry.captureMessage("Agente narrou fechamento sem finalizar_pedido e o auto-fechamento falhou", {
-                level: "warning",
-                tags: { companyId },
-              });
-              return { reply: "Só um instante pra eu confirmar seu pedido — pode me repetir o produto (marca e litragem) e o bairro, por favor? 😉", toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: null, draftPatch, orderClosed: false };
-            }
+          }
+          // Antes, sem produto/quantidade/bairro no rascunho, a trava nem entrava
+          // e a confirmação falsa saía do mesmo jeito. Agora, se não fechou, NUNCA
+          // deixa sair "registrado".
+          if (!ctx.orderClosed) {
+            // Não deu pra fechar pelo rascunho (faltou CPF/nome, produto não
+            // reconhecido…): NÃO deixa sair uma confirmação falsa. Reporta e
+            // pede a informação que falta, sem afirmar que registrou.
+            Sentry.captureMessage("Agente narrou fechamento sem finalizar_pedido e o auto-fechamento falhou", {
+              level: "warning",
+              tags: { companyId },
+            });
+            return { reply: "Só um instante pra eu confirmar seu pedido — pode me repetir o produto (marca e litragem) e o bairro, por favor? 😉", toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: null, draftPatch, orderClosed: false };
           }
         }
-        return { reply: text, toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: ctx.pixOut ?? null, total: ctx.orderTotalOut ?? null, draftPatch, orderClosed: ctx.orderClosed ?? false };
+        return { reply: text, toolsUsed, photos: photosOut, priceTable: ctx.priceTableOut ?? "", priceImages: priceImagesOut, pix: ctx.pixOut ?? null, total: ctx.orderTotalOut ?? null, summary: ctx.orderSummaryOut ?? null, draftPatch, orderClosed: ctx.orderClosed ?? false };
       }
       if (text && looksLikeReasoningLeak(text)) {
         Sentry.captureMessage("Gemini vazou raciocínio na resposta ao cliente", {
