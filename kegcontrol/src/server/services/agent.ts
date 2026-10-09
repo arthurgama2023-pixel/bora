@@ -1434,7 +1434,7 @@ function acceptedCustomerName(name: unknown, ctx: ToolCtx): string {
   return "";
 }
 
-async function runTool(
+export async function runTool(
   companyId: string,
   rawName: string,
   input: Record<string, unknown>,
@@ -1697,14 +1697,7 @@ async function runTool(
       const naoReconhecidos: string[] = [];
       const fotosVistas = new Set<string>();
       const fotos: { url: string; label: string }[] = [];
-      for (const it of rawItens) {
-        const produtoTxt = String(it.produto ?? "");
-        const qtd = Math.max(1, Number(it.quantidade ?? 1));
-        const item = resolveProductByText(products, produtoTxt);
-        if (!item) {
-          naoReconhecidos.push(produtoTxt);
-          continue;
-        }
+      const addItem = (item: NonNullable<ReturnType<typeof resolveProductByText>>, qtd: number) => {
         // Preço unitário conforme a quantidade (aplica faixa escalonada, ex.: Brahma).
         // economia: quanto o cliente economizou no total vs. o preço de 1 unidade.
         const precoUnit = unitPriceFor(item, qtd);
@@ -1714,6 +1707,38 @@ async function runTool(
         if (fotoUrl && !fotosVistas.has(fotoUrl)) {
           fotosVistas.add(fotoUrl);
           fotos.push({ url: fotoUrl, label: item.name });
+        }
+      };
+      for (const it of rawItens) {
+        const produtoTxt = String(it.produto ?? "");
+        const qtd = Math.max(1, Number(it.quantidade ?? 1));
+        const item = resolveProductByText(products, produtoTxt);
+        if (!item) {
+          naoReconhecidos.push(produtoTxt);
+          continue;
+        }
+        addItem(item, qtd);
+      }
+      // REDE DE SEGURANÇA (caso Lincoln, 08/10): às vezes o modelo chama o
+      // finalizar_pedido com `itens` vazio ou com um texto que não bate na tabela
+      // (ex.: "Belco" sem a litragem), mesmo com o produto já confirmado na
+      // conversa — e o pedido travava com "produto não reconhecido". Aí completa
+      // pelo RASCUNHO (o confirmado neste turno vence o acumulado), igual já é
+      // feito com chopeira/escada/pagamento. Só fecha se a QUANTIDADE também é
+      // conhecida (do item enviado ou do rascunho) — nunca chuta quantidade.
+      if (itens.length === 0) {
+        const produtoRascunho = ctx.draftPatch?.produto || ctx.draftSoFar?.produto;
+        const qtdItemUnico = rawItens.length === 1 ? Number(rawItens[0].quantidade) : NaN;
+        const qtdRascunho = Number(ctx.draftPatch?.quantidade ?? ctx.draftSoFar?.quantidade);
+        const qtd = qtdItemUnico > 0 ? qtdItemUnico : qtdRascunho > 0 ? qtdRascunho : NaN;
+        const item = produtoRascunho ? resolveProductByText(products, produtoRascunho) : null;
+        if (item && qtd > 0) {
+          addItem(item, Math.floor(qtd));
+          console.warn(`[agent] finalizar_pedido: itens do modelo não bateram (${JSON.stringify(rawItens)}) — usei o rascunho: ${qtd}x ${item.name}`);
+          Sentry.captureMessage("finalizar_pedido: itens completados pelo rascunho", {
+            level: "warning",
+            tags: { companyId, tool: "finalizar_pedido", via: "draft-items" },
+          });
         }
       }
       if (itens.length === 0) {
