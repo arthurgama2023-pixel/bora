@@ -56,8 +56,11 @@ export default async function CustomersPage({
   const session = await getSession();
   if (!session) redirect("/login");
   const { q, status, type, reg } = await searchParams;
-  const naoRegistrados = reg === "nao";
-  const source = naoRegistrados ? "AGENTE" : "MANUAL";
+  // Abas: "Todos" (padrão) mostra TODO contato — antes a tela abria em
+  // "Registrados" (só os cadastrados à mão) e os contatos do WhatsApp ficavam
+  // escondidos na outra aba. "sim" = cadastrados à mão; "nao" = chegaram pelo WhatsApp.
+  const aba: "todos" | "sim" | "nao" = reg === "nao" ? "nao" : reg === "sim" ? "sim" : "todos";
+  const source = aba === "nao" ? "AGENTE" : aba === "sim" ? "MANUAL" : undefined;
   const [customers, counts, autoEnableNew, agentActive] = await Promise.all([
     listCustomers(session.companyId, { q, status, type, source }),
     countCustomersBySource(session.companyId),
@@ -92,17 +95,18 @@ export default async function CustomersPage({
         </div>
       )}
 
-      {/* Abas: cadastrados no painel × chegaram sozinhos pelo WhatsApp */}
-      <div className="mb-4 flex gap-2">
-        <TabLink href="/clientes" active={!naoRegistrados} label="Registrados" count={counts.MANUAL} />
-        <TabLink href="/clientes?reg=nao" active={naoRegistrados} label="Não registrados" count={counts.AGENTE} />
+      {/* Abas: todos × cadastrados no painel × chegaram sozinhos pelo WhatsApp */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        <TabLink href="/clientes" active={aba === "todos"} label="Todos" count={counts.MANUAL + counts.AGENTE} />
+        <TabLink href="/clientes?reg=sim" active={aba === "sim"} label="Registrados" count={counts.MANUAL} />
+        <TabLink href="/clientes?reg=nao" active={aba === "nao"} label="Não registrados" count={counts.AGENTE} />
       </div>
 
       <CustomerFilters />
       {customers.length === 0 ? (
         <EmptyState
           message={
-            naoRegistrados
+            aba === "nao" && !q
               ? "Nenhum contato novo do WhatsApp por aqui ainda."
               : "Nenhum cliente encontrado com esses filtros."
           }
