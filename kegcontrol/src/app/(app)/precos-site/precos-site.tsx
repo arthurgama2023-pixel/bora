@@ -43,7 +43,9 @@ const INITIAL: Prod[] = [
   { id: "belco-30l", name: "Belco 30L", tag: "Belco", emoji: "🛢️", tiers: [450, 400, 360] },
   { id: "belco-50l", name: "Belco 50L", tag: "Belco", emoji: "🛢️", tiers: [600, 550, 500] },
   { id: "brahma-50l", name: "Brahma 50L", tag: "Brahma", emoji: "🛢️", tiers: [950, 900, 850] },
+  { id: "heineken-30l", name: "Heineken 30L", tag: "Heineken", emoji: "🛢️", tiers: [675, 600, 600] },
   { id: "heineken-50l", name: "Heineken 50L", tag: "Heineken", emoji: "🛢️", tiers: [1000, 950, 900] },
+  { id: "amstel-30l", name: "Amstel 30L", tag: "Amstel", emoji: "🛢️", tiers: [595, 545, 495] },
   { id: "amstel-50l", name: "Amstel 50L", tag: "Amstel", emoji: "🛢️", tiers: [800, 750, 700] },
   { id: "vinho-30l", name: "Choppe de Vinho 30L", tag: "Vinho", emoji: "🍷", fixed: 450 },
   { id: "vinho-50l", name: "Choppe de Vinho 50L", tag: "Vinho", emoji: "🍷", fixed: 600 },
@@ -247,6 +249,9 @@ export function PrecosSite() {
   const [savingDraft, setSavingDraft] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  // Falha ao carregar os preços atuais: sem eles, publicar sobrescreveria o que
+  // está no ar com a tabela padrão local. Mantém Salvar/Publicar travados.
+  const [loadError, setLoadError] = useState(false);
 
   // Preços por região: cada cidade pode sobrescrever a tabela padrão.
   // Sem override => segue o padrão. `resetNonce` força o form a remontar ao
@@ -485,7 +490,11 @@ export function PrecosSite() {
     fetch("/api/v1/precos-site", { cache: "no-store" })
       .then((r) => r.json())
       .then((json) => {
-        if (!alive || !json?.ok) return;
+        if (!alive) return;
+        if (!json?.ok) {
+          setLoadError(true);
+          return;
+        }
         const d = json.data;
         if (Array.isArray(d.products) && d.products.length) setProds(d.products);
         if (d.overrides && typeof d.overrides === "object") setOverrides(d.overrides);
@@ -494,7 +503,7 @@ export function PrecosSite() {
         if (Array.isArray(d.promos) && d.promos.length) setPromos(d.promos);
         setResetNonce((x) => x + 1); // remonta a tabela com os valores carregados
       })
-      .catch(() => {})
+      .catch(() => alive && setLoadError(true))
       .finally(() => alive && setLoaded(true));
     return () => {
       alive = false;
@@ -528,6 +537,30 @@ export function PrecosSite() {
   // "Publicar no site" — grava no ao vivo. O site e o agente passam a usar
   // esses preços e bairros na hora.
   async function publish() {
+    // Trava de segurança: preço R$0 geralmente é campo esquecido, não promoção.
+    const zerados: string[] = [];
+    const checa = (regiao: string, list: Prod[]) => {
+      for (const p of list) {
+        if (p.tiers) {
+          const nomes = ["1 barril", "2 barris", "3+ barris"];
+          p.tiers.forEach((v, i) => {
+            if (!(v > 0)) zerados.push(`${regiao} · ${p.name} · ${nomes[i]} = R$0`);
+          });
+        } else if (!((p.fixed ?? 0) > 0)) {
+          zerados.push(`${regiao} · ${p.name} · preço fixo = R$0`);
+        }
+      }
+    };
+    checa("Padrão (todas as regiões)", prods);
+    for (const [cidade, list] of Object.entries(overrides)) checa(cidade, list);
+    if (
+      zerados.length > 0 &&
+      !window.confirm(
+        `Estes preços estão em R$0:\n\n${zerados.join("\n")}\n\nTem certeza que quer publicar com preço R$0?`,
+      )
+    ) {
+      return;
+    }
     setPublishing(true);
     try {
       const res = await fetch("/api/v1/precos-site/publish", {
@@ -561,7 +594,7 @@ export function PrecosSite() {
         subtitle="Fonte única dos preços do SS-Chopp: preços por região e promoções. Salvar guarda seu rascunho; Publicar no site coloca no ar de verdade."
         actions={
           <>
-            <Button variant="outline" onClick={saveDraft} disabled={savingDraft || publishing || !loaded}>
+            <Button variant="outline" onClick={saveDraft} disabled={savingDraft || publishing || !loaded || loadError}>
               {savingDraft ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" /> Salvando…
@@ -572,7 +605,7 @@ export function PrecosSite() {
                 </>
               )}
             </Button>
-            <Button onClick={publish} disabled={publishing || savingDraft || !loaded}>
+            <Button onClick={publish} disabled={publishing || savingDraft || !loaded || loadError}>
               {publishing ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" /> Publicando…
@@ -586,6 +619,15 @@ export function PrecosSite() {
           </>
         }
       />
+
+      {loadError && (
+        <div
+          role="alert"
+          className="mb-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
+        >
+          Não foi possível carregar os preços atuais. Recarregue a página antes de publicar.
+        </div>
+      )}
 
       {/* fluxo / fonte única */}
       <Card className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 p-4">

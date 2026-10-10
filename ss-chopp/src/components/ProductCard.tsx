@@ -5,6 +5,7 @@ import { formatPrice } from "@/lib/cart-context";
 import { useLocation } from "@/lib/location-context";
 import { brandForProduct } from "@/lib/brands";
 import BrandBarrel from "@/components/BrandBarrel";
+import PrecoPendente from "@/components/PrecoPendente";
 import type { Product } from "@/lib/types";
 
 const tagColors: Record<string, string> = {
@@ -24,22 +25,11 @@ function tierLabel(tiers: { min: number; unit: number }[]): string {
 }
 
 export default function ProductCard({ product }: { product: Product }) {
-  const { zone, priceFactor, tiersOf, fromPriceOf, unitPriceOf } = useLocation();
+  const { zone, pricingStatus, tiersOf, fromPriceOf, unitPriceOf } = useLocation();
 
-  // Produto com preço escalonado por quantidade (ex.: Brahma) na região fixa
-  const tiers = zone?.fixed ? tiersOf(product.id) : undefined;
-
-  // Zona com tabela de preço fixo (Caxias / SJM / região)
-  let finalPrice = product.price * priceFactor;
-  if (zone?.fixed) {
-    const fixedPrice = unitPriceOf(product.id, 1);
-    if (fixedPrice !== undefined) {
-      finalPrice = fixedPrice;
-    }
-  }
-
-  // Mostra o preço "de/por" só quando há economia real sobre o preço de tabela.
-  const hasDeal = !!zone && finalPrice < product.price;
+  // Só preço do painel (Preços do Site) da região escolhida — nada do código.
+  const tiers = tiersOf(product.id);
+  const finalPrice = unitPriceOf(product.id, 1);
   return (
     <Link
       href={`/produto/${product.id}`}
@@ -70,7 +60,9 @@ export default function ProductCard({ product }: { product: Product }) {
         <h3 className="font-bold text-brand-black">{product.name}</h3>
         <p className="line-clamp-2 text-sm text-gray-600">{product.description}</p>
         <div className="mt-auto pt-2">
-          {tiers ? (
+          {finalPrice === undefined ? (
+            <PrecoPendente zone={!!zone} status={pricingStatus} />
+          ) : tiers ? (
             <>
               <p className="text-lg font-extrabold text-brand-amber">
                 a partir de {formatPrice(fromPriceOf(product.id) ?? finalPrice)} / un.
@@ -78,19 +70,9 @@ export default function ProductCard({ product }: { product: Product }) {
               <p className="text-[11px] font-medium text-gray-500">{tierLabel(tiers)}</p>
             </>
           ) : (
-            <>
-              {hasDeal && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400 line-through">{formatPrice(product.price)}</span>
-                  <span className="rounded-full bg-brand-amber/15 px-1.5 py-0.5 text-[10px] font-bold text-brand-amber">
-                    ⏳ tempo limitado
-                  </span>
-                </div>
-              )}
-              <p className="text-lg font-extrabold text-brand-amber">
-                {formatPrice(finalPrice)} / un.
-              </p>
-            </>
+            <p className="text-lg font-extrabold text-brand-amber">
+              {formatPrice(finalPrice)} / un.
+            </p>
           )}
           {zone && (
             <span className="mt-1 inline-flex w-fit items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">

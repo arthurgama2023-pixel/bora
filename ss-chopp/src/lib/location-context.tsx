@@ -2,13 +2,8 @@
 
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 import { zones as staticZones, makeFixedZone, etaForCity, slug, type Zone } from "@/data/zones";
-import {
-  getCaxiasUnitPrice,
-  getCaxiasFromPrice,
-  getCaxiasSavings,
-  caxiasTiers,
-} from "@/data/caxias-pricing";
 import { PRICING_URL, idsRemotos } from "@/lib/tabela";
+import { fetchPricing } from "@/lib/fetch-pricing";
 import {
   readPricingCache,
   writePricingCache,
@@ -24,10 +19,13 @@ const PHONE_KEY = "ss-chopp-phone";
 // junto do fetch de preços. Este é só o FALLBACK, caso o fetch falhe/demore.
 export const FALLBACK_WHATSAPP = "5521993765465";
 
-// Fonte única de preços E cobertura (KegControl → Supabase). O site lê ao
-// vivo daqui; se falhar/estiver carregando, cai na tabela fixa local (nunca
-// quebra o preço nem o seletor de bairro). URL e mapa de ids vivem em
-// lib/tabela.ts — mesma fonte que o cartão de preços do agente usa.
+// Fonte única de preços E cobertura (KegControl → Supabase). O site SÓ mostra
+// preço que veio do painel (ao vivo ou do cache do último acesso). Enquanto
+// carrega, `pricingStatus` = "loading" e os preços vêm undefined (a tela mostra
+// "carregando…"); se o painel não responder e não houver cache, "unavailable"
+// (a tela manda consultar no WhatsApp e o carrinho não finaliza). Antes caía na
+// tabela fixa do código, que estava desatualizada — o cliente via preço errado.
+// URL e mapa de ids vivem em lib/tabela.ts.
 
 // Os tipos RemoteProd/RemotePricing e o cache vivem em @/lib/pricing-cache
 // (reaproveitados aqui e testáveis fora do React).
@@ -43,6 +41,8 @@ interface Tier {
   min: number;
   unit: number;
 }
+
+export type PricingStatus = "loading" | "ok" | "unavailable";
 
 interface LocationContextValue {
   zones: Zone[]; // cobertura efetiva: embutida + adicionada via KegControl
@@ -60,6 +60,9 @@ interface LocationContextValue {
   tiersOf: (productId: string) => Tier[] | undefined;
   savingsOf: (productId: string, qty: number) => number;
   pricingRev: number; // muda quando os preços/regiões remotos chegam (p/ recalcular memos)
+  // "loading" = buscando no painel; "ok" = tem preço do painel (ao vivo ou
+  // cache); "unavailable" = painel não respondeu e não há cache.
+  pricingStatus: PricingStatus;
   whatsappNumber: string; // destino do "Finalizar pelo WhatsApp" (painel > fallback)
 }
 
@@ -71,6 +74,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [remote, setRemote] = useState<RemotePricing | null>(null);
   const [pricingRev, setPricingRev] = useState(0);
+  const [fetchFailed, setFetchFailed] = useState(false);
   const [whatsappNumber, setWhatsappNumber] = useState<string>(FALLBACK_WHATSAPP);
 
   // Cobertura efetiva: zonas embutidas (menos as excluídas na aba) + bairros
@@ -121,9 +125,9 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   }
 
   // Busca os preços + cobertura publicados uma vez ao carregar. Primeiro hidrata
-  // do CACHE (último preço real que o cliente já viu) pra não piscar a tabela
-  // fixa nem perder os overrides por zona se o banco estiver fora; o fetch ao
-  // vivo então sobrescreve. Falha do fetch sem cache => fallback fixo do código.
+  // do CACHE (último preço real que o cliente já viu) pra não ficar em
+  // "carregando" nem perder os overrides por zona se o banco estiver fora; o
+  // fetch ao vivo (com timeout + novas tentativas) então sobrescreve.
   useEffect(() => {
     let alive = true;
     const cached = readPricingCache();
@@ -132,29 +136,23 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       if (cached.whatsappNumber) setWhatsappNumber(cached.whatsappNumber);
       setPricingRev((x) => x + 1);
     }
-    fetch(PRICING_URL)
-      .then((r) => r.json())
-      .then((j) => {
-        if (!alive || !j?.ok || !j.data) return;
-        const data: RemotePricing = {
-          products: j.data.products ?? [],
-          overrides: j.data.overrides ?? {},
-          extraRegions: j.data.extraRegions ?? {},
-          removedRegions: j.data.removedRegions ?? {},
-        };
-        setRemote(data);
-        // Número do WhatsApp configurado no painel (só dígitos). Sem ele, mantém
-        // o fallback.
-        const wa = String(j.data.whatsappNumber ?? "").replace(/\D/g, "");
-        if (wa) setWhatsappNumber(wa);
-        setPricingRev((x) => x + 1);
-        writePricingCache(data, wa);
-      })
-      .catch(() => {});
+    fetchPricing(PRICING_URL).then((res) => {
+      if (!alive) return;
+      if (!res) {
+        setFetchFailed(true);
+        return;
+      }
+      setRemote(res.data);
+      if (res.whatsappNumber) setWhatsappNumber(res.whatsappNumber);
+      setPricingRev((x) => x + 1);
+      writePricingCache(res.data, res.whatsappNumber);
+    });
     return () => {
       alive = false;
     };
   }, []);
+
+  const pricingStatus: PricingStatus = remote ? "ok" : fetchFailed ? "unavailable" : "loading";
 
   function setZone(id: string) {
     setZoneId(id);
@@ -171,47 +169,42 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const priceFactor = 1 - discountPercent / 100;
 
   // Preço efetivo por produto: override da cidade tem prioridade; senão o
-  // padrão remoto; senão (remoto ausente) cai no fallback local.
+  // padrão remoto. Sem bairro escolhido ou sem preço do painel => undefined
+  // (a tela não inventa preço).
   // Os ids do KegControl divergem em 2 produtos (brahma/chopeira) — casamos
   // pelos dois nomes, senão o preço publicado é ignorado sem avisar.
   const rProd = (id: string): RemoteProd | undefined => {
-    if (!remote) return undefined;
+    if (!remote || !zone) return undefined;
     const alvo = idsRemotos(id);
     const bate = (p: RemoteProd) => alvo.includes(p.id);
-    const ov = zone ? remote.overrides[zone.city]?.find(bate) : undefined;
+    const ov = remote.overrides[zone.city]?.find(bate);
     return ov ?? remote.products.find(bate);
   };
 
   function unitPriceOf(productId: string, qty = 1): number | undefined {
     const p = rProd(productId);
-    if (p) return p.tiers ? tierUnit(p.tiers, qty) : p.fixed;
-    return getCaxiasUnitPrice(productId, qty);
+    if (!p) return undefined;
+    return p.tiers ? tierUnit(p.tiers, qty) : p.fixed;
   }
   function fromPriceOf(productId: string): number | undefined {
     const p = rProd(productId);
-    if (p) return p.tiers ? Math.min(...p.tiers) : p.fixed;
-    return getCaxiasFromPrice(productId);
+    if (!p) return undefined;
+    return p.tiers ? Math.min(...p.tiers) : p.fixed;
   }
   function tiersOf(productId: string): Tier[] | undefined {
     const p = rProd(productId);
-    if (p)
-      return p.tiers
-        ? [
-            { min: 1, unit: p.tiers[0] },
-            { min: 2, unit: p.tiers[1] },
-            { min: 3, unit: p.tiers[2] },
-          ]
-        : undefined;
-    return caxiasTiers[productId];
+    if (!p?.tiers) return undefined;
+    return [
+      { min: 1, unit: p.tiers[0] },
+      { min: 2, unit: p.tiers[1] },
+      { min: 3, unit: p.tiers[2] },
+    ];
   }
   function savingsOf(productId: string, qty: number): number {
     const p = rProd(productId);
-    if (p) {
-      if (!p.tiers || qty < 1) return 0;
-      const s = (p.tiers[0] - tierUnit(p.tiers, qty)) * qty;
-      return s > 0 ? s : 0;
-    }
-    return getCaxiasSavings(productId, qty);
+    if (!p?.tiers || qty < 1) return 0;
+    const s = (p.tiers[0] - tierUnit(p.tiers, qty)) * qty;
+    return s > 0 ? s : 0;
   }
 
   return (
@@ -231,6 +224,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         tiersOf,
         savingsOf,
         pricingRev,
+        pricingStatus,
         whatsappNumber,
       }}
     >

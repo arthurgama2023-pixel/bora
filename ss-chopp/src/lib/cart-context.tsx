@@ -31,6 +31,8 @@ interface CartContextValue {
   total: number;
   minimumOrder: number;
   meetsMinimum: boolean;
+  // todos os itens têm preço do painel (falso = carregando ou painel fora)
+  pricesReady: boolean;
   // preço unitário já ajustado pela zona e pela quantidade (faixas escalonadas)
   unitPrice: (productId: string, quantity?: number) => number;
   // Chopeira elétrica ou de gelo — uma escolha pro pedido inteiro.
@@ -42,7 +44,7 @@ interface CartContextValue {
 const CartContext = createContext<CartContextValue | null>(null);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const { priceFactor, zone, unitPriceOf, pricingRev } = useLocation();
+  const { priceFactor, zone, unitPriceOf, pricingRev, pricingStatus } = useLocation();
   const [items, setItems] = useState<CartItem[]>([]);
   const [chopeiraType, setChopeiraTypeState] = useState<string | null>(null);
 
@@ -66,18 +68,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Preço do painel (Preços do Site) pra região escolhida, com faixa por
+  // quantidade (ex.: Brahma: 1un R$950, 2un R$900, 3+ R$850). Sem preço do
+  // painel => 0, e `pricesReady` fica false (o carrinho não deixa finalizar).
   function unitPrice(productId: string, quantity = 1): number {
-    const product = getProductById(productId);
-    if (!product) return 0;
-
-    // Zona com tabela de preço fixo (Caxias / SJM / região) — pode ter faixa
-    // escalonada por quantidade (ex.: Brahma: 1un R$950, 2un R$900, 3+ R$800).
-    if (zone?.fixed) {
-      const fixedPrice = unitPriceOf(productId, quantity);
-      if (fixedPrice !== undefined) return fixedPrice;
-    }
-
-    return product.price * priceFactor;
+    if (!getProductById(productId)) return 0;
+    return unitPriceOf(productId, quantity) ?? 0;
   }
 
   function addItem(productId: string, quantity: number) {
@@ -128,6 +124,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
     [items, priceFactor, zone, pricingRev]
   );
 
+  // Todos os itens têm preço vindo do painel? (senão não dá pra fechar o total)
+  const pricesReady =
+    pricingStatus === "ok" &&
+    items.every((i) => unitPriceOf(i.productId, i.quantity) !== undefined);
+
   const itemCount = items.length;
   // frete grátis pra região escolhida (parte da bonificação)
   const deliveryFee = 0;
@@ -149,6 +150,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         total,
         minimumOrder: MINIMUM_ORDER,
         meetsMinimum,
+        pricesReady,
         unitPrice,
         chopeiraType,
         setChopeiraType,

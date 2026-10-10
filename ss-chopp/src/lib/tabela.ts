@@ -56,6 +56,7 @@ export const CIDADES = [
   "Centro",
   "Zona Sul",
   "Zona Oeste",
+  "Região Metropolitana",
 ] as const;
 
 export const cidadeSlug = (c: string) =>
@@ -149,6 +150,13 @@ function bairrosDaCidade(pricing: Pricing | null, cidade: string): string[] {
   return out;
 }
 
+// Preço unitário da faixa local que vale pra `qtd` barris (lista em ordem
+// decrescente de `min`; sem faixa que cubra, usa a de menor `min`).
+function faixaLocal(tiers: { min: number; unit: number }[], qtd: number): number {
+  const t = tiers.find((f) => qtd >= f.min) ?? tiers[tiers.length - 1];
+  return t.unit;
+}
+
 export function montarTabela(pricing: Pricing | null, cidade: string): Tabela {
   const linhas: LinhaTabela[] = BARRIS.map((b) => {
     const prod = products.find((p) => p.id === b.id);
@@ -158,12 +166,11 @@ export function montarTabela(pricing: Pricing | null, cidade: string): Tabela {
 
     const tiers: [number, number, number] | undefined = remoto?.tiers
       ? remoto.tiers
-      : localTiers
-        ? [
-            localTiers.find((t) => t.min === 1)!.unit,
-            localTiers.find((t) => t.min === 2)!.unit,
-            localTiers.find((t) => t.min === 3)!.unit,
-          ]
+      : localTiers?.length
+        ? // Faixa local pode não ter as 3 quantidades (ex.: Heineken 30L sem
+          // "3+") — usa a faixa que vale pra aquela quantidade, sem quebrar.
+          // Antes era `find(min===3)!.unit` e a página inteira caía.
+          [faixaLocal(localTiers, 1), faixaLocal(localTiers, 2), faixaLocal(localTiers, 3)]
         : undefined;
 
     const fixo = tiers ? undefined : (remoto?.fixed ?? caxiasPricing[b.id] ?? prod?.price);
