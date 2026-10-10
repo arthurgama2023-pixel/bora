@@ -41,6 +41,7 @@ export const caxiasTiers: Record<string, PriceTier[]> = {
   // Fallback se a busca remota (KegControl) falhar. Heineken 30L: 1 unidade
   // R$450; a partir de 2 unidades R$400/cada (sem desconto extra no 3+).
   "heineken-30l": [
+    { min: 3, unit: 400.0 },
     { min: 2, unit: 400.0 },
     { min: 1, unit: 450.0 },
   ],

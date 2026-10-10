@@ -2,6 +2,9 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { phoneMatchKey } from "@/lib/phone";
 import { holidayKind } from "@/lib/holiday";
+import * as Sentry from "@sentry/nextjs";
+import { getSitePricing } from "@/server/services/site-pricing";
+import { notaPrecoCorrigido, recalcularPrecosPedido } from "@/server/services/site-order-pricing";
 
 // Pedido vindo do SITE (ss-chopp). Entra como PENDING; a SS-Chopp confirma no
 // painel (aí vira Movement manual). Nao toca no estoque.
@@ -43,7 +46,40 @@ export type SiteOrderInput = z.infer<typeof siteOrderSchema>;
 export const SITE_ORDER_STATUSES = ["PENDING", "SCHEDULED", "CONFIRMED", "CANCELLED"] as const;
 export type SiteOrderStatus = (typeof SITE_ORDER_STATUSES)[number];
 
-export async function createSiteOrder(companyId: string, data: SiteOrderInput) {
+// O site e publico: unitPrice/total vem do cliente e nao sao confiaveis. Aqui o
+// servidor recalcula pela tabela do painel. NUNCA bloqueia o pedido: se a tabela
+// nao carregar, grava com os valores do cliente (e avisa o Sentry).
+async function corrigirPrecos(companyId: string, data: SiteOrderInput): Promise<SiteOrderInput> {
+  try {
+    const pricing = await getSitePricing(companyId);
+    const r = recalcularPrecosPedido(pricing, data.city, data.items, data.total);
+    if (r.divergiu) {
+      Sentry.captureMessage("Pedido do site com preço divergente da tabela do painel", {
+        level: "warning",
+        tags: { companyId, alerta: "preco-divergente" },
+        extra: {
+          cliente: { items: data.items, total: data.total },
+          servidor: { items: r.items, total: r.total },
+          naoVerificados: r.naoVerificados,
+          city: data.city,
+        },
+      });
+    }
+    const nota = r.divergiu ? notaPrecoCorrigido(r) : null;
+    return {
+      ...data,
+      items: r.items,
+      total: r.total,
+      notes: nota ? [data.notes, nota].filter(Boolean).join(" ") : data.notes,
+    };
+  } catch (e) {
+    Sentry.captureException(e, { tags: { companyId, alerta: "preco-recalculo-falhou" } });
+    return data;
+  }
+}
+
+export async function createSiteOrder(companyId: string, input: SiteOrderInput) {
+  const data = await corrigirPrecos(companyId, input);
   return prisma.siteOrder.create({
     data: {
       companyId,

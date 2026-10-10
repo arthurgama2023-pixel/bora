@@ -21,6 +21,7 @@ import {
   PRICING_URL,
   type Pricing,
 } from "@/lib/tabela";
+import { fetchPricing } from "@/lib/fetch-pricing";
 
 const WHATSAPP = "(21) 99376-5465";
 const PEDIDO_MINIMO = 150;
@@ -37,6 +38,7 @@ function Cartao() {
   const params = useSearchParams();
   const router = useRouter();
   const [pricing, setPricing] = useState<Pricing | null>(null);
+  const [falhou, setFalhou] = useState(false);
 
   const cidade = cidadeFromSlug(params.get("zona"));
   const shot = params.get("shot") === "1";
@@ -46,20 +48,15 @@ function Cartao() {
     document.documentElement.classList.toggle("modo-print", shot);
   }, [shot]);
 
+  // Só mostra o cartão com preço do painel. Se o painel não responder (após
+  // novas tentativas), avisa em vez de montar o cartão com a tabela do código.
   useEffect(() => {
     let vivo = true;
-    fetch(PRICING_URL)
-      .then((r) => r.json())
-      .then((j) => {
-        if (!vivo || !j?.ok || !j.data) return;
-        setPricing({
-          products: j.data.products ?? [],
-          overrides: j.data.overrides ?? {},
-          extraRegions: j.data.extraRegions ?? {},
-          removedRegions: j.data.removedRegions ?? {},
-        });
-      })
-      .catch(() => {});
+    fetchPricing(PRICING_URL).then((res) => {
+      if (!vivo) return;
+      if (res) setPricing(res.data);
+      else setFalhou(true);
+    });
     return () => {
       vivo = false;
     };
@@ -90,7 +87,7 @@ function Cartao() {
             <h1 className="text-2xl font-black text-brand-cream">Tabela de preços por zona</h1>
             <p className="text-sm text-brand-cream/60">
               É esta imagem que o agente manda no WhatsApp. Escolha a zona e salve/print o cartão.
-              {tabela.aoVivo ? " Preços ao vivo do KegControl." : " Preços do fallback local (API fora)."}
+              {tabela.aoVivo ? " Preços ao vivo do KegControl." : ""}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -111,7 +108,14 @@ function Cartao() {
         </div>
       )}
 
-      {/* ---------------- o cartão (1080x1350) ---------------- */}
+      {!pricing ? (
+        <p className="mx-auto max-w-[1080px] rounded-xl bg-white/10 px-6 py-10 text-center text-lg font-bold text-brand-cream">
+          {falhou
+            ? "Não foi possível carregar os preços agora. Recarregue a página em instantes."
+            : "Carregando preços…"}
+        </p>
+      ) : (
+      /* ---------------- o cartão (1080x1350) ---------------- */
       <div
         id="tabela-card"
         className="mx-auto flex h-[1350px] w-[1080px] shrink-0 flex-col overflow-hidden bg-[#131313] font-sans"
@@ -294,6 +298,7 @@ function Cartao() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

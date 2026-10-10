@@ -5,7 +5,6 @@ import Link from "next/link";
 import { getProductById } from "@/data/products";
 import { useCart, formatPrice } from "@/lib/cart-context";
 import { useLocation } from "@/lib/location-context";
-import { getCaxiasSavings } from "@/data/caxias-pricing";
 import { PEDIDOS_URL, VISITAS_URL, SITE_CART_URL } from "@/lib/tabela";
 
 // Número de WhatsApp agora vem do painel (KegControl → Preços do Site), via
@@ -104,13 +103,14 @@ export default function CarrinhoPage() {
     total,
     minimumOrder,
     meetsMinimum,
+    pricesReady,
     clearCart,
     unitPrice,
     chopeiraType,
     setChopeiraType,
     hasChopeira,
   } = useCart();
-  const { zone, phone, setPhone, whatsappNumber } = useLocation();
+  const { zone, phone, setPhone, whatsappNumber, savingsOf, pricingStatus } = useLocation();
   const [sent, setSent] = useState(false);
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("entrega");
   const [paymentMethod, setPaymentMethod] = useState("");
@@ -395,7 +395,9 @@ export default function CarrinhoPage() {
   const addressComplete = address.rua && address.numero && address.bairro && address.cpfCnpj;
   const telefoneOk = telefone.replace(/\D/g, "").length >= 10;
   const chopeiraEscolhida = !hasChopeira || !!chopeiraType;
+  // Sem preço do painel (carregando/painel fora) não finaliza: o total sairia errado.
   const canFinish =
+    pricesReady &&
     meetsMinimum &&
     !!address.nome &&
     telefoneOk &&
@@ -557,7 +559,7 @@ export default function CarrinhoPage() {
           const product = getProductById(item.productId);
           if (!product) return null;
           const lineTotal = unitPrice(item.productId, item.quantity) * item.quantity;
-          const savings = zone?.fixed ? getCaxiasSavings(item.productId, item.quantity) : 0;
+          const savings = savingsOf(item.productId, item.quantity);
 
           return (
             <div
@@ -578,7 +580,11 @@ export default function CarrinhoPage() {
               <div className="flex-1">
                 <p className="font-bold text-brand-black">{product.name}</p>
                 <p className="text-sm text-gray-500">
-                  {precoACombinar ? A_COMBINAR : `${formatPrice(unitPrice(item.productId, item.quantity))}/un.`}
+                  {precoACombinar
+                    ? A_COMBINAR
+                    : pricesReady
+                      ? `${formatPrice(unitPrice(item.productId, item.quantity))}/un.`
+                      : "—"}
                 </p>
                 <div className="mt-1 flex items-center gap-2">
                   <button
@@ -597,7 +603,7 @@ export default function CarrinhoPage() {
                 </div>
               </div>
               <div className="flex flex-col items-end gap-2">
-                <p className="font-bold text-brand-amber">{precoACombinar ? A_COMBINAR : formatPrice(lineTotal)}</p>
+                <p className="font-bold text-brand-amber">{precoACombinar ? A_COMBINAR : pricesReady ? formatPrice(lineTotal) : "—"}</p>
                 {!precoACombinar && savings > 0 && (
                   <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-bold text-green-700">
                     economizou {formatPrice(savings)}
@@ -615,7 +621,14 @@ export default function CarrinhoPage() {
         })}
       </div>
 
-      {!meetsMinimum && (
+      {!pricesReady && (
+        <p className="mt-4 rounded-lg bg-yellow-50 px-4 py-2 text-sm text-yellow-800">
+          {pricingStatus === "loading"
+            ? "Carregando os preços da sua região…"
+            : "Não conseguimos carregar os preços agora. Recarregue a página ou fale com a gente no WhatsApp."}
+        </p>
+      )}
+      {pricesReady && !meetsMinimum && (
         <p className="mt-4 rounded-lg bg-yellow-50 px-4 py-2 text-sm text-yellow-800">
           Pedido mínimo de {formatPrice(minimumOrder)}. Faltam {formatPrice(minimumOrder - subtotal)} para finalizar.
         </p>
@@ -838,10 +851,10 @@ export default function CarrinhoPage() {
       </div>
 
       <div className="mt-6 rounded-xl border border-brand-black/10 bg-white p-4 shadow-sm">
-        {precoACombinar ? (
+        {precoACombinar || !pricesReady ? (
           <div className="flex items-center justify-between">
             <span className="text-lg font-extrabold text-brand-black">Total</span>
-            <span className="text-lg font-extrabold text-brand-amber">{A_COMBINAR}</span>
+            <span className="text-lg font-extrabold text-brand-amber">{precoACombinar ? A_COMBINAR : "—"}</span>
           </div>
         ) : (
           <>

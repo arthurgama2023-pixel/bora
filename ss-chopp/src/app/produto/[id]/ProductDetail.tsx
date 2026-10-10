@@ -7,32 +7,23 @@ import { useLocation } from "@/lib/location-context";
 import { brandForProduct } from "@/lib/brands";
 import BrandBarrel from "@/components/BrandBarrel";
 import Countdown from "@/components/Countdown";
+import PrecoPendente from "@/components/PrecoPendente";
 import type { Product } from "@/lib/types";
 
 export default function ProductDetail({ product }: { product: Product }) {
   const router = useRouter();
   const { addItem } = useCart();
-  const { zone, priceFactor, tiersOf, unitPriceOf, savingsOf } = useLocation();
+  const { zone, pricingStatus, tiersOf, unitPriceOf, savingsOf } = useLocation();
 
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
 
-  // Produto com preço escalonado por quantidade (ex.: Brahma) na região fixa
-  const tiers = zone?.fixed ? tiersOf(product.id) : undefined;
-
-  // Zona com tabela de preço fixo — preço unitário conforme a quantidade.
-  let unit = product.price * priceFactor;
-  if (zone?.fixed) {
-    const fixedPrice = unitPriceOf(product.id, quantity);
-    if (fixedPrice !== undefined) {
-      unit = fixedPrice;
-    }
-  }
-  const price = unit * quantity;
-  const savings = zone?.fixed ? savingsOf(product.id, quantity) : 0;
-
-  // "de/por" só quando há economia real sobre o preço de tabela (sem % fixo).
-  const hasDeal = !!zone && !tiers && unit < product.price;
+  // Só preço do painel (Preços do Site) da região escolhida, conforme a
+  // quantidade. undefined = ainda carregando / sem bairro / painel fora.
+  const tiers = tiersOf(product.id);
+  const unit = unitPriceOf(product.id, quantity);
+  const price = unit === undefined ? undefined : unit * quantity;
+  const savings = savingsOf(product.id, quantity);
 
   function handleAddToCart() {
     addItem(product.id, quantity);
@@ -77,15 +68,17 @@ export default function ProductDetail({ product }: { product: Product }) {
           )}
 
           <div className="mt-4 flex items-baseline gap-2">
-            {hasDeal && (
-              <span className="text-sm text-gray-400 line-through">{formatPrice(product.price)}</span>
-            )}
-            <span className="text-2xl font-extrabold text-brand-amber">{formatPrice(unit)}</span>
-            <span className="text-sm text-gray-500">/ un.</span>
-            {hasDeal && (
-              <span className="rounded-full bg-brand-amber/15 px-2 py-0.5 text-xs font-bold text-brand-amber">
-                ⏳ tempo limitado
-              </span>
+            {unit === undefined ? (
+              <PrecoPendente
+                zone={!!zone}
+                status={pricingStatus}
+                className="text-lg font-bold text-gray-500"
+              />
+            ) : (
+              <>
+                <span className="text-2xl font-extrabold text-brand-amber">{formatPrice(unit)}</span>
+                <span className="text-sm text-gray-500">/ un.</span>
+              </>
             )}
           </div>
           {zone && (
@@ -147,7 +140,9 @@ export default function ProductDetail({ product }: { product: Product }) {
           )}
 
           <div className="mt-6 flex items-center gap-4">
-            <p className="text-xl font-extrabold text-brand-black">{formatPrice(price)}</p>
+            {price !== undefined && (
+              <p className="text-xl font-extrabold text-brand-black">{formatPrice(price)}</p>
+            )}
             <button
               onClick={handleAddToCart}
               className="rounded-full bg-brand-amber px-6 py-2 font-bold text-white transition hover:brightness-110 disabled:opacity-50"
