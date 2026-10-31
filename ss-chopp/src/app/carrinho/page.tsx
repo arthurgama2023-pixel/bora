@@ -177,7 +177,7 @@ export default function CarrinhoPage() {
       // Snapshot do que já foi preenchido — pro painel mostrar o card completo,
       // "de acordo com o que foi preenchido" (mesmo formato do pedido finalizado).
       details: JSON.stringify({
-        email: address.email || null,
+        email: address.email.trim() || null,
         document: address.cpfCnpj || null,
         street: address.rua || null,
         number: address.numero || null,
@@ -394,6 +394,9 @@ export default function CarrinhoPage() {
   const precoACombinar = isDataACombinar(address.dataEvento);
   const addressComplete = address.rua && address.numero && address.bairro && address.cpfCnpj;
   const telefoneOk = telefone.replace(/\D/g, "").length >= 10;
+  // E-mail obrigatório no site: pedidos chegavam sem contato por e-mail.
+  // (O agente de WhatsApp não exige — só este checkout.)
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(address.email.trim());
   const chopeiraEscolhida = !hasChopeira || !!chopeiraType;
   // Sem preço do painel (carregando/painel fora) não finaliza: o total sairia errado.
   const canFinish =
@@ -401,6 +404,7 @@ export default function CarrinhoPage() {
     meetsMinimum &&
     !!address.nome &&
     telefoneOk &&
+    emailOk &&
     (deliveryMethod === "retirada" || addressComplete) &&
     chopeiraEscolhida &&
     !!paymentMethod;
@@ -414,7 +418,7 @@ export default function CarrinhoPage() {
     const payload = {
       customerName: address.nome,
       phone: telefone,
-      email: address.email || null,
+      email: address.email.trim() || null,
       document: address.cpfCnpj || null,
       deliveryMethod,
       neighborhood: address.bairro || zone?.name || null,
@@ -497,7 +501,7 @@ export default function CarrinhoPage() {
       ...addressLines,
       "",
       `👤 Nome: ${address.nome}`,
-      ...(address.email ? [`📧 E-mail: ${address.email}`] : []),
+      ...(address.email ? [`📧 E-mail: ${address.email.trim()}`] : []),
       `🪪 CPF/CNPJ: ${address.cpfCnpj}`,
       ...(telefone ? [`📱 Telefone: ${telefone}`] : []),
       "",
@@ -646,6 +650,11 @@ export default function CarrinhoPage() {
           Escolha a forma de pagamento para finalizar.
         </p>
       )}
+      {!emailOk && (
+        <p className="mt-4 rounded-lg bg-yellow-50 px-4 py-2 text-sm text-yellow-800">
+          Informe um e-mail válido para finalizar.
+        </p>
+      )}
 
       <div className="mt-6 rounded-xl border border-brand-black/10 bg-white p-4 shadow-sm">
         <h2 className="mb-3 font-bold text-brand-black">Seus dados</h2>
@@ -671,10 +680,15 @@ export default function CarrinhoPage() {
           />
           <input
             type="email"
-            placeholder="E-mail (opcional)"
+            required
+            autoComplete="email"
+            inputMode="email"
+            placeholder="E-mail"
             value={address.email}
             onChange={(e) => setAddress({ ...address, email: e.target.value })}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className={`w-full rounded-md border px-3 py-2 text-sm ${
+              address.email && !emailOk ? "border-red-400 bg-red-50" : "border-gray-300"
+            }`}
           />
         </div>
 
