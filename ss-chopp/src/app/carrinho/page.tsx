@@ -522,6 +522,9 @@ export default function CarrinhoPage() {
       "─────────────────────────────────",
       "",
       ...(paymentLabel ? [`💳 Pagamento: ${paymentLabel}`, ""] : []),
+      // Estoque não é 100% controlado: o cliente já sabe que a confirmação depende da conferência.
+      "📦 Sei que o pedido só fica confirmado depois que a equipe conferir o estoque.",
+      "",
       "💬 Confirme o pedido por favor!",
     ].join("\n");
 
@@ -877,6 +880,14 @@ export default function CarrinhoPage() {
           </>
         )}
       </div>
+
+      {/* Estoque não é 100% controlado: avisa antes de pedir que a equipe confere e confirma. */}
+      {items.length > 0 && (
+        <div className="mt-4 rounded-lg border border-brand-amber/30 bg-brand-amber/10 px-4 py-3 text-sm text-brand-black">
+          <p className="font-bold">📦 Seu pedido ainda não está confirmado.</p>
+          <p>Nossa equipe vai conferir o estoque e confirmar com você pelo WhatsApp.</p>
+        </div>
+      )}
 
       <button
         onClick={handleSendToWhatsApp}
