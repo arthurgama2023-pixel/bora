@@ -537,6 +537,19 @@ export default function CarrinhoPage() {
     sendVisit("FINALIZOU");
     capturarPedido();
 
+    // Conversão para o gestor de tráfego (GTM). Sem dados pessoais; nunca quebra o checkout.
+    try {
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({
+        event: "pedido_whatsapp",
+        value: precoACombinar ? undefined : finalTotal,
+        currency: "BRL",
+        items_count: items.reduce((a, it) => a + it.quantity, 0),
+      });
+    } catch {
+      // tracking é best-effort
+    }
+
     const url = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(summary)}`;
     window.open(url, "_blank");
     setSent(true);
@@ -553,6 +566,12 @@ export default function CarrinhoPage() {
     const primeiro = (address.nome || "").trim().split(/\s+/)[0] || "";
     const saud = primeiro ? `Oi! Aqui é ${primeiro}. ` : "Oi! ";
     const text = `${saud}Tô montando meu pedido no site e queria tirar uma dúvida 🍺 (pedido #${code})`;
+    try {
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({ event: "duvida_whatsapp" });
+    } catch {
+      // tracking é best-effort
+    }
     const url = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(text)}`;
     window.open(url, "_blank");
   }
